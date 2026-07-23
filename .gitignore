@@ -1,0 +1,12 @@
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+.env.*
+
+# dotenv example should be committed
+!.env.example
+
+# IDEs
+.vscode/
