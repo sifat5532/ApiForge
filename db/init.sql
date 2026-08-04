@@ -1,0 +1,40 @@
+CREATE TABLE
+   if NOT EXISTS users (
+      id serial PRIMARY key,
+      name VARCHAR(30),
+      email VARCHAR(40) UNIQUE CONSTRAINT user_email_check CHECK (email LIKE '%@%'),
+      username VARCHAR(40) NOT NULL UNIQUE,
+      password_hash VARCHAR(100) NOT NULL,
+      dp VARCHAR(30),
+      settings VARCHAR(30) NOT NULL DEFAULT 'Default goes here',
+      joined_at TIMESTAMP DEFAULT now ()
+   );
+
+CREATE TABLE
+   if NOT EXISTS user_sessions (
+      id serial PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      session_token_hashed VARCHAR(100) NOT NULL,
+      device_label VARCHAR(100) NOT NULL,
+      ip_address INET NOT NULL,
+      created_at TIMESTAMP DEFAULT now (),
+      expires_at TIMESTAMP NOT NULL,
+      last_active_at TIMESTAMP NOT NULL,
+      revoked_at TIMESTAMP,
+      CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES Users (id) ON DELETE CASCADE
+   );
+
+CREATE TABLE
+   if NOT EXISTS notifications (
+      id serial PRIMARY KEY,
+      sender_id INTEGER,
+      receiver_id INTEGER NOT NULL,
+      type VARCHAR(15) NOT NULL,
+      related_entity_name VARCHAR(20),
+      related_entity_id INTEGER,
+      data VARCHAR(100),
+      read_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT now (),
+      CONSTRAINT fk_notification_sender_user FOREIGN KEY (sender_id) REFERENCES Users (id) ON DELETE SET NULL,
+      CONSTRAINT fk_notification_receiver_user FOREIGN KEY (receiver_id) REFERENCES Users (id) ON DELETE CASCADE
+   )
