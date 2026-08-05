@@ -71,7 +71,7 @@ CREATE TABLE if NOT EXISTS project_tags (
    created_at TIMESTAMP NOT NULL DEFAULT now (),
    CONSTRAINT fk_project_tags_project FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
    CONSTRAINT fk_project_tags_tag FOREIGN Key (tag_id) REFERENCES tags (id) ON DELETE CASCADE,
-   PRIMARY KEY (project_id, tag_id), -- indexes on project id
+   PRIMARY KEY (project_id, tag_id) -- indexes on project id
 );
 
 -- indexes on tag id
