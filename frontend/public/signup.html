@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Create account — ApiForge</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+
+  <!-- NAV -->
+  <header class="nav">
+    <div class="nav__inner">
+      <a href="index.html" class="brand">Api<span>Forge</span></a>
+      <nav class="nav__links" id="nav-links">
+        <div class="nav__cta">
+          <a href="login.html" class="btn btn--ghost">Login</a>
+        </div>
+      </nav>
+      <button class="nav__toggle" aria-label="Toggle menu" aria-expanded="false">
+        <span></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- AUTH -->
+  <main class="auth">
+    <div class="auth__card">
+      <div class="auth__eyebrow">// create account</div>
+      <h1>Get started</h1>
+      <p class="auth__subtitle">Create a free account and forge your first API in minutes.</p>
+
+      <form id="signup-form" novalidate>
+        <div class="form__error" id="reg-error" role="alert"></div>
+
+        <div class="field">
+          <label for="reg-name">Full name</label>
+          <input id="reg-name" name="name" type="text" placeholder="Sifat Rahman" autocomplete="name" required />
+        </div>
+
+        <div class="field">
+          <label for="reg-username">Username</label>
+          <input id="reg-username" name="username" type="text" placeholder="sifat" autocomplete="username" required />
+          <p class="field__hint">Letters, digits, underscores only. Used in your API URLs.</p>
+        </div>
+
+        <div class="field">
+          <label for="reg-email">Email</label>
+          <input id="reg-email" name="email" type="email" placeholder="you@example.com" autocomplete="email" required />
+        </div>
+
+        <div class="field">
+          <label for="reg-password">Password</label>
+          <input id="reg-password" name="password" type="password" placeholder="Min 6 characters" autocomplete="new-password" required />
+        </div>
+
+        <div class="field">
+          <label for="reg-confirm-password">Confirm password</label>
+          <input id="reg-confirm-password" name="confirmPassword" type="password" placeholder="Re-enter your password" autocomplete="new-password" required />
+        </div>
+
+        <button type="submit" id="reg-submit" class="btn btn--primary btn--block auth__submit">Create account</button>
+      </form>
+
+      <p class="auth__switch">Already have an account? <a href="login.html">Login →</a></p>
+    </div>
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer__inner">
+      <span>© 2026 ApiForge — CSE216 project</span>
+      <div class="footer__links">
+        <a href="index.html">Home</a>
+        <a href="login.html">Login</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
