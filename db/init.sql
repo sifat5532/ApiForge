@@ -75,6 +75,6 @@ CREATE TABLE if NOT EXISTS project_tags (
 );
 
 -- indexes on tag id
-CREATE INDEX idx_project_tags_tag_id ON project_tags (tag_id);
+CREATE INDEX if NOT EXISTS idx_project_tags_tag_id ON project_tags (tag_id);
 
 -- project logs
