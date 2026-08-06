@@ -169,8 +169,8 @@ CREATE TABLE if NOT EXISTS api_definitions (
    name VARCHAR(30) NOT NULL,
    project_id INTEGER NOT NULL,
    method VARCHAR(15) NOT NULL,
-   query_definition JSON ,
-   generated_sql TEXT,
+   query_definition JSON NOT NULL,
+   generated_sql TEXT NOT NULL,
    parameters TEXT,
    is_active BOOLEAN DEFAULT TRUE,
    rate_limit_per_day INTEGER NOT NULL,
@@ -184,34 +184,34 @@ CREATE INDEX if NOT EXISTS idx_api_definitions ON api_definitions (project_id,na
 
 CREATE TABLE if NOT EXISTS api_logs (
    id serial PRIMARY key,
-   api_definitions_id INTEGER ,
+   api_definition_id INTEGER ,
    ip_address INET NOT NULL,
    status_code INTEGER NOT NULL,
    response_time_ms INTEGER NOT NULL,
    created_at TIMESTAMP NOT NULL DEFAULT now (),
-   CONSTRAINT fk_api_logs_api_definotions FOREIGN Key (api_definitions_id) REFERENCES api_definitions (id) ON DELETE SET NULL
+   CONSTRAINT fk_api_logs_api_definotions FOREIGN Key (api_definition_id) REFERENCES api_definitions (id) ON DELETE SET NULL
 
 );
 
 
 CREATE TABLE if NOT EXISTS api_table_dependencies (
-   api_definitions_id INTEGER NOT NULL,
+   api_definition_id INTEGER NOT NULL,
    schema_table_id INTEGER NOT NULL ,
    usage_context VARCHAR(30),
    created_at TIMESTAMP NOT NULL DEFAULT now (),
-   PRIMARY KEY( api_definitions_id ,schema_table_id),
-   CONSTRAINT fk_api_table_dependencies_api_definitions_id FOREIGN Key (api_definitions_id) REFERENCES api_definitions (id) ON DELETE CASCADE,
+   PRIMARY KEY(api_definition_id ,schema_table_id),
+   CONSTRAINT fk_api_table_dependencies_api_definition_id FOREIGN Key (api_definition_id) REFERENCES api_definitions (id) ON DELETE CASCADE,
    CONSTRAINT fk_api_table_dependencies_api_schema_table_id FOREIGN Key (schema_table_id) REFERENCES schema_tables (id) ON DELETE RESTRICT
 );
 
 
 CREATE TABLE if NOT EXISTS api_column_dependencies (
-   api_definitions_id INTEGER NOT NULL,
+   api_definition_id INTEGER NOT NULL,
    schema_col_id INTEGER NOT NULL ,
    usage_context VARCHAR(30),
    created_at TIMESTAMP NOT NULL DEFAULT now (),
-   PRIMARY KEY( api_definitions_id ,schema_col_id),
-   CONSTRAINT fk_api_table_dependencies_api_definitions_id FOREIGN Key (api_definitions_id) REFERENCES api_definitions (id) ON DELETE CASCADE,
+   PRIMARY KEY(api_definition_id ,schema_col_id),
+   CONSTRAINT fk_api_table_dependencies_api_definition_id FOREIGN Key (api_definition_id) REFERENCES api_definitions (id) ON DELETE CASCADE,
    CONSTRAINT fk_api_table_dependencies_schema_col_id FOREIGN Key (schema_col_id) REFERENCES schema_columns (id) ON DELETE RESTRICT
 );
 CREATE TABLE if NOT EXISTS template_clones(
@@ -239,16 +239,13 @@ CREATE INDEX if NOT EXISTS idx_feedback_user_id_template_id ON template_feedback
 CREATE TABLE if NOT EXISTS template_ratings(
    user_id INTEGER NOT NULL,
    template_id INTEGER NOT NULL ,
-   rating INTEGER CHECk(rating BETWEEN 1 AND 5),
+   rating INTEGER CONSTRAINT rating_range_check CHECK(rating BETWEEN 1 AND 5),
    review_text TEXT ,
    created_at TIMESTAMP NOT NULL DEFAULT now (),
    PRIMARY KEY(user_id,template_id),
    CONSTRAINT fk_template_ratings_user_id FOREIGN Key (user_id) REFERENCES users (id) ON DELETE CASCADE,
    CONSTRAINT fk_template_ratings_template_id FOREIGN Key ( template_id) REFERENCES projects(id) ON DELETE CASCADE
 );
-
-CREATE INDEX if NOT EXISTS idx_template_ratings_user_id_template_id ON template_ratings (user_id,template_id);
-
 
 CREATE TABLE if NOT EXISTS template_likes(
    user_id INTEGER NOT NULL,
@@ -258,5 +255,3 @@ CREATE TABLE if NOT EXISTS template_likes(
    CONSTRAINT fk_template_likes_user_id FOREIGN Key (user_id) REFERENCES users (id) ON DELETE CASCADE,
    CONSTRAINT fk_template_likes_template_id FOREIGN Key ( template_id) REFERENCES projects(id) ON DELETE CASCADE
 );
-
-CREATE INDEX if NOT EXISTS idx_template_likes_user_id_template_id ON template_likes (user_id,template_id);
