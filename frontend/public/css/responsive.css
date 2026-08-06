@@ -285,3 +285,46 @@
 }
 
 
+/* ===================================================================
+   Notifications — responsive overrides
+   =================================================================== */
+
+/* ≤840px — tablet / mobile nav breakpoint */
+@media (max-width: 840px) {
+  .notif-page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+}
+
+/* ≤640px — mobile */
+@media (max-width: 640px) {
+  .notif-item {
+    grid-template-columns: 40px 1fr;
+    grid-template-rows: auto auto;
+  }
+
+  /* Move controls to bottom-right of body on mobile */
+  .notif-controls {
+    display: none; /* replaced by long-press / swipe on real app; hide for now */
+  }
+
+  .notif-actions {
+    flex-wrap: wrap;
+  }
+
+  .notif-meta {
+    gap: 3px 6px;
+  }
+
+  .notif-time {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .notif-page-header__actions {
+    gap: 6px;
+  }
+}
+
