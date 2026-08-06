@@ -44,13 +44,19 @@ CREATE TABLE if NOT EXISTS projects (
    api_key_hashed VARCHAR(100) NOT NULL,
    api_key_prefix VARCHAR(30) NOT NULL,
    auth_enabled BOOLEAN,
+   like_count INTEGER DEFAULT 0,
+   avg_rating REAL DEFAULT 0,
+   is_template BOOLEAN DEFAULT FALSE,
+   is_clone BOOLEAN DEFAULT FALSE,
    created_at TIMESTAMP DEFAULT now (),
+   cloned_from_id INTEGER,
+   originates_from_id INTEGER,
    CONSTRAINT fk_project_author FOREIGN KEY (author_id) REFERENCES users (id) ON DELETE CASCADE
 );
 
-ALTER TABLE projects ADD COLUMN cloned_from_id INTEGER REFERENCES projects(id) ON DELETE SET NULL;
+ALTER TABLE projects ADD CONSTRAINT  fk_project_cloned_from FOREIGN key(cloned_from_id) REFERENCES projects(id) ON DELETE SET NULL;
 
-ALTER TABLE projects ADD COLUMN originates_from_id INTEGER REFERENCES projects(id) ON DELETE SET NULL;
+ALTER TABLE projects ADD CONSTRAINT fk_template_originates_from FOREIGN key(originates_from_id) REFERENCES projects(id) ON DELETE SET NULL;
 
 CREATE TABLE if NOT EXISTS project_cors_origin (
    project_id INTEGER NOT NULL,
@@ -112,9 +118,6 @@ CREATE TABLE if NOT EXISTS project_collaborators (
    CONSTRAINT fk_collaborates_user_id FOREIGN Key (user_id) REFERENCES users (id) ON DELETE CASCADE,
    PRIMARY KEY (project_id, user_id) 
 );
-
-CREATE INDEX if NOT EXISTS idx_project_collaborators_project_id_user_id ON project_collaborators (project_id,user_id);
-
 
 CREATE TABLE if NOT EXISTS schema_tables (
    id serial PRIMARY KEY,
@@ -189,7 +192,7 @@ CREATE TABLE if NOT EXISTS api_logs (
    status_code INTEGER NOT NULL,
    response_time_ms INTEGER NOT NULL,
    created_at TIMESTAMP NOT NULL DEFAULT now (),
-   CONSTRAINT fk_api_logs_api_definotions FOREIGN Key (api_definition_id) REFERENCES api_definitions (id) ON DELETE SET NULL
+   CONSTRAINT fk_api_logs_api_definitions FOREIGN Key (api_definition_id) REFERENCES api_definitions (id) ON DELETE  CASCADE
 
 );
 
