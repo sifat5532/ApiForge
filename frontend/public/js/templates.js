@@ -221,11 +221,11 @@ const MOCK_TEMPLATES = [
 
 // ─── State ──────────────────────────────────────────────────────────────────────
 let _page = 1;
-let _perPage = 12;
+let _perPage = 10;
 let _searchQuery = '';
 let _popularityFilter = 'popular'; // 'popular' | 'recent'
 let _activeTags = new Set();       // multi-select; empty = all tags
-let _authFilter = '';              // '' = all | 'on' = auth enabled | 'off' = no auth
+let _sortBy = 'popular';           // 'popular' | 'recent' | 'name'
 
 // ─── Entry point ────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -251,35 +251,42 @@ function bindTemplateEvents() {
     });
   }
 
-  // Popularity chips (Popular / Recent) — mutually exclusive
+  // Popularity chips (Popular / Recent) — mutually exclusive, also syncs sort select
   document.querySelectorAll('.tmpl-chip[data-filter]').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.tmpl-chip[data-filter]').forEach(b => b.classList.remove('is-active'));
       btn.classList.add('is-active');
       _popularityFilter = btn.dataset.filter;
-      _page = 1;
-      renderTemplates();
-    });
-  });
-
-  // Auth On / Off chips — toggle on click, deactivate on second click
-  document.querySelectorAll('.tmpl-chip[data-auth]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const val = btn.dataset.auth; // 'on' or 'off'
-      if (_authFilter === val) {
-        // clicking active chip again → clear filter
-        _authFilter = '';
-        btn.classList.remove('is-active');
-      } else {
-        // activate this chip, deactivate the other
-        _authFilter = val;
-        document.querySelectorAll('.tmpl-chip[data-auth]').forEach(b => b.classList.remove('is-active'));
-        btn.classList.add('is-active');
+      // Sync sort select to Popular or Created At when chips are clicked
+      const sortSel = document.getElementById('tmpl-sort');
+      if (sortSel && (_sortBy === 'popular' || _sortBy === 'recent')) {
+        sortSel.value = _popularityFilter;
+        _sortBy = _popularityFilter;
       }
       _page = 1;
       renderTemplates();
     });
   });
+
+  // Sort select
+  const sortSel = document.getElementById('tmpl-sort');
+  if (sortSel) {
+    sortSel.addEventListener('change', () => {
+      _sortBy = sortSel.value;
+      // Keep popularity chips in sync when switching between popular/recent via dropdown
+      if (_sortBy === 'popular' || _sortBy === 'recent') {
+        _popularityFilter = _sortBy;
+        document.querySelectorAll('.tmpl-chip[data-filter]').forEach(b => {
+          b.classList.toggle('is-active', b.dataset.filter === _popularityFilter);
+        });
+      } else {
+        // name sort — deactivate both popularity chips
+        document.querySelectorAll('.tmpl-chip[data-filter]').forEach(b => b.classList.remove('is-active'));
+      }
+      _page = 1;
+      renderTemplates();
+    });
+  }
 
   // Tag chips — multi-select (click to toggle; all deselected = show all)
   document.querySelectorAll('.tmpl-chip[data-tag]').forEach(btn => {
@@ -338,17 +345,15 @@ function getFilteredTemplates() {
     );
   }
 
-  // Auth filter
-  if (_authFilter === 'on') {
-    results = results.filter(t => t.authEnabled);
-  } else if (_authFilter === 'off') {
-    results = results.filter(t => !t.authEnabled);
-  }
 
-  // Sort by popularity chip selection
+  // Sort by popularity chip selection or the sort dropdown
   results.sort((a, b) => {
-    if (_popularityFilter === 'recent') return b.createdTimestamp - a.createdTimestamp;
-    return b.useCount - a.useCount; // 'popular' (default)
+    switch (_sortBy) {
+      case 'recent': return b.createdTimestamp - a.createdTimestamp;
+      case 'name':   return a.name.localeCompare(b.name);
+      case 'popular':
+      default:       return b.useCount - a.useCount;
+    }
   });
 
   return results;
@@ -520,20 +525,21 @@ function updatePaginationUI(total, start, end, totalPages) {
 function clearAllFilters() {
   _searchQuery = '';
   _activeTags.clear();
-  _authFilter = '';
+  _sortBy = 'popular';
   _popularityFilter = 'popular';
   _page = 1;
 
   const searchInput = document.getElementById('tmpl-search');
   if (searchInput) searchInput.value = '';
 
+  // Reset sort select
+  const sortSel = document.getElementById('tmpl-sort');
+  if (sortSel) sortSel.value = 'popular';
+
   // Reset popularity chips
   document.querySelectorAll('.tmpl-chip[data-filter]').forEach(b => {
     b.classList.toggle('is-active', b.dataset.filter === 'popular');
   });
-
-  // Reset auth chips
-  document.querySelectorAll('.tmpl-chip[data-auth]').forEach(b => b.classList.remove('is-active'));
 
   // Reset tag chips
   document.querySelectorAll('.tmpl-chip[data-tag]').forEach(b => b.classList.remove('is-active'));
