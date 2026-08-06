@@ -51,12 +51,10 @@ CREATE TABLE if NOT EXISTS projects (
    created_at TIMESTAMP DEFAULT now (),
    cloned_from_id INTEGER,
    originates_from_id INTEGER,
-   CONSTRAINT fk_project_author FOREIGN KEY (author_id) REFERENCES users (id) ON DELETE CASCADE
+   CONSTRAINT fk_project_author FOREIGN KEY (author_id) REFERENCES users (id) ON DELETE CASCADE,
+   CONSTRAINT fk_project_cloned_from FOREIGN key (cloned_from_id) REFERENCES projects (id) ON DELETE SET NULL,
+   CONSTRAINT fk_template_originates_from FOREIGN key (originates_from_id) REFERENCES projects (id) ON DELETE SET NULL
 );
-
-ALTER TABLE projects ADD CONSTRAINT fk_project_cloned_from FOREIGN key (cloned_from_id) REFERENCES projects (id) ON DELETE SET NULL;
-
-ALTER TABLE projects ADD CONSTRAINT fk_template_originates_from FOREIGN key (originates_from_id) REFERENCES projects (id) ON DELETE SET NULL;
 
 CREATE TABLE if NOT EXISTS project_cors_origin (
    project_id INTEGER NOT NULL,
