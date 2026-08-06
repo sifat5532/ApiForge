@@ -24,7 +24,7 @@ Do not create these pages unless explicitly instructed. See Rule §7 in `fronten
 
 | Sidebar / UI label | Target file | Location in source |
 |---|---|---|
-| Starred | `starred.html` | Sidebar nav |
+| Liked | `liked.html` | Sidebar nav |
 | Templates | `templates.html` | Sidebar nav |
 | Leaderboard | `leaderboard.html` | Sidebar nav |
 | Notifications | `notifications.html` | Sidebar nav |
