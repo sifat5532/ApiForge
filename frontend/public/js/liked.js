@@ -158,7 +158,7 @@ const likedState = {
   sortOption: 'liked',
   sortDir: 'desc',
   currentPage: 1,
-  pageSize: 9,
+  pageSize: 10,
   isLoading: false,
   data: [...MOCK_LIKED_TEMPLATES],
   // Track which templates have been unliked in this session
@@ -402,7 +402,7 @@ function createLikedCardHtml(t) {
 
       <!-- Author row -->
       <div class="liked-card__author">
-        <span class="liked-card__avatar" style="background: ${t.author.color};" aria-hidden="true">${escapeHtml(t.author.initials)}</span>
+        <span class="liked-card__avatar" aria-hidden="true">${escapeHtml(t.author.initials)}</span>
         <div class="liked-card__author-info">
           <span class="liked-card__author-name">${escapeHtml(t.author.name)}</span>
           <span class="liked-card__author-handle">@${escapeHtml(t.author.username)}</span>
