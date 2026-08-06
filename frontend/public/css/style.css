@@ -1784,17 +1784,37 @@ html.onboarding-dismissed .onboarding-card,
   transform: translateX(22px);
 }
 
-/* Tag Selection Box */
+/* Tag Selection Box Container */
 .tag-selection-box {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 22px;
+  padding: 20px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-top: 16px;
+  margin-bottom: 24px;
+}
+
+.tag-section-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tag-block-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
 }
 
 .tag-label-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
 }
 
 .tag-helper-text {
@@ -1806,8 +1826,11 @@ html.onboarding-dismissed .onboarding-card,
 .popular-tags-group {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 6px;
+  gap: 10px;
+  padding: 14px 16px;
+  /* background: var(--surface); */
+  /* border: 1px solid var(--border); */
+  border-radius: var(--radius-sm);
 }
 
 .tag-chip {
@@ -1829,7 +1852,7 @@ html.onboarding-dismissed .onboarding-card,
 .tag-chip:hover {
   border-color: var(--border-hover);
   color: var(--text);
-  background: var(--surface);
+  background: var(--surface-raised);
 }
 
 .tag-chip.is-selected {
@@ -1842,10 +1865,10 @@ html.onboarding-dismissed .onboarding-card,
 .selected-tags-container {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  min-height: 42px;
-  padding: 10px 14px;
-  background: var(--bg);
+  gap: 10px;
+  min-height: 48px;
+  padding: 12px 16px;
+  background: var(--surface);
   border: 1px dashed var(--border);
   border-radius: var(--radius-sm);
   align-items: center;

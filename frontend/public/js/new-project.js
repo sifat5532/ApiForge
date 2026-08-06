@@ -63,12 +63,17 @@ function initBreadcrumbFlow() {
 // Active selected tags array
 let selectedTags = [];
 
-// Existing database dictionary of popular tags
+// Existing database dictionary of tags for search/autocomplete
 const TAG_DATABASE = [
   'REST', 'GraphQL', 'Auth', 'Database', 'E-Commerce', 'Webhooks',
   'Microservice', 'AI', 'Stripe', 'PostgreSQL', 'MongoDB', 'JWT',
   'OAuth', 'Serverless', 'Docker', 'WebSockets', 'gRPC', 'Redis',
   'Python', 'Node.js', 'Go', 'Payment', 'Cloud', 'Analytics', 'SaaS'
+];
+
+// Curated list of popular tags for direct one-click selection
+const POPULAR_TAGS = [
+  'REST', 'Database', 'Auth', 'GraphQL', 'Stripe', 'PostgreSQL', 'Microservice', 'JWT', 'Webhooks', 'Docker'
 ];
 
 /**
@@ -85,8 +90,9 @@ function initTagManager() {
 
   let focusedIndex = -1;
 
-  // Render initial empty state or active tags
+  // Render initial empty state, active tags, and popular tags
   renderSelectedTags();
+  renderPopularTags();
 
   // 1. Show dropdown on focus or input
   searchInput.addEventListener('focus', () => {
@@ -228,12 +234,37 @@ function initTagManager() {
     if (!selectedTags.some(t => t.toLowerCase() === cleanTag.toLowerCase())) {
       selectedTags.push(cleanTag);
       renderSelectedTags();
+      renderPopularTags();
     }
   }
 
   function removeTag(tag) {
     selectedTags = selectedTags.filter(t => t.toLowerCase() !== tag.toLowerCase());
     renderSelectedTags();
+    renderPopularTags();
+  }
+
+  function renderPopularTags() {
+    const popularContainer = document.getElementById('popular-tags-group');
+    if (!popularContainer) return;
+
+    popularContainer.innerHTML = '';
+    POPULAR_TAGS.forEach(tag => {
+      const isSelected = selectedTags.some(t => t.toLowerCase() === tag.toLowerCase());
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = `tag-chip${isSelected ? ' is-selected' : ''}`;
+      chip.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+      chip.innerHTML = `${escapeHtml(tag)}`;
+      chip.addEventListener('click', () => {
+        if (isSelected) {
+          removeTag(tag);
+        } else {
+          addTag(tag);
+        }
+      });
+      popularContainer.appendChild(chip);
+    });
   }
 
   function renderSelectedTags() {

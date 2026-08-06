@@ -104,7 +104,7 @@
                 </a>
               </li>
               <li>
-                <a href="projects.html" class="sidebar__link is-active" data-tooltip="Projects" aria-current="page">
+                <a href="projects.html" class="sidebar__link" data-tooltip="Projects">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"></path>
                   </svg>
@@ -252,32 +252,48 @@
             </h2>
 
             <div class="tag-selection-box">
-              <div class="tag-label-row">
-                <label style="margin: 0; font-size: 0.85rem; font-weight: 600; color: var(--text);">Search &amp; Select Tags</label>
-                <span class="tag-helper-text">Search database or add custom tags</span>
+              <!-- Popular Suggestions Block -->
+              <div class="tag-section-block">
+                <div class="tag-label-row">
+                  <label class="tag-block-label">Popular Suggestions</label>
+                  <span class="tag-helper-text">Click tag to quick-add / remove</span>
+                </div>
+                <div class="popular-tags-group" id="popular-tags-group"></div>
               </div>
 
-              <!-- Dark-mode Tag Search & Select Dropdown -->
-              <div class="tag-search-container" id="tag-search-container">
-                <div class="tag-input-group">
-                  <div class="tag-search-input-wrapper">
-                    <svg class="tag-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none;">
-                      <circle cx="11" cy="11" r="8"></circle>
-                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                    </svg>
-                    <input type="text" id="tag-search-input" class="tag-search-input" placeholder="Search or add tags (e.g. REST, Database, Stripe)..." autocomplete="off">
-                  </div>
-                  <button type="button" class="btn btn--ghost" id="add-custom-tag-btn">+ Add Tag</button>
+              <!-- Search & Add Custom Tags Block -->
+              <div class="tag-section-block">
+                <div class="tag-label-row">
+                  <label class="tag-block-label">Search &amp; Add Custom Tags</label>
+                  <span class="tag-helper-text">Search database or type custom tag</span>
                 </div>
 
-                <!-- Autocomplete Dropdown Menu -->
-                <div class="tag-dropdown-menu" id="tag-dropdown-menu" hidden></div>
+                <!-- Dark-mode Tag Search & Select Dropdown -->
+                <div class="tag-search-container" id="tag-search-container">
+                  <div class="tag-input-group">
+                    <div class="tag-search-input-wrapper">
+                      <svg class="tag-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none;">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                      </svg>
+                      <input type="text" id="tag-search-input" class="tag-search-input" placeholder="Search or add tags (e.g. REST, Database, Stripe)..." autocomplete="off">
+                    </div>
+                    <button type="button" class="btn btn--ghost" id="add-custom-tag-btn">+ Add Tag</button>
+                  </div>
+
+                  <!-- Autocomplete Dropdown Menu -->
+                  <div class="tag-dropdown-menu" id="tag-dropdown-menu" hidden></div>
+                </div>
               </div>
 
-              <div style="margin-top: 12px;">
-                <label style="font-size: 0.85rem; font-weight: 600; color: var(--text); display: block; margin-bottom: 8px;">Active Selected Tags</label>
+              <!-- Active Selected Tags Block -->
+              <div class="tag-section-block">
+                <div class="tag-label-row">
+                  <label class="tag-block-label">Active Selected Tags</label>
+                  <span class="tag-helper-text">Tags attached to this project</span>
+                </div>
                 <div class="selected-tags-container" id="selected-tags-container">
-                  <span class="selected-tags-empty" id="selected-tags-empty">No tags selected yet. Search or type tags above to attach them.</span>
+                  <span class="selected-tags-empty" id="selected-tags-empty">No tags selected yet. Click popular suggestions or search above to attach tags.</span>
                 </div>
               </div>
             </div>

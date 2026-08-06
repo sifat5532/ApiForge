@@ -70,7 +70,7 @@ Sections in order (each preceded by a `/* --- */` comment header):
 | Dashboard — panels | `.panel`, `.panel__head`, `.panel__title`, `.panel__link`, `.project-row`, `.project-row__name`, `.project-row__meta`, `.project-row__link` |
 | Dashboard — activity | `.activity-list`, `.activity-item`, `.activity-item__dot`, `.activity-item__text`, `.activity-item__time` |
 | Projects — page components | `.projects-header`, `.projects-tabs`, `.projects-tab`, `.tab-badge`, `.projects-toolbar`, `.search-box`, `.filter-select`, `.projects-container`, `.projects-grid`, `.project-card`, `.project-badge`, `.copy-route-btn`, `.projects-empty`, `.skeleton-card`, `@keyframes skeleton-shimmer`, `.pagination-bar`, `.pagination-btn`, `.page-num` |
-| New Project — page components | `.create-project-grid`, `.create-project-card`, `.form-section-title`, `.form-textarea`, `.toggle-field`, `.switch`, `.switch-slider`, `.tag-selection-box`, `.popular-tags-group`, `.tag-chip`, `.selected-tags-container`, `.tag-chip__remove`, `.tag-input-group`, `.plan-summary-card`, `.plan-tier-toggle`, `.tier-toggle-btn`, `.plan-badge-pill`, `.plan-facilities-list`, `.plan-limits-list`, `.plan-meter-track`, `.plan-meter-fill` |
+| New Project — page components | `.create-project-grid`, `.create-project-card`, `.form-section-title`, `.form-textarea`, `.toggle-field`, `.switch`, `.switch-slider`, `.tag-selection-box`, `.tag-section-block`, `.tag-block-label`, `.popular-tags-group`, `.tag-chip`, `.selected-tags-container`, `.tag-chip__remove`, `.tag-input-group`, `.plan-summary-card`, `.plan-tier-toggle`, `.tier-toggle-btn`, `.plan-badge-pill`, `.plan-facilities-list`, `.plan-limits-list`, `.plan-meter-track`, `.plan-meter-fill` |
 
 ### `css/responsive.css` (295 lines)
 
@@ -128,7 +128,8 @@ Sections in order (each preceded by a `/* --- */` comment header):
 | Function | What it does |
 |---|---|
 | `initBreadcrumbFlow()` | Renders dynamic topbar breadcrumbs (`Home / New Project` vs `Home / Projects / New Project`) based on entry origin parameter or referrer |
-| `initTagManager()` | Manages dark-mode tag search box, database tag dictionary autocomplete dropdown, and removable active tag pills |
+| `initTagManager()` | Manages dark-mode tag search box, popular tags one-click selection buttons, database tag dictionary autocomplete dropdown, and removable active tag pills |
+| `renderPopularTags()` | Renders interactive popular tag chips with instant toggle state synchronization (`.is-selected`) |
 | `initProjectForm()` | Form submission handling, validation, loading spinner animation, and redirection |
 | `escapeHtml(str)` | XSS helper escaping HTML characters in dynamic tag names and breadcrumbs |
 
