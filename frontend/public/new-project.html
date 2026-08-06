@@ -46,10 +46,10 @@
 
         <a href="dashboard.html" class="brand">Api<span>Forge</span></a>
 
-        <nav class="breadcrumb" aria-label="Breadcrumb">
+        <!-- Dynamic breadcrumb rendered by JS based on entry page -->
+        <nav class="breadcrumb" aria-label="Breadcrumb" id="nav-breadcrumb">
+          <!-- Fallback initial rendering -->
           <a href="dashboard.html" class="breadcrumb__item">Home</a>
-          <span class="breadcrumb__sep" aria-hidden="true">/</span>
-          <a href="projects.html" class="breadcrumb__item">Projects</a>
           <span class="breadcrumb__sep" aria-hidden="true">/</span>
           <span class="breadcrumb__item breadcrumb__item--current" aria-current="page">New Project</span>
         </nav>
@@ -253,32 +253,32 @@
 
             <div class="tag-selection-box">
               <div class="tag-label-row">
-                <label style="margin: 0; font-size: 0.85rem; font-weight: 600; color: var(--text);">Popular Suggestions</label>
-                <span class="tag-helper-text">Click a tag to select / deselect</span>
+                <label style="margin: 0; font-size: 0.85rem; font-weight: 600; color: var(--text);">Search &amp; Select Tags</label>
+                <span class="tag-helper-text">Search database or add custom tags</span>
               </div>
 
-              <!-- Popular preset options (unselected by default) -->
-              <div class="popular-tags-group" id="popular-tags-container">
-                <button type="button" class="tag-chip" data-tag="REST">REST</button>
-                <button type="button" class="tag-chip" data-tag="GraphQL">GraphQL</button>
-                <button type="button" class="tag-chip" data-tag="Auth">Auth</button>
-                <button type="button" class="tag-chip" data-tag="Database">Database</button>
-                <button type="button" class="tag-chip" data-tag="E-Commerce">E-Commerce</button>
-                <button type="button" class="tag-chip" data-tag="Webhooks">Webhooks</button>
-                <button type="button" class="tag-chip" data-tag="Microservice">Microservice</button>
-                <button type="button" class="tag-chip" data-tag="AI">AI</button>
-              </div>
-
-              <div style="margin-top: 8px;">
-                <label style="font-size: 0.85rem; font-weight: 600; color: var(--text); display: block; margin-bottom: 8px;">Active Tags</label>
-                <div class="selected-tags-container" id="selected-tags-container">
-                  <span class="selected-tags-empty" id="selected-tags-empty">No tags selected. Click popular tags above or add custom tags below.</span>
+              <!-- Dark-mode Tag Search & Select Dropdown -->
+              <div class="tag-search-container" id="tag-search-container">
+                <div class="tag-input-group">
+                  <div class="tag-search-input-wrapper">
+                    <svg class="tag-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none;">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" id="tag-search-input" class="tag-search-input" placeholder="Search or add tags (e.g. REST, Database, Stripe)..." autocomplete="off">
+                  </div>
+                  <button type="button" class="btn btn--ghost" id="add-custom-tag-btn">+ Add Tag</button>
                 </div>
+
+                <!-- Autocomplete Dropdown Menu -->
+                <div class="tag-dropdown-menu" id="tag-dropdown-menu" hidden></div>
               </div>
 
-              <div class="tag-input-group">
-                <input type="text" id="custom-tag-input" placeholder="Type custom tag name (e.g. Fintech)" autocomplete="off">
-                <button type="button" class="btn btn--ghost" id="add-custom-tag-btn">+ Add Tag</button>
+              <div style="margin-top: 12px;">
+                <label style="font-size: 0.85rem; font-weight: 600; color: var(--text); display: block; margin-bottom: 8px;">Active Selected Tags</label>
+                <div class="selected-tags-container" id="selected-tags-container">
+                  <span class="selected-tags-empty" id="selected-tags-empty">No tags selected yet. Search or type tags above to attach them.</span>
+                </div>
               </div>
             </div>
 
@@ -291,17 +291,14 @@
           </form>
         </div>
 
-        <!-- RIGHT: Current Plan Overview & Quotas Card -->
+        <!-- RIGHT: User's Current Active Subscription Card -->
         <aside class="plan-summary-card">
           <div class="plan-header-row">
-            <h3 class="plan-title">Plan Overview</h3>
-            <span class="plan-badge-pill plan-badge-pill--free" id="tier-badge-pill">FREE TIER</span>
-          </div>
-
-          <div class="plan-tier-toggle" role="tablist" aria-label="Select Plan Tier View">
-            <button type="button" class="tier-toggle-btn is-active" id="tier-btn-free" data-tier="free" role="tab" aria-selected="true">Free</button>
-            <button type="button" class="tier-toggle-btn" id="tier-btn-lite" data-tier="lite" role="tab" aria-selected="false">Lite</button>
-            <button type="button" class="tier-toggle-btn" id="tier-btn-pro" data-tier="pro" role="tab" aria-selected="false">Pro</button>
+            <div>
+              <div style="font-size: 0.75rem; font-family: var(--font-mono); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Your Subscription</div>
+              <h3 class="plan-title" style="margin-top: 2px;">Free Plan</h3>
+            </div>
+            <span class="plan-badge-pill plan-badge-pill--free">FREE TIER</span>
           </div>
 
           <div>
@@ -311,16 +308,42 @@
                 <line x1="12" y1="8" x2="12" y2="12"></line>
                 <line x1="12" y1="16" x2="12.01" y2="16"></line>
               </svg>
-              Tier Limits & Quotas
+              Current Quotas &amp; Limits
             </div>
-            <div class="plan-limits-list" id="plan-limits-container">
-              <!-- Dynamically populated by JS -->
+            <div class="plan-limits-list">
+              <div class="plan-limit-row">
+                <div class="plan-limit-meta">
+                  <span class="plan-limit-name">Max Projects</span>
+                  <span class="plan-limit-val">1 / 2 Projects</span>
+                </div>
+                <div class="plan-meter-track">
+                  <div class="plan-meter-fill" style="width: 50%;"></div>
+                </div>
+              </div>
+              <div class="plan-limit-row">
+                <div class="plan-limit-meta">
+                  <span class="plan-limit-name">Tables per Project</span>
+                  <span class="plan-limit-val">Up to 10 tables</span>
+                </div>
+                <div class="plan-meter-track">
+                  <div class="plan-meter-fill" style="width: 40%;"></div>
+                </div>
+              </div>
+              <div class="plan-limit-row">
+                <div class="plan-limit-meta">
+                  <span class="plan-limit-name">APIs per Project</span>
+                  <span class="plan-limit-val">Up to 20 APIs</span>
+                </div>
+                <div class="plan-meter-track">
+                  <div class="plan-meter-fill" style="width: 25%;"></div>
+                </div>
+              </div>
             </div>
           </div>
 
           <div style="background: var(--bg); border: 1px solid var(--border); padding: 14px; border-radius: var(--radius-md); margin-top: 8px;">
             <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px;">Need higher limits or team seats?</div>
-            <a href="#" data-stub="billing.html" class="panel__link" style="font-size: 0.82rem; font-weight: 600;">Explore Upgrade Options &rarr;</a>
+            <a href="#" data-stub="billing.html" class="panel__link" style="font-size: 0.82rem; font-weight: 600;">Upgrade Your Plan &rarr;</a>
           </div>
         </aside>
       </div>

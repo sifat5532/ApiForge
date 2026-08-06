@@ -127,10 +127,10 @@ Sections in order (each preceded by a `/* --- */` comment header):
 
 | Function | What it does |
 |---|---|
-| `initTagManager()` | Manages popular tag toggling, custom tag additions, and active tag pill removal |
-| `initPlanOverview()` | Renders Facilities & Limits for Free, Lite, and Pro tiers and handles interactive tier tab switching |
+| `initBreadcrumbFlow()` | Renders dynamic topbar breadcrumbs (`Home / New Project` vs `Home / Projects / New Project`) based on entry origin parameter or referrer |
+| `initTagManager()` | Manages dark-mode tag search box, database tag dictionary autocomplete dropdown, and removable active tag pills |
 | `initProjectForm()` | Form submission handling, validation, loading spinner animation, and redirection |
-| `escapeHtml(str)` | XSS helper escaping HTML characters in dynamic tag names and facility text |
+| `escapeHtml(str)` | XSS helper escaping HTML characters in dynamic tag names and breadcrumbs |
 
 
 ---
