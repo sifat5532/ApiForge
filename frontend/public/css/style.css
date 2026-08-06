@@ -3078,3 +3078,315 @@ html.onboarding-dismissed .onboarding-card,
   gap: 4px;
 }
 
+/* ============================================================
+   Templates page — tmpl-toolbar, tmpl-chip, tmpl-card, etc.
+   ============================================================ */
+
+/* Toolbar wrapper (search + filter row) */
+.tmpl-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+/* Filter chips row */
+.tmpl-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Chip groups (separator groups of related chips) */
+.tmpl-chip-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tmpl-chip-group + .tmpl-chip-group {
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+}
+
+/* Individual filter chip */
+.tmpl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 5px 13px;
+  cursor: pointer;
+  transition: color 0.18s, background 0.18s, border-color 0.18s;
+  white-space: nowrap;
+}
+
+.tmpl-chip:hover {
+  color: var(--text);
+  border-color: var(--border-hover);
+}
+
+.tmpl-chip.is-active {
+  color: var(--accent-light);
+  background: var(--accent-glow);
+  border-color: rgba(249, 115, 22, 0.4);
+}
+
+/* Tag chip variant (slightly smaller) */
+.tmpl-chip--tag {
+  font-size: 0.75rem;
+  padding: 4px 11px;
+}
+
+/* Templates grid */
+.tmpl-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+/* Template card */
+.tmpl-card {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 16px;
+  transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+
+.tmpl-card:hover {
+  border-color: var(--border-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+}
+
+/* Author row inside card */
+.tmpl-card__author-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.tmpl-card__author-name {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Card title — linked */
+.tmpl-card__title {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 8px 0;
+  line-height: 1.3;
+}
+
+.tmpl-card__title-link {
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.18s;
+}
+
+.tmpl-card__title-link:hover {
+  color: var(--accent-light);
+}
+
+/* Card description */
+.tmpl-card__desc {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 0 0 12px 0;
+}
+
+/* Card footer (rating + meta) */
+.tmpl-card__footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* Rating row */
+.tmpl-card__rating {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tmpl-card__rating-val {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent-light);
+  margin-left: 2px;
+}
+
+.tmpl-card__rating-count {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+
+/* Meta row (uses + date) */
+.tmpl-card__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tmpl-card__uses,
+.tmpl-card__date {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+
+/* Auth-type badge pill */
+.tmpl-auth-badge {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 20px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  margin-left: auto;
+}
+
+.tmpl-auth-badge--jwt {
+  background: rgba(99, 102, 241, 0.14);
+  color: #a5b4fc;
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.tmpl-auth-badge--oauth {
+  background: rgba(236, 72, 153, 0.12);
+  color: #f9a8d4;
+  border-color: rgba(236, 72, 153, 0.3);
+}
+
+.tmpl-auth-badge--apikey {
+  background: rgba(249, 115, 22, 0.12);
+  color: var(--accent-light);
+  border-color: rgba(249, 115, 22, 0.3);
+}
+
+.tmpl-auth-badge--none {
+  background: var(--surface);
+  color: var(--text-faint);
+  border-color: var(--border);
+}
+
+/* Shimmer / skeleton cards */
+.tmpl-card--shimmer {
+  pointer-events: none;
+}
+
+@keyframes tmpl-shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position:  400px 0; }
+}
+
+.tmpl-shimmer-line,
+.tmpl-shimmer-tag,
+.tmpl-shimmer-footer {
+  background: linear-gradient(
+    90deg,
+    var(--border) 25%,
+    var(--border-hover) 50%,
+    var(--border) 75%
+  );
+  background-size: 800px 100%;
+  animation: tmpl-shimmer 1.4s infinite linear;
+  border-radius: 4px;
+}
+
+.tmpl-shimmer-line--short {
+  height: 12px;
+  width: 55%;
+  margin-bottom: 12px;
+}
+
+.tmpl-shimmer-line--long {
+  height: 10px;
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.tmpl-shimmer-tags {
+  display: flex;
+  gap: 6px;
+  margin: 12px 0;
+}
+
+.tmpl-shimmer-tag {
+  height: 22px;
+  width: 52px;
+  border-radius: 20px;
+}
+
+.tmpl-shimmer-footer {
+  height: 10px;
+  width: 80%;
+  margin-top: 12px;
+}
+
+/* Empty state */
+.tmpl-empty {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 64px 24px;
+  color: var(--text-faint);
+  text-align: center;
+}
+
+.tmpl-empty p {
+  font-size: 0.92rem;
+  color: var(--text-muted);
+}
+
+/* ─── Templates — Auth On / Off chip active states ───────────────────────────── */
+/* Auth On active: green tint (matches .project-badge--auth) */
+.tmpl-chip--auth-on.is-active {
+  color: var(--success);
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+/* Auth Off active: muted/grey tint (matches .project-badge--no-auth) */
+.tmpl-chip--auth-off.is-active {
+  color: var(--text-muted);
+  background: rgba(138, 138, 138, 0.1);
+  border-color: var(--border-hover);
+}
+

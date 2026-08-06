@@ -17,6 +17,7 @@ This file is a living log of the frontend state.
 | New Project | `new-project.html` | `js/dashboard.js`, `js/new-project.js` | ✅ Complete |
 | Liked Templates | `liked.html` | `js/dashboard.js`, `js/liked.js` | ✅ Complete |
 | Notifications | `notifications.html` | `js/dashboard.js`, `js/notifications.js` | ✅ Complete |
+| Templates | `templates.html` | `js/dashboard.js`, `js/templates.js` | ✅ Complete |
 
 ---
 
@@ -27,7 +28,6 @@ Do not create these pages unless explicitly instructed. See Rule §7 in `fronten
 
 | Sidebar / UI label | Target file | Location in source |
 |---|---|---|
-| Templates | `templates.html` | Sidebar nav |
 | Leaderboard | `leaderboard.html` | Sidebar nav |
 | Usage & Billing | `billing.html` | Sidebar nav (Account group) |
 | Profile | `profile.html` | Sidebar nav (secondary) + account dropdown |
@@ -37,7 +37,7 @@ Do not create these pages unless explicitly instructed. See Rule §7 in `fronten
 
 ## CSS File Map
 
-### `css/style.css` (3,082 lines)
+### `css/style.css` (~3,377 lines)
 
 Sections in order (each preceded by a `/* --- */` comment header):
 
@@ -72,6 +72,7 @@ Sections in order (each preceded by a `/* --- */` comment header):
 | Projects — page components | `.projects-header`, `.projects-tabs`, `.projects-tab`, `.tab-badge`, `.projects-toolbar`, `.search-box`, `.filter-select`, `.projects-container`, `.projects-grid`, `.project-card`, `.project-badge`, `.copy-route-btn`, `.projects-empty`, `.skeleton-card`, `@keyframes skeleton-shimmer`, `.pagination-bar`, `.pagination-btn`, `.page-num` |
 | New Project — page components | `.create-project-grid`, `.create-project-card`, `.form-section-title`, `.form-textarea`, `.toggle-field`, `.switch`, `.switch-slider`, `.tag-selection-box`, `.tag-section-block`, `.tag-block-label`, `.popular-tags-group`, `.tag-chip`, `.selected-tags-container`, `.tag-chip__remove`, `.tag-input-group`, `.plan-summary-card`, `.plan-tier-toggle`, `.tier-toggle-btn`, `.plan-badge-pill`, `.plan-facilities-list`, `.plan-limits-list`, `.plan-meter-track`, `.plan-meter-fill` |
 | Liked — page components | `.liked-header`, `.liked-header__count`, `.liked-toolbar`, `.liked-grid`, `.liked-card`, `.liked-card__author`, `.liked-card__avatar`, `.liked-card__author-info`, `.liked-card__author-name`, `.liked-card__author-handle`, `.liked-card__unlike-btn`, `.liked-card__title`, `.liked-card__desc`, `.liked-card__tags`, `.liked-tag`, `.liked-card__footer`, `.liked-card__date`, `.liked-card__stars`, `.liked-card__open-btn` |
+| Templates — page components | `.tmpl-toolbar`, `.tmpl-filter-row`, `.tmpl-chip-group`, `.tmpl-chip`, `.tmpl-chip--tag`, `.tmpl-grid`, `.tmpl-card`, `.tmpl-card--shimmer`, `.tmpl-card__author-row`, `.tmpl-card__author-name`, `.tmpl-card__title`, `.tmpl-card__title-link`, `.tmpl-card__desc`, `.tmpl-card__tags`, `.tmpl-card__footer`, `.tmpl-card__rating`, `.tmpl-card__rating-val`, `.tmpl-card__rating-count`, `.tmpl-card__meta`, `.tmpl-card__uses`, `.tmpl-card__date`, `.tmpl-auth-badge`, `.tmpl-auth-badge--jwt`, `.tmpl-auth-badge--oauth`, `.tmpl-auth-badge--apikey`, `.tmpl-auth-badge--none`, `.tmpl-shimmer-line`, `.tmpl-shimmer-tag`, `.tmpl-shimmer-tags`, `.tmpl-shimmer-footer`, `@keyframes tmpl-shimmer`, `.tmpl-empty` |
 | Notifications — page components | `.notif-page-header`, `.notif-page-header__left`, `.notif-page-header__actions`, `.notif-unread-badge`, `.notif-tabs`, `.notif-tab`, `.notif-tab__count`, `.notif-list`, `.notif-item`, `.notif-item--unread`, `.notif-item--removing`, `.notif-item--shimmer`, `.notif-avatar-col`, `.notif-avatar`, `.notif-avatar--shimmer`, `.notif-avatar--user`, `.notif-avatar__initials`, `.notif-avatar--system`, `.notif-avatar--system-session`, `.notif-avatar--system-warn`, `.notif-avatar--system-billing`, `.notif-avatar--system-activity`, `.notif-unread-dot`, `.notif-body`, `.notif-meta`, `.notif-actor`, `.notif-actor--warn`, `.notif-username`, `.notif-time`, `.notif-text`, `.notif-link`, `.notif-role-badge`, `.notif-role-badge--muted`, `.notif-outcome-badge`, `.notif-outcome-badge--accepted`, `.notif-outcome-badge--declined`, `.notif-collab-status`, `.notif-collab-status--accepted`, `.notif-collab-status--declined`, `.notif-stars`, `.notif-star--filled`, `.notif-star--empty`, `.notif-review`, `.notif-device`, `.notif-session-meta`, `.notif-session-chip`, `.notif-actions`, `.notif-btn-accept`, `.notif-btn-decline`, `.notif-btn-ghost`, `.notif-btn-upgrade`, `.notif-plan-badge`, `.notif-plan-badge--free`, `.notif-plan-badge--lite`, `.notif-plan-badge--pro`, `.notif-strong`, `.notif-limit-val`, `.notif-chips`, `.notif-chip`, `.notif-chip--mono`, `.notif-controls`, `.notif-ctrl-btn`, `.notif-empty`, `.notif-shimmer-line`, `@keyframes notif-shimmer` |
 
 ### `css/responsive.css` (330 lines)
@@ -149,6 +150,22 @@ Sections in order (each preceded by a `/* --- */` comment header):
 | `updateLikedPaginationUI(...)` | Updates pagination info text, prev/next button states, and page number buttons |
 | `escapeHtml(str)` | XSS helper escaping HTML characters in dynamic template data |
 
+### `js/templates.js` — templates feed page only
+
+| Function | What it does |
+|---|---|
+| `initTemplatesPage()` | Main entrypoint — guards to `#tmpl-container`, binds events, triggers shimmer loading |
+| `bindTemplateEvents()` | Event listeners for search input, popularity chips, tag chips, auth filter dropdown, sort select, page size select, and pagination prev/next |
+| `getFilteredTemplates()` | Applies search query (name/desc/author/tag), tag filter, auth filter, and sort order to `MOCK_TEMPLATES` |
+| `renderWithShimmer()` | Shows 6 skeleton shimmer cards with 420ms delay, then renders real cards |
+| `renderTemplates()` | Paginates filtered results, renders template cards or empty-state, updates header count badge |
+| `createTemplateCardHtml(t)` | Returns HTML string for one template card — author avatar, auth badge, linked title, description, tags, star rating, use count, date |
+| `buildStarsHtml(rating)` | Returns filled/empty star span string (reuses `.notif-star--filled` / `.notif-star--empty`) |
+| `updatePaginationUI(...)` | Updates pagination info text, prev/next button states, and page number buttons |
+| `clearAllFilters()` | Resets all state and UI controls to defaults, then re-renders |
+| `formatUseCount(n)` | Formats use count as e.g. `3.2k` |
+| `escapeHtml(str)` | XSS helper escaping HTML characters in dynamic template data |
+
 ### `js/notifications.js` — notifications page only
 
 | Function | What it does |
@@ -202,6 +219,7 @@ Sections in order (each preceded by a `/* --- */` comment header):
 - **Notifications controls hidden on mobile (≤640px)**: the dismiss/mark-read icon buttons are hidden at narrow widths; a swipe-to-dismiss UX should be added when building the mobile-native experience.
 - **Invite project links**: all `projectHref` / `templateHref` values in mock data are `#` — need to point to real project/view pages when built.
 - **Notifications page fully regenerated (2026-08-07)**: HTML rebuilt with correct Billing filter tab, sidebar active state, breadcrumb. JS rewritten with SVG icons (no emoji), fixed `notif-outcome-badge` class, added Billing tab count. CSS extended with all missing classes (`.notif-avatar--user`, `.notif-btn-accept/decline/ghost/upgrade`, `.notif-plan-badge--*`, `.notif-collab-status`, `.notif-actor--warn`, `.notif-star--*`, `.notif-strong`, `.notif-limit-val`, `.notif-chip*`).
+- **Templates page filter refactor (2026-08-07)**: Removed auth-type dropdown filter and sort-order dropdown. Added Auth On / Auth Off toggle chips (styled to match `project-badge--auth` / `project-badge--no-auth` from projects.html). Replaced single-tag selection with multi-tag selection across top 5 tags (REST, auth, AI, e-commerce, real-time). `authType` field replaced by boolean `authEnabled` in mock data. Sort is now driven solely by the Popular/Recent chip. New CSS classes `.tmpl-chip--auth-on.is-active` and `.tmpl-chip--auth-off.is-active` added at the bottom of `style.css`.
 
 
 ---

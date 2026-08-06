@@ -328,3 +328,47 @@
   }
 }
 
+/* ===================================================================
+   Templates page — responsive overrides
+   =================================================================== */
+
+/* ≤1024px — tablet: 2-col grid */
+@media (max-width: 1024px) {
+  .tmpl-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ≤640px — mobile: single col + stacked toolbar */
+@media (max-width: 640px) {
+  .tmpl-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tmpl-toolbar {
+    gap: 10px;
+  }
+
+  .tmpl-filter-row {
+    gap: 6px;
+  }
+
+  .tmpl-chip-group + .tmpl-chip-group {
+    padding-left: 0;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+    width: 100%;
+  }
+
+  .tmpl-chip-group--auth,
+  .tmpl-chip-group--sort {
+    width: 100%;
+  }
+
+  .tmpl-chip-group--auth .filter-select,
+  .tmpl-chip-group--sort .filter-select {
+    flex: 1;
+    width: 100%;
+  }
+}
