@@ -179,7 +179,9 @@ CREATE TABLE if NOT EXISTS api_definitions (
    rate_limit_per_day INTEGER NOT NULL,
    updating_parameters TEXT,
    created_at TIMESTAMP NOT NULL DEFAULT now (),
-   CONSTRAINT fk_api_definitions_project_id FOREIGN Key (project_id) REFERENCES projects (id) ON DELETE CASCADE
+   CONSTRAINT fk_api_definitions_project_id FOREIGN Key (project_id) REFERENCES projects (id) ON DELETE CASCADE,
+   CONSTRAINT unique_api_definitions_project_id_name UNIQUE(project_id,name)
+   
 
 );
 
@@ -187,7 +189,7 @@ CREATE INDEX if NOT EXISTS idx_api_definitions ON api_definitions (project_id,na
 
 CREATE TABLE if NOT EXISTS api_logs (
    id serial PRIMARY key,
-   api_definition_id INTEGER ,
+   api_definition_id INTEGER NOT NULL ,
    ip_address INET NOT NULL,
    status_code INTEGER NOT NULL,
    response_time_ms INTEGER NOT NULL,
@@ -214,8 +216,8 @@ CREATE TABLE if NOT EXISTS api_column_dependencies (
    usage_context VARCHAR(30),
    created_at TIMESTAMP NOT NULL DEFAULT now (),
    PRIMARY KEY(api_definition_id ,schema_col_id),
-   CONSTRAINT fk_api_table_dependencies_api_definition_id FOREIGN Key (api_definition_id) REFERENCES api_definitions (id) ON DELETE CASCADE,
-   CONSTRAINT fk_api_table_dependencies_schema_col_id FOREIGN Key (schema_col_id) REFERENCES schema_columns (id) ON DELETE RESTRICT
+   CONSTRAINT fk_api_column_dependencies_api_definition_id FOREIGN Key (api_definition_id) REFERENCES api_definitions (id) ON DELETE CASCADE,
+   CONSTRAINT fk_api_column_dependencies_schema_col_id FOREIGN Key (schema_col_id) REFERENCES schema_columns (id) ON DELETE RESTRICT
 );
 CREATE TABLE if NOT EXISTS template_clones(
     id serial PRIMARY KEY,
