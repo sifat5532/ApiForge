@@ -2191,4 +2191,233 @@ html.onboarding-dismissed .onboarding-card,
 }
 
 
+/* ===================================================================
+   Liked Templates Page — liked.html
+   =================================================================== */
 
+/* --- Page header --- */
+.liked-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.liked-header__count {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-faint);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 5px 14px;
+  white-space: nowrap;
+  align-self: center;
+}
+
+/* --- Toolbar --- */
+.liked-toolbar {
+  margin-bottom: 24px;
+}
+
+/* --- Grid layout (3-col) --- */
+.liked-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+/* --- Template card overrides for liked page --- */
+.liked-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.liked-card:hover {
+  border-color: var(--border-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+/* --- Author row --- */
+.liked-card__author {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.liked-card__avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+  letter-spacing: 0.02em;
+}
+
+.liked-card__author-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.liked-card__author-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.liked-card__author-handle {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-faint);
+}
+
+/* --- Unlike button (heart icon) --- */
+.liked-card__unlike-btn {
+  background: none;
+  border: none;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.liked-card__unlike-btn:hover {
+  background: rgba(249, 115, 22, 0.12);
+  transform: scale(1.15);
+}
+
+.liked-card__unlike-btn:active {
+  transform: scale(0.9);
+}
+
+/* --- Title --- */
+.liked-card__title {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.3;
+  margin: 0;
+}
+
+.liked-card__title a {
+  color: inherit;
+  transition: color 0.15s ease;
+}
+
+.liked-card__title a:hover {
+  color: var(--accent-light);
+}
+
+/* --- Description --- */
+.liked-card__desc {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* --- Tags --- */
+.liked-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.liked-tag {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 3px 10px;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.liked-tag:hover {
+  border-color: var(--border-hover);
+  color: var(--text);
+}
+
+/* --- Card footer --- */
+.liked-card__footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.liked-card__date {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-faint);
+  flex: 1;
+}
+
+.liked-card__stars {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--accent-light);
+}
+
+.liked-card__open-btn {
+  margin-left: auto;
+}
+
+/* --- Responsive grid for liked page --- */
+@media (max-width: 1024px) {
+  .liked-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .liked-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .liked-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

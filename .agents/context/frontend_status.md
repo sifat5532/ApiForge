@@ -15,6 +15,7 @@ This file is a living log of the frontend state.
 | Dashboard | `dashboard.html` | `js/dashboard.js` | ✅ Complete |
 | Projects | `projects.html` | `js/dashboard.js`, `js/projects.js` | ✅ Complete |
 | New Project | `new-project.html` | `js/dashboard.js`, `js/new-project.js` | ✅ Complete |
+| Liked Templates | `liked.html` | `js/dashboard.js`, `js/liked.js` | ✅ Complete |
 
 ---
 
@@ -25,7 +26,6 @@ Do not create these pages unless explicitly instructed. See Rule §7 in `fronten
 
 | Sidebar / UI label | Target file | Location in source |
 |---|---|---|
-| Liked | `liked.html` | Sidebar nav |
 | Templates | `templates.html` | Sidebar nav |
 | Leaderboard | `leaderboard.html` | Sidebar nav |
 | Notifications | `notifications.html` | Sidebar nav |
@@ -71,6 +71,7 @@ Sections in order (each preceded by a `/* --- */` comment header):
 | Dashboard — activity | `.activity-list`, `.activity-item`, `.activity-item__dot`, `.activity-item__text`, `.activity-item__time` |
 | Projects — page components | `.projects-header`, `.projects-tabs`, `.projects-tab`, `.tab-badge`, `.projects-toolbar`, `.search-box`, `.filter-select`, `.projects-container`, `.projects-grid`, `.project-card`, `.project-badge`, `.copy-route-btn`, `.projects-empty`, `.skeleton-card`, `@keyframes skeleton-shimmer`, `.pagination-bar`, `.pagination-btn`, `.page-num` |
 | New Project — page components | `.create-project-grid`, `.create-project-card`, `.form-section-title`, `.form-textarea`, `.toggle-field`, `.switch`, `.switch-slider`, `.tag-selection-box`, `.tag-section-block`, `.tag-block-label`, `.popular-tags-group`, `.tag-chip`, `.selected-tags-container`, `.tag-chip__remove`, `.tag-input-group`, `.plan-summary-card`, `.plan-tier-toggle`, `.tier-toggle-btn`, `.plan-badge-pill`, `.plan-facilities-list`, `.plan-limits-list`, `.plan-meter-track`, `.plan-meter-fill` |
+| Liked — page components | `.liked-header`, `.liked-header__count`, `.liked-toolbar`, `.liked-grid`, `.liked-card`, `.liked-card__author`, `.liked-card__avatar`, `.liked-card__author-info`, `.liked-card__author-name`, `.liked-card__author-handle`, `.liked-card__unlike-btn`, `.liked-card__title`, `.liked-card__desc`, `.liked-card__tags`, `.liked-tag`, `.liked-card__footer`, `.liked-card__date`, `.liked-card__stars`, `.liked-card__open-btn` |
 
 ### `css/responsive.css` (295 lines)
 
@@ -132,6 +133,20 @@ Sections in order (each preceded by a `/* --- */` comment header):
 | `renderPopularTags()` | Renders interactive popular tag chips with instant toggle state synchronization (`.is-selected`) |
 | `initProjectForm()` | Form submission handling, validation, loading spinner animation, and redirection |
 | `escapeHtml(str)` | XSS helper escaping HTML characters in dynamic tag names and breadcrumbs |
+
+### `js/liked.js` — liked templates page only
+
+| Function | What it does |
+|---|---|
+| `initLikedPage()` | Main entrypoint — guards to liked.html, binds events, triggers shimmer loading |
+| `bindLikedEvents()` | Event listeners for search input, sort dropdown, sort direction toggle, page size select, and pagination prev/next |
+| `getFilteredLiked()` | Filters out unliked items, applies search query (name/tag/author/desc), then sorts by selected option and direction |
+| `renderLikedWithShimmer()` | Shows 6 skeleton shimmer cards with 400ms delay before rendering real cards |
+| `renderLiked()` | Paginates filtered results, renders liked template cards or empty-state, updates header count badge |
+| `createLikedCardHtml(t)` | Returns HTML string for one liked-template card — author avatar, name, description, tags, created date, stars, unlike button |
+| `bindLikedCardActions()` | Binds unlike button — animates card out (opacity + scale), then removes it from rendered set |
+| `updateLikedPaginationUI(...)` | Updates pagination info text, prev/next button states, and page number buttons |
+| `escapeHtml(str)` | XSS helper escaping HTML characters in dynamic template data |
 
 
 ---

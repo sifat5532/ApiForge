@@ -61,7 +61,8 @@
           <span class="plan-badge__usage">1/2 projects</span>
         </div>
 
-        <div class="account-menu">
+   
+            <div class="account-menu">
           <button
             class="account-menu__trigger"
             id="account-menu-trigger"
@@ -71,13 +72,13 @@
             aria-controls="account-dropdown"
           >
             <span class="avatar" aria-hidden="true">S</span>
+            <span class="sr-only">Account menu</span>
           </button>
-          <div class="account-menu__dropdown" id="account-dropdown" role="menu">
-            <a href="#" data-stub="profile.html" role="menuitem">Profile</a>
-            <a href="#" data-stub="settings.html" role="menuitem">Settings</a>
-            <a href="#" data-stub="billing.html" role="menuitem">Usage &amp; Billing</a>
-            <hr />
-            <a href="#" class="is-danger" id="logout-btn" role="menuitem">Sign out</a>
+
+          <div class="account-menu__dropdown" id="account-dropdown" role="menu" aria-label="Account">
+            <a href="#" role="menuitem">Profile</a>
+            <a href="#" role="menuitem">Settings</a>
+            <a href="#" role="menuitem" class="is-danger">Sign out</a>
           </div>
         </div>
       </div>
