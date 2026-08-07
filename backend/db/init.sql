@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS notifications (
    type VARCHAR(50) NOT NULL,
    related_entity_name VARCHAR(30), -- projects, session, payment(log or smth)
    related_entity_id INTEGER,
-   data JSON, -- Note: Data will store the info about only feedback and ratings primary key and time so that it can take to the right place when its clicked
+   data JSONB, -- Note: Data will store the info about only feedback and ratings primary key and time so that it can take to the right place when its clicked
    read_at TIMESTAMP,
    created_at TIMESTAMP(0) DEFAULT now(),
    CONSTRAINT fk_notification_sender_user FOREIGN KEY (sender_id) REFERENCES Users (id) ON DELETE SET NULL,
@@ -93,8 +93,8 @@ CREATE TABLE IF NOT EXISTS project_logs (
    entity_type VARCHAR(30) NOT NULL,
    entity_id INTEGER NOT NULL,
    change_type VARCHAR(20) NOT NULL,
-   old_data JSON,
-   new_data JSON,
+   old_data JSONB,
+   new_data JSONB,
    CONSTRAINT fk_project_logs_project FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
    CONSTRAINT fk_project_logs_changed_by FOREIGN KEY (changed_by) REFERENCES users (id) ON DELETE SET NULL
 );
@@ -159,7 +159,7 @@ CREATE TABLE IF NOT EXISTS api_definitions (
    name VARCHAR(30) NOT NULL,
    project_id INTEGER NOT NULL,
    METHOD VARCHAR(15) NOT NULL,
-   query_definition JSON NOT NULL,
+   query_definition JSONB NOT NULL,
    generated_sql TEXT NOT NULL,
    parameters TEXT,
    is_active BOOLEAN DEFAULT TRUE,
@@ -315,7 +315,6 @@ CREATE TRIGGER tg_update_avg_rating
 AFTER INSERT OR DELETE OR UPDATE ON template_ratings FOR EACH ROW
 EXECUTE FUNCTION tgfunc_update_avg_rating ();
 
-
 -- types of notifications
 /*
 collab_invitation, collab_invitation_reject, collab_invitation_accept, collab_remove
@@ -323,9 +322,8 @@ feedback, rating
 new_session, payment
 limit_crossed
 */
-
 -- Insert notification whenever collaboration request is sent, rejected, accepted or collaborator removed
-CREATE OR REPLACE FUNCTION tgfunc_notification_on_collaboration() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+CREATE OR REPLACE FUNCTION tgfunc_notification_on_collaboration () RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE
    sender_user_id INTEGER;
 BEGIN
@@ -387,4 +385,41 @@ DROP TRIGGER IF EXISTS tg_insert_collab_notification ON project_collaborators;
 
 CREATE TRIGGER tg_insert_collab_notification
 AFTER INSERT OR DELETE OR UPDATE ON project_collaborators FOR EACH ROW
-EXECUTE FUNCTION tgfunc_notification_on_collaboration();
+EXECUTE FUNCTION tgfunc_notification_on_collaboration ();
+
+-- Insert notification related to feedback and rating
+-- Note: Feedback can't be deleted or modified once sent.
+CREATE OR REPLACE FUNCTION tgfunc_notification_on_feedback () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+   receiver_user_id INTEGER;
+BEGIN
+   SELECT author_id
+   INTO receiver_user_id
+   FROM projects
+   WHERE id = NEW.template_id AND is_template = true;
+
+   IF receiver_user_id IS NULL THEN
+    RETURN NEW;
+   END IF;
+
+   IF TG_OP = 'INSERT' THEN
+      INSERT INTO notifications
+      (sender_id, receiver_id, type, related_entity_name, related_entity_id, data)
+      VALUES
+      (NEW.user_id, receiver_user_id, 'feedback', 'projects', NEW.template_id, 
+         jsonb_build_object(
+            'feedback_id', NEW.id,
+            'message', NEW.message
+         )
+      );
+   
+   END IF;
+   RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS tg_insert_feedback_notification on template_feedback;
+
+CREATE TRIGGER tg_insert_feedback_notification
+AFTER INSERT ON template_feedback FOR EACH ROW
+EXECUTE FUNCTION tgfunc_notification_on_feedback ();
