@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS users (
    username VARCHAR(40) NOT NULL UNIQUE,
    password_hash VARCHAR(100) NOT NULL,
    dp VARCHAR(100),
-   settings VARCHAR(30) NOT NULL DEFAULT 'Default goes here',
+   settings VARCHAR(30) NOT NULL DEFAULT 'Default goes here', -- Note: Settings will be JSONB
    joined_at TIMESTAMP(0) DEFAULT now()
 );
 
@@ -389,7 +389,7 @@ EXECUTE FUNCTION tgfunc_notification_on_collaboration ();
 
 -- Insert notification related to feedback and rating
 -- Note: Feedback can't be deleted or modified once sent.
-CREATE OR REPLACE FUNCTION tgfunc_notification_on_feedback () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+CREATE OR REPLACE FUNCTION tgfunc_notification_on_feedback_rating () RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE
    receiver_user_id INTEGER;
 BEGIN
@@ -402,14 +402,25 @@ BEGIN
     RETURN NEW;
    END IF;
 
-   IF TG_OP = 'INSERT' THEN
+   IF TG_ARGV[0] = 'feedback' THEN
       INSERT INTO notifications
       (sender_id, receiver_id, type, related_entity_name, related_entity_id, data)
       VALUES
-      (NEW.user_id, receiver_user_id, 'feedback', 'projects', NEW.template_id, 
+      (NEW.user_id, receiver_user_id, TG_ARVG[0], 'projects', NEW.template_id, 
          jsonb_build_object(
             'feedback_id', NEW.id,
             'message', NEW.message
+         )
+      );
+   
+   ELSIF TG_ARGV[0] = 'rating' THEN
+      INSERT INTO notifications
+      (sender_id, receiver_id, type, related_entity_name, related_entity_id, data)
+      VALUES
+      (NEW.user_id, receiver_user_id, 'rating', 'projects', NEW.template_id, 
+         jsonb_build_object(
+            'rating', NEW.rating,
+            'review_text', NEW.review_text
          )
       );
    
@@ -422,4 +433,10 @@ DROP TRIGGER IF EXISTS tg_insert_feedback_notification on template_feedback;
 
 CREATE TRIGGER tg_insert_feedback_notification
 AFTER INSERT ON template_feedback FOR EACH ROW
-EXECUTE FUNCTION tgfunc_notification_on_feedback ();
+EXECUTE FUNCTION tgfunc_notification_on_feedback_rating ('feedback');
+
+DROP TRIGGER IF EXISTS tg_insert_rating_notification on template_ratings;
+
+CREATE TRIGGER tg_insert_rating_notification
+AFTER INSERT ON template_ratings FOR EACH ROW
+EXECUTE FUNCTION tgfunc_notification_on_feedback_rating ('rating');
