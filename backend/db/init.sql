@@ -32,8 +32,10 @@ CREATE TABLE IF NOT EXISTS notifications (
    data JSONB, -- Note: Data will store the info about only feedback and ratings primary key and time so that it can take to the right place when its clicked
    read_at TIMESTAMP,
    created_at TIMESTAMP(0) DEFAULT now(),
-   CONSTRAINT fk_notification_sender_user FOREIGN KEY (sender_id) REFERENCES Users (id) ON DELETE SET NULL,
-   CONSTRAINT fk_notification_receiver_user FOREIGN KEY (receiver_id) REFERENCES Users (id) ON DELETE CASCADE
+   CONSTRAINT fk_notification_sender_user FOREIGN KEY (sender_id) REFERENCES Users (id) ON DELETE
+   SET
+      CASCADE,
+      CONSTRAINT fk_notification_receiver_user FOREIGN KEY (receiver_id) REFERENCES Users (id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_notifications_receiver_created ON notifications (receiver_id, created_at DESC);
@@ -219,7 +221,7 @@ CREATE TABLE IF NOT EXISTS template_feedback (
    message TEXT NOT NULL,
    is_read BOOLEAN DEFAULT FALSE,
    created_at TIMESTAMP NOT NULL DEFAULT now(),
-   CONSTRAINT fk_template_feedback_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL, -- Even if the user is deleted, we keep the feedback for projects
+   CONSTRAINT fk_template_feedback_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
    CONSTRAINT fk_template_feedback_template_id FOREIGN KEY (template_id) REFERENCES projects (id) ON DELETE CASCADE
 );
 
@@ -442,7 +444,6 @@ AFTER INSERT ON template_ratings FOR EACH ROW
 EXECUTE FUNCTION tgfunc_notification_on_feedback_rating ('rating');
 
 -- Insert notification for login
--- Insert notification for payment and limit (Will be implemented later)
 CREATE OR REPLACE FUNCTION tgfunc_notification_on_login () RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
    INSERT INTO notifications
@@ -459,3 +460,20 @@ DROP TRIGGER IF EXISTS tg_insert_login_notification ON user_sessions;
 CREATE TRIGGER tg_insert_login_notification
 AFTER INSERT ON user_sessions FOR EACH ROW
 EXECUTE FUNCTION tgfunc_notification_on_login ();
+
+-- Insert notification for payment and limit (Will be implemented later)
+-- Now we have a problem, If a template or project is deleted, how can we delete the notifications related to that template or project as there is no fk for entity id?
+-- We need a trigger now
+CREATE OR REPLACE FUNCTION tgfunc_delete_notification_by_project () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+   DELETE FROM notifications
+   WHERE related_entity_name = 'projects' AND related_entity_id = OLD.id;
+   RETURN OLD;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS tg_delete_notification_when_project_deleted ON projects;
+
+CREATE TRIGGER tg_delete_notification_when_project_deleted
+AFTER DELETE ON projects FOR EACH ROW
+EXECUTE FUNCTION tgfunc_delete_notification_by_project ();
