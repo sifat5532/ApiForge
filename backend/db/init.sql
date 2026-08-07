@@ -429,14 +429,33 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS tg_insert_feedback_notification on template_feedback;
+DROP TRIGGER IF EXISTS tg_insert_feedback_notification ON template_feedback;
 
 CREATE TRIGGER tg_insert_feedback_notification
 AFTER INSERT ON template_feedback FOR EACH ROW
 EXECUTE FUNCTION tgfunc_notification_on_feedback_rating ('feedback');
 
-DROP TRIGGER IF EXISTS tg_insert_rating_notification on template_ratings;
+DROP TRIGGER IF EXISTS tg_insert_rating_notification ON template_ratings;
 
 CREATE TRIGGER tg_insert_rating_notification
 AFTER INSERT ON template_ratings FOR EACH ROW
 EXECUTE FUNCTION tgfunc_notification_on_feedback_rating ('rating');
+
+-- Insert notification for login
+-- Insert notification for payment and limit (Will be implemented later)
+CREATE OR REPLACE FUNCTION tgfunc_notification_on_login () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+   INSERT INTO notifications
+   (sender_id, receiver_id, type, related_entity_name, related_entity_id)
+   VALUES
+   (NEW.user_id, NEW.user_id, 'new_session', 'user_sessions', NEW.id);
+
+   RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS tg_insert_login_notification ON user_sessions;
+
+CREATE TRIGGER tg_insert_login_notification
+AFTER INSERT ON user_sessions FOR EACH ROW
+EXECUTE FUNCTION tgfunc_notification_on_login ();
