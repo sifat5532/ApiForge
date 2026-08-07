@@ -406,7 +406,7 @@ BEGIN
       INSERT INTO notifications
       (sender_id, receiver_id, type, related_entity_name, related_entity_id, data)
       VALUES
-      (NEW.user_id, receiver_user_id, TG_ARVG[0], 'projects', NEW.template_id, 
+      (NEW.user_id, receiver_user_id, TG_ARGV[0], 'projects', NEW.template_id, 
          jsonb_build_object(
             'feedback_id', NEW.id,
             'message', NEW.message
@@ -417,7 +417,7 @@ BEGIN
       INSERT INTO notifications
       (sender_id, receiver_id, type, related_entity_name, related_entity_id, data)
       VALUES
-      (NEW.user_id, receiver_user_id, 'rating', 'projects', NEW.template_id, 
+      (NEW.user_id, receiver_user_id, TG_ARGV[0], 'projects', NEW.template_id, 
          jsonb_build_object(
             'rating', NEW.rating,
             'review_text', NEW.review_text
