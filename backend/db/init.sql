@@ -241,3 +241,29 @@ CREATE TABLE IF NOT EXISTS template_likes (
    CONSTRAINT fk_template_likes_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
    CONSTRAINT fk_template_likes_template_id FOREIGN KEY (template_id) REFERENCES projects (id) ON DELETE CASCADE
 );
+
+-- Trigger Function and Trigger to automatically update like count of template
+CREATE OR REPLACE FUNCTION tgfunc_update_like_count () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        UPDATE projects
+        SET like_count = like_count + 1
+        WHERE id = NEW.template_id;
+
+        RETURN NEW;
+
+    ELSIF TG_OP = 'DELETE' THEN
+        UPDATE projects
+        SET like_count = like_count - 1
+        WHERE id = OLD.template_id;
+
+        RETURN OLD;
+    END IF;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS tg_update_like_count ON template_likes;
+
+CREATE TRIGGER tg_update_like_count
+AFTER INSERT OR DELETE ON template_likes FOR EACH ROW
+EXECUTE PROCEDURE tgfunc_update_like_count ();
