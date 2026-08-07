@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS projects (
    api_key_prefix VARCHAR(30) NOT NULL,
    auth_enabled BOOLEAN,
    like_count INTEGER DEFAULT 0,
+   total_review_given INTEGER DEFAULT 0,
    avg_rating REAL DEFAULT 0,
    is_template BOOLEAN DEFAULT FALSE,
    is_clone BOOLEAN DEFAULT FALSE,
@@ -266,4 +267,48 @@ DROP TRIGGER IF EXISTS tg_update_like_count ON template_likes;
 
 CREATE TRIGGER tg_update_like_count
 AFTER INSERT OR DELETE ON template_likes FOR EACH ROW
-EXECUTE PROCEDURE tgfunc_update_like_count ();
+EXECUTE FUNCTION tgfunc_update_like_count ();
+
+-- Trigger Function and Trigger to automatically update avg rating
+CREATE OR REPLACE FUNCTION tgfunc_update_avg_rating () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+   IF TG_OP = 'INSERT' THEN
+      UPDATE projects
+      SET
+      avg_rating = ((avg_rating * total_review_given) + NEW.rating) / (total_review_given + 1),
+      total_review_given = total_review_given + 1
+      WHERE id = NEW.template_id;
+
+      RETURN NEW;
+
+   ELSIF TG_OP = 'UPDATE' THEN
+      UPDATE projects 
+      SET
+      avg_rating = ((avg_rating * total_review_given) - OLD.rating + NEW.rating) / total_review_given
+      WHERE id = NEW.template_id;
+
+      RETURN NEW;
+   ELSIF TG_OP = 'DELETE' THEN
+      UPDATE projects
+      SET
+      avg_rating = 
+         CASE
+            WHEN total_review_given > 1 THEN
+               ((avg_rating * total_review_given) - OLD.rating) / (total_review_given - 1)
+            ELSE
+               0
+         END,
+      total_review_given = total_review_given -1
+      WHERE id = OLD.template_id;
+
+      RETURN OLD;
+   END IF;
+
+END;
+$$;
+
+DROP TRIGGER IF EXISTS tg_update_avg_rating ON template_ratings;
+
+CREATE TRIGGER tg_update_avg_rating
+AFTER INSERT OR DELETE OR UPDATE ON template_ratings FOR EACH ROW
+EXECUTE FUNCTION tgfunc_update_avg_rating ();
