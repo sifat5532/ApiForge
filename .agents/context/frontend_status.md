@@ -18,6 +18,7 @@ This file is a living log of the frontend state.
 | Liked Templates | `liked.html` | `js/dashboard.js`, `js/liked.js` | ✅ Complete |
 | Notifications | `notifications.html` | `js/dashboard.js`, `js/notifications.js` | ✅ Complete |
 | Templates | `templates.html` | `js/dashboard.js`, `js/templates.js` | ✅ Complete |
+| Leaderboard | `leaderboard.html` | `js/dashboard.js`, `js/leaderboard.js` | ✅ Complete |
 
 ---
 
@@ -28,7 +29,6 @@ Do not create these pages unless explicitly instructed. See Rule §7 in `fronten
 
 | Sidebar / UI label | Target file | Location in source |
 |---|---|---|
-| Leaderboard | `leaderboard.html` | Sidebar nav |
 | Usage & Billing | `billing.html` | Sidebar nav (Account group) |
 | Profile | `profile.html` | Sidebar nav (secondary) + account dropdown |
 | Settings | `settings.html` | Sidebar nav (secondary) + account dropdown |
@@ -220,6 +220,7 @@ Sections in order (each preceded by a `/* --- */` comment header):
 - **Invite project links**: all `projectHref` / `templateHref` values in mock data are `#` — need to point to real project/view pages when built.
 - **Notifications page fully regenerated (2026-08-07)**: HTML rebuilt with correct Billing filter tab, sidebar active state, breadcrumb. JS rewritten with SVG icons (no emoji), fixed `notif-outcome-badge` class, added Billing tab count. CSS extended with all missing classes (`.notif-avatar--user`, `.notif-btn-accept/decline/ghost/upgrade`, `.notif-plan-badge--*`, `.notif-collab-status`, `.notif-actor--warn`, `.notif-star--*`, `.notif-strong`, `.notif-limit-val`, `.notif-chip*`).
 - **Templates page filter refactor (2026-08-07)**: Removed auth-type dropdown filter and sort-order dropdown. Added Auth On / Auth Off toggle chips (styled to match `project-badge--auth` / `project-badge--no-auth` from projects.html). Replaced single-tag selection with multi-tag selection across top 5 tags (REST, auth, AI, e-commerce, real-time). `authType` field replaced by boolean `authEnabled` in mock data. Sort is now driven solely by the Popular/Recent chip. New CSS classes `.tmpl-chip--auth-on.is-active` and `.tmpl-chip--auth-off.is-active` added at the bottom of `style.css`.
+- **Leaderboard rank badge fix (2026-08-07)**: `renderSection()` now receives the section's `metric` parameter and pre-computes each template's rank in the default (by-metric) sort order. Rank badges (#1, #2, #3) are therefore **always stable** and reflect the true category standing regardless of the active sort option (Default or By Created Date). `renderAll()` updated to pass metric to all three `renderSection()` calls.
 
 
 ---

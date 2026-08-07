@@ -226,6 +226,7 @@ let _searchQuery = '';
 let _popularityFilter = 'popular'; // 'popular' | 'recent'
 let _activeTags = new Set();       // multi-select; empty = all tags
 let _sortBy = 'popular';           // 'popular' | 'recent' | 'name'
+let _sortDir = 'desc';             // 'asc' | 'desc'
 
 // ─── Entry point ────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -251,18 +252,12 @@ function bindTemplateEvents() {
     });
   }
 
-  // Popularity chips (Popular / Recent) — mutually exclusive, also syncs sort select
+  // Popularity chips (Popular / Recent) — mutually exclusive, visual filter only
   document.querySelectorAll('.tmpl-chip[data-filter]').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.tmpl-chip[data-filter]').forEach(b => b.classList.remove('is-active'));
       btn.classList.add('is-active');
       _popularityFilter = btn.dataset.filter;
-      // Sync sort select to Popular or Created At when chips are clicked
-      const sortSel = document.getElementById('tmpl-sort');
-      if (sortSel && (_sortBy === 'popular' || _sortBy === 'recent')) {
-        sortSel.value = _popularityFilter;
-        _sortBy = _popularityFilter;
-      }
       _page = 1;
       renderTemplates();
     });
@@ -273,16 +268,21 @@ function bindTemplateEvents() {
   if (sortSel) {
     sortSel.addEventListener('change', () => {
       _sortBy = sortSel.value;
-      // Keep popularity chips in sync when switching between popular/recent via dropdown
-      if (_sortBy === 'popular' || _sortBy === 'recent') {
-        _popularityFilter = _sortBy;
-        document.querySelectorAll('.tmpl-chip[data-filter]').forEach(b => {
-          b.classList.toggle('is-active', b.dataset.filter === _popularityFilter);
-        });
-      } else {
-        // name sort — deactivate both popularity chips
-        document.querySelectorAll('.tmpl-chip[data-filter]').forEach(b => b.classList.remove('is-active'));
-      }
+      _page = 1;
+      renderTemplates();
+    });
+  }
+
+  // Sort direction toggle button
+  const sortDirBtn = document.getElementById('tmpl-sort-dir');
+  if (sortDirBtn) {
+    sortDirBtn.addEventListener('click', () => {
+      _sortDir = _sortDir === 'desc' ? 'asc' : 'desc';
+      sortDirBtn.dataset.dir = _sortDir;
+      const iconDesc = document.getElementById('tmpl-sort-icon-desc');
+      const iconAsc  = document.getElementById('tmpl-sort-icon-asc');
+      if (iconDesc) iconDesc.style.display = _sortDir === 'desc' ? '' : 'none';
+      if (iconAsc)  iconAsc.style.display  = _sortDir === 'asc'  ? '' : 'none';
       _page = 1;
       renderTemplates();
     });
@@ -346,14 +346,16 @@ function getFilteredTemplates() {
   }
 
 
-  // Sort by popularity chip selection or the sort dropdown
+  // Sort — key driven by _sortBy, direction by _sortDir
   results.sort((a, b) => {
+    let cmp;
     switch (_sortBy) {
-      case 'recent': return b.createdTimestamp - a.createdTimestamp;
-      case 'name':   return a.name.localeCompare(b.name);
+      case 'recent': cmp = b.createdTimestamp - a.createdTimestamp; break;
+      case 'name':   cmp = a.name.localeCompare(b.name);            break;
       case 'popular':
-      default:       return b.useCount - a.useCount;
+      default:       cmp = b.useCount - a.useCount;                 break;
     }
+    return _sortDir === 'asc' ? -cmp : cmp;
   });
 
   return results;
@@ -526,6 +528,7 @@ function clearAllFilters() {
   _searchQuery = '';
   _activeTags.clear();
   _sortBy = 'popular';
+  _sortDir = 'desc';
   _popularityFilter = 'popular';
   _page = 1;
 
@@ -535,6 +538,16 @@ function clearAllFilters() {
   // Reset sort select
   const sortSel = document.getElementById('tmpl-sort');
   if (sortSel) sortSel.value = 'popular';
+
+  // Reset direction button
+  const sortDirBtn = document.getElementById('tmpl-sort-dir');
+  if (sortDirBtn) {
+    sortDirBtn.dataset.dir = 'desc';
+    const iconDesc = document.getElementById('tmpl-sort-icon-desc');
+    const iconAsc  = document.getElementById('tmpl-sort-icon-asc');
+    if (iconDesc) iconDesc.style.display = '';
+    if (iconAsc)  iconAsc.style.display  = 'none';
+  }
 
   // Reset popularity chips
   document.querySelectorAll('.tmpl-chip[data-filter]').forEach(b => {

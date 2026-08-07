@@ -3390,3 +3390,238 @@ html.onboarding-dismissed .onboarding-card,
   border-color: var(--border-hover);
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   Leaderboard — page components
+   leaderboard.html / js/leaderboard.js
+───────────────────────────────────────────────────────────────────────────── */
+
+/* Sort toolbar */
+.ldb-toolbar {
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.ldb-toolbar__label {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Sections container */
+.ldb-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 48px;
+  margin-top: 8px;
+}
+
+/* Individual section */
+.ldb-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Section header row */
+.ldb-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ldb-section__title-group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.ldb-section__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-glow);
+  color: var(--accent-light);
+  flex-shrink: 0;
+}
+
+.ldb-section__icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.ldb-section__title {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+  line-height: 1.2;
+}
+
+.ldb-section__desc {
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 2px 0 0;
+}
+
+/* Leaderboard grid — 3 columns, reuses liked-grid base */
+.ldb-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+/* Card rank badge overlay */
+.ldb-rank-badge {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  background: var(--accent-glow);
+  border: 1px solid rgba(249, 115, 22, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 2px 7px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Card meta row (clones + likes) */
+.ldb-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ldb-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.ldb-meta-item svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+/* Star rating */
+.ldb-star {
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+.ldb-star--full {
+  color: var(--accent-light);
+}
+
+.ldb-star--empty {
+  color: var(--text-faint);
+}
+
+.ldb-rating-val {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+/* ─── Tag pills ─────────────────────────────────────────────────────────── */
+
+.ldb-tag-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ldb-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: border-color 0.18s, color 0.18s, background 0.18s;
+}
+
+.ldb-tag-pill:hover {
+  border-color: var(--border-hover);
+  color: var(--text);
+}
+
+.ldb-tag-pill--active {
+  color: var(--accent-light);
+  background: var(--accent-glow);
+  border-color: rgba(249, 115, 22, 0.4);
+}
+
+.ldb-tag-count {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-faint);
+  background: var(--bg);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+.ldb-tag-pill--active .ldb-tag-count {
+  background: rgba(249, 115, 22, 0.12);
+  color: var(--accent);
+}
+
+/* Tag templates area */
+.ldb-tag-templates {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ldb-tag-hint {
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  color: var(--text-faint);
+  padding: 20px 0 4px;
+}
+
+.ldb-tag-subhead {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0;
+}
+
+.ldb-tag-name {
+  color: var(--accent-light);
+}
+
+/* ─── Footer ─────────────────────────────────────────────────────────────── */
+
+.ldb-footer {
+  margin-top: 48px;
+}
+
+.ldb-footer__copy {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-faint);
+}
+
