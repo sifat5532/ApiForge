@@ -4,9 +4,9 @@ const query = require('./../db/query');
 const router = express.Router();
 const { requireAuth } = require('./auth');
 
-router.post('/createProject', async (req, res) => {
-    const { proj_name, proj_description, enable_auth, tags } = req.body;
-    const author_id = 1;// req.loggedInUser.id;
+router.post('/createProject',requireAuth, async (req, res) => {
+    const { proj_name,description, enable_auth, tags } = req.body;
+    const author_id =  req.loggedInUser.id;
     if (!proj_name) {
         return res.status(400).json({ msg: 'Please fill in project name' });
 
@@ -16,7 +16,7 @@ router.post('/createProject', async (req, res) => {
 
     }
 
-    if (proj_description != null && proj_description.length > 500) {
+    if (description != null && description.length > 500) {
         return res.status(400).json({ msg: 'Please give project description within 500 characters' });
 
     }
@@ -41,7 +41,7 @@ router.post('/createProject', async (req, res) => {
     const api_key_hashed = crypto.createHash('sha256').update(api_key).digest('hex');
 
     const proj = await query('INSERT INTO projects(author_id,name,description,api_key_hashed,api_key_prefix,auth_enabled) VALUES($1,$2,$3,$4,$5,$6) RETURNING id',
-        [author_id, proj_name, proj_description, api_key_hashed, api_key_prefix, enable_auth]
+        [author_id, proj_name, description, api_key_hashed, api_key_prefix, enable_auth]
     );
     const proj_id = proj.rows[0].id;
     if (tags != null) {
