@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS user_sessions (
    expires_at TIMESTAMP NOT NULL,
    last_active_at TIMESTAMP NOT NULL,
    revoked_at TIMESTAMP,
-   CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES Users (id) ON DELETE CASCADE
+   CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES Users (id) ON DELETE CASCADE,
+   CONSTRAINT uq_session_token_hashed UNIQUE (session_token_hashed)
 );
 
 CREATE TABLE IF NOT EXISTS notifications (
