@@ -32,10 +32,8 @@ CREATE TABLE IF NOT EXISTS notifications (
    data JSONB, -- Note: Data will store the info about only feedback and ratings primary key and time so that it can take to the right place when its clicked
    read_at TIMESTAMP,
    created_at TIMESTAMP(0) DEFAULT now(),
-   CONSTRAINT fk_notification_sender_user FOREIGN KEY (sender_id) REFERENCES Users (id) ON DELETE
-   SET
-      CASCADE,
-      CONSTRAINT fk_notification_receiver_user FOREIGN KEY (receiver_id) REFERENCES Users (id) ON DELETE CASCADE
+   CONSTRAINT fk_notification_sender_user FOREIGN KEY (sender_id) REFERENCES Users (id) ON DELETE CASCADE,
+   CONSTRAINT fk_notification_receiver_user FOREIGN KEY (receiver_id) REFERENCES Users (id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_notifications_receiver_created ON notifications (receiver_id, created_at DESC);
@@ -317,66 +315,98 @@ CREATE TRIGGER tg_update_avg_rating
 AFTER INSERT OR DELETE OR UPDATE ON template_ratings FOR EACH ROW
 EXECUTE FUNCTION tgfunc_update_avg_rating ();
 
+----------------------- NOTIFICATION TRIGGERS STARTS HERE -----------------------
 -- types of notifications
 /*
-collab_invitation, collab_invitation_reject, collab_invitation_accept, collab_remove
+collab_invitation, collab_invitation_reject, collab_invitation_accept, own_collab_remove, author_collab_remove
 feedback, rating
 new_session, payment
 limit_crossed
 */
 -- Insert notification whenever collaboration request is sent, rejected, accepted or collaborator removed
+CREATE OR REPLACE FUNCTION func_collab_change_action ( -- maybe a procedure suits here better
+   collab_sender_user_id INTEGER,
+   collab_receiver_user_id INTEGER,
+   action_project_id INTEGER,
+   updated_status VARCHAR,
+   old_status VARCHAR
+) RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+      IF updated_status = 'rejected' THEN
+         DELETE FROM project_collaborators WHERE project_id = action_project_id AND user_id = collab_receiver_user_id;
+      END IF;
+
+      -- Updating notificataion for the receiver
+      IF old_status = 'pending' THEN
+         UPDATE notifications
+         SET data = jsonb_build_object('status', updated_status)
+         WHERE sender_id = collab_sender_user_id AND receiver_id = collab_receiver_user_id AND related_entity_name = 'projects' AND related_entity_id = action_project_id AND data->>'status' = 'pending';
+      END IF;
+      
+      -- We need to update project log here, skipping it now deliberately
+
+      RETURN;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION tgfunc_notification_on_collaboration () RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE
    sender_user_id INTEGER;
+   variable_type VARCHAR;
 BEGIN
-   IF TG_OP <> 'DELETE' THEN
-      SELECT author_id
-      INTO sender_user_id
-      FROM projects
-      WHERE id = NEW.project_id;
-   ELSE
-      SELECT author_id
-      INTO sender_user_id
-      FROM projects
-      WHERE id = OLD.project_id;
-   END IF;
+
+   SELECT author_id
+   INTO sender_user_id
+   FROM projects
+   WHERE id = NEW.project_id;
 
    IF TG_OP = 'INSERT' THEN
       INSERT INTO notifications
-      (sender_id, receiver_id, type, related_entity_name, related_entity_id)
+      (sender_id, receiver_id, type, related_entity_name, related_entity_id, data)
       VALUES
-      (sender_user_id, NEW.user_id, 'collab_invitation', 'projects', NEW.project_id);
+      (sender_user_id, NEW.user_id, 'collab_invitation', 'projects', NEW.project_id,  jsonb_build_object('status', 'pending'));
 
       RETURN NEW;
 
-   ELSIF TG_OP = 'DELETE' AND OLD.status = 'accepted' THEN
-      INSERT INTO notifications
-      (sender_id, receiver_id, type, related_entity_name, related_entity_id)
-      VALUES
-      (sender_user_id, OLD.user_id, 'collab_remove', 'projects', OLD.project_id);
-       
-      -- We need to update project log here, skipping it now deliberately
-      RETURN OLD;
-
    ELSIF TG_OP = 'UPDATE' THEN
-      IF OLD.status = 'pending' AND NEW.status = 'rejected' THEN
+      IF NEW.status = 'rejected' THEN
+         IF NEW.status = 'rejected' AND OLD.status = 'pending' THEN
+            variable_type = 'collab_invitation_reject';
+         ELSIF NEW.status = 'rejected' AND OLD.status = 'accepted' THEN
+            variable_type = 'own_collab_remove';
+         END IF;
+
          INSERT INTO notifications
          (sender_id, receiver_id, type, related_entity_name, related_entity_id)
          VALUES
-         (NEW.user_id, sender_user_id, 'collab_invitation_reject', 'projects', NEW.project_id);
+         (NEW.user_id, sender_user_id, variable_type, 'projects', NEW.project_id);
 
-         DELETE FROM project_collaborators WHERE project_id = NEW.project_id AND user_id = NEW.user_id;
+         PERFORM func_collab_change_action(sender_user_id, NEW.user_id, NEW.project_id, 'rejected', OLD.status);
 
-         RETURN NEW;
-      ELSIF OLD.status = 'pending' AND NEW.status = 'accepted' THEN
+      ELSIF NEW.status = 'accepted' AND OLD.status = 'pending' THEN
          INSERT INTO notifications
          (sender_id, receiver_id, type, related_entity_name, related_entity_id)
          VALUES
          (NEW.user_id, sender_user_id, 'collab_invitation_accept', 'projects', NEW.project_id);
 
-         -- We need to update project log here, skipping it now deliberately
-      
-         RETURN NEW;
+         PERFORM func_collab_change_action(sender_user_id, NEW.user_id, NEW.project_id, 'accepted', OLD.status);
+            
+      ELSIF NEW.status = 'removed' THEN
+         IF OLD.status = 'pending' THEN
+            -- need to remove the notification and collaborator row
+            DELETE FROM notifications
+            WHERE sender_id = sender_user_id AND receiver_id = NEW.user_id AND related_entity_name = 'projects' AND related_entity_id = NEW.project_id AND data->>'status' = 'pending';
+
+         ELSIF OLD.status = 'accepted' THEN
+            -- author has removed the user from the collaboration, so remove from collaborators and send notification to user
+             INSERT INTO notifications
+            (sender_id, receiver_id, type, related_entity_name, related_entity_id)
+            VALUES
+            (sender_user_id, NEW.user_id, 'author_collab_remove', 'projects', NEW.project_id);
+            -- We need to update project log here, skipping it now deliberately
+         END IF;
+         
+         DELETE FROM project_collaborators WHERE project_id = NEW.project_id AND user_id = NEW.user_id;
       END IF;
    END IF;
    RETURN NEW;
@@ -386,7 +416,7 @@ $$;
 DROP TRIGGER IF EXISTS tg_insert_collab_notification ON project_collaborators;
 
 CREATE TRIGGER tg_insert_collab_notification
-AFTER INSERT OR DELETE OR UPDATE ON project_collaborators FOR EACH ROW
+AFTER INSERT OR UPDATE ON project_collaborators FOR EACH ROW
 EXECUTE FUNCTION tgfunc_notification_on_collaboration ();
 
 -- Insert notification related to feedback and rating
@@ -477,3 +507,5 @@ DROP TRIGGER IF EXISTS tg_delete_notification_when_project_deleted ON projects;
 CREATE TRIGGER tg_delete_notification_when_project_deleted
 AFTER DELETE ON projects FOR EACH ROW
 EXECUTE FUNCTION tgfunc_delete_notification_by_project ();
+
+----------------------- NOTIFICATION TRIGGERS ENDS HERE -----------------------
