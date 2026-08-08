@@ -4,15 +4,20 @@ const query = require('./../db/query');
 const router = express.Router();
 const { requireAuth } = require('./auth');
 
-router.post('/createProject', requireAuth, async (req, res) => {
+router.post('/createProject', async (req, res) => {
     const { proj_name, proj_description, enable_auth, tags } = req.body;
-    const author_id = req.loggedInUser.id;
+    const author_id = 1;// req.loggedInUser.id;
     if (!proj_name) {
         return res.status(400).json({ msg: 'Please fill in project name' });
 
     }
-    if (proj_name.length > 25) {
-        return res.status(400).json({ msg: 'Please give project name within 25 characters' });
+    if (!/^[A-Za-z0-9-_.]{1,30}$/.test(proj_name)) {
+        return res.status(400).json({ msg: 'Please give project name within 30 characters using a-z,A-Z,0-9,-,_ or . only' });
+
+    }
+
+    if (proj_description != null && proj_description.length > 500) {
+        return res.status(400).json({ msg: 'Please give project description within 500 characters' });
 
     }
     if (tags != null) {

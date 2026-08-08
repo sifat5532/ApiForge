@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS projects (
    description VARCHAR(500),
    api_key_hashed VARCHAR(100) NOT NULL,
    api_key_prefix VARCHAR(30) NOT NULL,
-   auth_enabled BOOLEAN,
+   auth_enabled BOOLEAN DEFAULT TRUE,
    like_count INTEGER DEFAULT 0,
    total_review_given INTEGER DEFAULT 0,
    avg_rating REAL DEFAULT 0,
