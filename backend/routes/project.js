@@ -76,7 +76,36 @@ router.post('/regenerateKey', requireAuth, async (req, res) => {
         await query('UPDATE projects SET api_key_hashed=$1 , api_key_prefix=$2 WHERE id=$3', [api_key_hashed, api_key_prefix, proj_id]);
         res.status(200).json({ msg: 'Api key regenerated successfully', api_key: api_key });
     }
-})
+});
+
+router.post('/collabInvitation', requireAuth, async (req, res) => {
+    const { proj_id, user_id } = req.body;
+    if (user_id == req.loggedInUser.id) {
+        return res.status(400).json({ msg: "You can't invite yourself as a collaborator" });
+    }
+
+    const findUser = await query('SELECT username FROM users WHERE id = $1', [user_id]);
+    if (findUser.rows.length === 0) {
+        return res.status(200).json({ msg: 'You are trying to add an invalid user' });
+    }
+
+    const isExist = await query('SELECT * FROM project_collaborators WHERE project_id = $1 AND user_id = $2;', [proj_id, user_id]);
+    if (isExist.rows.length > 0) {
+        if (isExist.rows[0].status == 'pending') {
+            return res.status(400).json({ msg: 'Already invited to this project' });
+        } else if (isExist.rows[0].status == 'accepted') {
+            return res.status(400).json({ msg: 'Already collaborating to this project' });
+        }
+    }
+
+    const result = await query('SELECT * FROM projects WHERE id=$1 AND author_id=$2', [proj_id, req.loggedInUser.id]);
+    if (result.rows.length === 0) {
+        return res.status(400).json({ msg: "You don't have access to add collaborators to this project" });
+    } else {
+        await query('INSERT INTO project_collaborators (project_id, user_id, role, status) VALUES($1, $2, $3, $4);', [proj_id, user_id, 'editor', 'pending']);
+        return res.status(200).json({ msg: 'Successfully invited for collaboration' });
+    }
+});
 module.exports = router;
 
 
