@@ -62,6 +62,23 @@ router.post('/createProject',requireAuth, async (req, res) => {
     res.status(201).json({ msg: 'Project created successfully', api_key: api_key });
 }
 )
+router.post('/regenApiKey',requireAuth,async(req,res)=>{
+    const user_id=req.loggedInUser.id;
+    const {proj_name}=req.body;
+     const api_key = crypto.randomBytes(32).toString('hex');
+    const api_key_prefix = api_key.substring(0, 6);
+    const api_key_hashed = crypto.createHash('sha256').update(api_key).digest('hex');
+    const result=await query('SELECT id FROM projects WHERE name=$1 AND author_id=$2',[proj_name,user_id]);
+  
+
+   
+    if(result.rows.length===0){
+             return res.status(400).json({msg:"You don't have access to change the api key"});
+    }
+    else {   const proj_id=result.rows[0].id;
+        await query('UPDATE projects SET api_key_hashed=$1 , api_key_prefix=$2 WHERE id=$3',[api_key_hashed,api_key_prefix,proj_id]);
+    res.status(200).json({msg:'Api key regenerated successfully',api_key:api_key});}
+})
 module.exports = router;
 
 
