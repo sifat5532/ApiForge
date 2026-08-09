@@ -107,7 +107,7 @@ router.post('/collabInvitation', requireAuth, async (req, res) => {
     return res.status(200).json({ msg: 'Successfully invited for collaboration' });
 });
 
-router.post('/proceedInvitation', requireAuth, async (req, res) => {
+router.post('/proceedCollabInvitation', requireAuth, async (req, res) => {
     const { proj_id, acceptInvitation } = req.body;
     const isExist = await query('SELECT * FROM project_collaborators WHERE project_id = $1 AND user_id = $2;', [proj_id, req.loggedInUser.id]);
     if (isExist.rows.length === 0) {
@@ -123,4 +123,7 @@ router.post('/proceedInvitation', requireAuth, async (req, res) => {
     await query('UPDATE project_collaborators SET status=$1 ,created_at=CURRENT_TIMESTAMP WHERE project_id=$2 AND user_id=$3;', ['accepted', proj_id, req.loggedInUser.id]);
     return res.status(200).json({ msg: 'Successfully accept the collaboration invitation' });
 });
+
+
+
 module.exports = router;
