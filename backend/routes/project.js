@@ -3,7 +3,25 @@ const crypto = require('crypto');
 const query = require('./../db/query');
 const router = express.Router();
 const { requireAuth } = require('./auth');
-
+const { table } = require('console');
+const PG_RESERVED_WORDS = new Set([
+    'all', 'analyse', 'analyze', 'and', 'any', 'array', 'as', 'asc',
+    'asymmetric', 'authorization', 'binary', 'both', 'case', 'cast',
+    'check', 'collate', 'collation', 'column', 'concurrently', 'constraint',
+    'create', 'cross', 'current_catalog', 'current_date', 'current_role',
+    'current_schema', 'current_time', 'current_timestamp', 'current_user',
+    'default', 'deferrable', 'desc', 'distinct', 'do', 'else', 'end',
+    'except', 'false', 'fetch', 'for', 'foreign', 'freeze', 'from', 'full',
+    'grant', 'group', 'having', 'ilike', 'in', 'initially', 'inner',
+    'intersect', 'into', 'is', 'isnull', 'join', 'lateral', 'leading',
+    'left', 'like', 'limit', 'localtime', 'localtimestamp', 'natural',
+    'not', 'notnull', 'null', 'offset', 'on', 'only', 'or', 'order',
+    'outer', 'overlaps', 'placing', 'primary', 'references', 'returning',
+    'right', 'select', 'session_user', 'similar', 'some', 'symmetric',
+    'system_user', 'table', 'tablesample', 'then', 'to', 'trailing',
+    'true', 'union', 'unique', 'user', 'using', 'variadic', 'verbose',
+    'when', 'where', 'window', 'with'
+]);
 router.post('/createProject', requireAuth, async (req, res) => {
     const { proj_name, description, enable_auth, tags } = req.body;
     const author_id = req.loggedInUser.id;
@@ -116,12 +134,12 @@ router.post('/proceedCollabInvitation', requireAuth, async (req, res) => {
     if (isExist.rows[0].status == 'accepted') {
         return res.status(400).json({ msg: 'Already collaborating to this project' });
     }
-    if (acceptInvitation==false) {
-       await query('UPDATE project_collaborators SET status=$1 WHERE project_id=$2,created_at=CURRENT_TIMESTAMP AND user_id=$3;', ['rejected', proj_id, req.loggedInUser.id]);
+    if (acceptInvitation == false) {
+        await query('UPDATE project_collaborators SET status=$1 WHERE project_id=$2,created_at=CURRENT_TIMESTAMP AND user_id=$3;', ['rejected', proj_id, req.loggedInUser.id]);
         return res.status(200).json({ msg: 'Successfully rejected the collaboration invitation' });
     }
-     await query('UPDATE project_collaborators SET status=$1 ,created_at=CURRENT_TIMESTAMP WHERE project_id=$2 AND user_id=$3;', ['accepted', proj_id, req.loggedInUser.id]);
-       return res.status(200).json({ msg: 'Successfully accepted the collaboration invitation' });
+    await query('UPDATE project_collaborators SET status=$1 ,created_at=CURRENT_TIMESTAMP WHERE project_id=$2 AND user_id=$3;', ['accepted', proj_id, req.loggedInUser.id]);
+    return res.status(200).json({ msg: 'Successfully accepted the collaboration invitation' });
 });
 router.post('/likeTemplate', requireAuth, async (req, res) => {
     const { template_id, isLike } = req.body;
@@ -176,26 +194,64 @@ router.post('/feedbackTemplate', requireAuth, async (req, res) => {
     await query('INSERT INTO template_feedback(template_id,user_id,message) VALUES($1,$2,$3)', [template_id, req.loggedInUser.id, message]);
     res.status(200).json({ msg: "Successfully gave feedback to the template" });
 });
-router.post('/removeCollaboration',requireAuth, async(req,res)=>{
-    const {user_id,proj_id}=req.body;
-    const isExist=await query('SELECT * FROM project_collaborators WHERE project_id=$1 AND user_id=$2',[proj_id,user_id]);
+router.post('/removeCollaboration', requireAuth, async (req, res) => {
+    const { user_id, proj_id } = req.body;
+    const isExist = await query('SELECT * FROM project_collaborators WHERE project_id=$1 AND user_id=$2', [proj_id, user_id]);
     if (isExist.rows.length === 0) {
         return res.status(404).json({ msg: "Collaborator not found" });
     }
-    if(user_id==req.loggedInUser.id){
-        if(isExist.rows[0].status!='accepted'  && isExist.rows[0].status!='pending')    {return res.status(400).json({msg:"You are not a collaborator of this project"});}
-        await query('UPDATE project_collaborators SET status=$1 WHERE project_id=$2 AND user_id=$3',['rejected',proj_id,user_id]);
-        return res.status(200).json({msg:"You are successfully removed from this project collaboration"});
+    if (user_id == req.loggedInUser.id) {
+        if (isExist.rows[0].status != 'accepted' && isExist.rows[0].status != 'pending') { return res.status(400).json({ msg: "You are not a collaborator of this project" }); }
+        await query('UPDATE project_collaborators SET status=$1 WHERE project_id=$2 AND user_id=$3', ['rejected', proj_id, user_id]);
+        return res.status(200).json({ msg: "You are successfully removed from this project collaboration" });
 
     }
-    const proj=await query('SELECT * FROM projects WHERE id=$1',[proj_id]);
-    if(req.loggedInUser.id!=proj.rows[0].author_id){
-           return res.status(400).json({ msg: "You are not allowed to remove the collaborator" });
+    const proj = await query('SELECT * FROM projects WHERE id=$1', [proj_id]);
+    if (req.loggedInUser.id != proj.rows[0].author_id) {
+        return res.status(400).json({ msg: "You are not allowed to remove the collaborator" });
     }
-    if(isExist.rows[0].status!='accepted'  && isExist.rows[0].status!='pending')    {return res.status(400).json({msg:"User is not a collaborator of this project"});}
-    await query('UPDATE project_collaborators SET status=$1 WHERE project_id=$2 AND user_id=$3',['removed',proj_id,user_id]);
-    return res.status(200).json({msg:"Successfully removed the collaborator from this project collaboration"});
+    if (isExist.rows[0].status != 'accepted' && isExist.rows[0].status != 'pending') { return res.status(400).json({ msg: "User is not a collaborator of this project" }); }
+    await query('UPDATE project_collaborators SET status=$1 WHERE project_id=$2 AND user_id=$3', ['removed', proj_id, user_id]);
+    return res.status(200).json({ msg: "Successfully removed the collaborator from this project collaboration" });
 
+});
+
+router.post('/createTable', requireAuth, async (req, res) => {
+    const { proj_id, name } = req.body;
+    const isProj = await query('SELECT * FROM projects WHERE id=$1', [proj_id]);
+    const isCollab = await query('SELECT * FROM project_collaborators WHERE project_id=$1 AND user_id=$2 AND role=$3 AND status=$4', [proj_id, req.loggedInUser.id, 'editor', 'accepted']);
+    if (isProj.rows.length < 1 || (isProj.rows[0].author_id != req.loggedInUser.id && isCollab.rows.length < 1)) {
+        return res.status(400).json({ msg: "You are not allowed to make table for this project" });
+    }
+    if (name == null || name.trim().length < 1) {
+        return res.status(400).json({ msg: "Please fill the table name" });
+    }
+    const table_name = name.trim().toLowerCase();
+    if (table_name[0] >= '0' && table_name[0] <= '9') return res.status(400).json({ msg: 'Table name should start with letters(a to z) or _' });
+    if (!/^[a-z0-9_]{1,30}$/.test(table_name)) {
+        return res.status(400).json({ msg: 'Please give table name within 30 characters using a-z,A-Z,0-9,-,_ or . only' });
+    }
+    if (PG_RESERVED_WORDS.has(name.toLowerCase())) {
+        return res.status(400).json({ msg: 'Your given name is a postgreSQL reserved word' });
+    }
+    const isExist = await query('SELECT * FROM schema_tables WHERE project_id=$1 AND table_name=$2', [proj_id, table_name]);
+    if (isExist.rows.length > 0) {
+        return res.status(400).json({ msg: 'Your alredy have a table in the project in this name' });
+    }
+    const schema_name = isProj.rows[0].name + '_' + proj_id + '_' + isProj.rows[0].author_id;
+    await query('INSERT INTO schema_tables(project_id,table_name,db_schema_name) VALUES($1,$2,$3)', [proj_id, table_name, schema_name]);
+
+    return res.status(200).json({ msg: 'Table successfully created' });
 })
+// router.post('/corsOrigin',requireAuth,async (req,res)=>{
+//     const {proj_id,origin}=req.body;
+//     const isExist=await query('SELECT * FROM projects WHERE id=$1 AND author_id=$2', [proj_id,req.loggedInUser.id]);
+//     if (isExist.rows.length === 0) {
+//         return res.status(404).json({ msg: "You have no project in this name" });
+//     }
+//     const isOriginExist=await query('SELECT * FROM project_cors_origin WHERE proj_id=$1', [proj_id,req.loggedInUser.id]);
+//     if (isExist.rows.length === 0) {
+
+// })
 
 module.exports = router;
