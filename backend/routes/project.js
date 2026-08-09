@@ -116,12 +116,12 @@ router.post('/proceedCollabInvitation', requireAuth, async (req, res) => {
     if (isExist.rows[0].status == 'accepted') {
         return res.status(400).json({ msg: 'Already collaborating to this project' });
     }
-    if (!acceptInvitation) {
-        await query('UPDATE project_collaborators SET status=$1 WHERE project_id=$2,created_at=CURRENT_TIMESTAMP AND user_id=$3;', ['rejected', proj_id, req.loggedInUser.id]);
+    if (acceptInvitation==false) {
+       await query('UPDATE project_collaborators SET status=$1 WHERE project_id=$2,created_at=CURRENT_TIMESTAMP AND user_id=$3;', ['rejected', proj_id, req.loggedInUser.id]);
         return res.status(200).json({ msg: 'Successfully rejected the collaboration invitation' });
     }
-    await query('UPDATE project_collaborators SET status=$1 ,created_at=CURRENT_TIMESTAMP WHERE project_id=$2 AND user_id=$3;', ['accepted', proj_id, req.loggedInUser.id]);
-    return res.status(200).json({ msg: 'Successfully accepted the collaboration invitation' });
+     await query('UPDATE project_collaborators SET status=$1 ,created_at=CURRENT_TIMESTAMP WHERE project_id=$2 AND user_id=$3;', ['accepted', proj_id, req.loggedInUser.id]);
+       return res.status(200).json({ msg: 'Successfully accepted the collaboration invitation' });
 });
 router.post('/likeTemplate', requireAuth, async (req, res) => {
     const { template_id, isLike } = req.body;
@@ -176,5 +176,26 @@ router.post('/feedbackTemplate', requireAuth, async (req, res) => {
     await query('INSERT INTO template_feedback(template_id,user_id,message) VALUES($1,$2,$3)', [template_id, req.loggedInUser.id, message]);
     res.status(200).json({ msg: "Successfully gave feedback to the template" });
 });
+router.post('/removeCollaboration',requireAuth, async(req,res)=>{
+    const {user_id,proj_id}=req.body;
+    const isExist=await query('SELECT * FROM project_collaborators WHERE project_id=$1 AND user_id=$2',[proj_id,user_id]);
+    if (isExist.rows.length === 0) {
+        return res.status(404).json({ msg: "Collaborator not found" });
+    }
+    if(user_id==req.loggedInUser.id){
+        if(isExist.rows[0].status!='accepted'  && isExist.rows[0].status!='pending')    {return res.status(400).json({msg:"You are not a collaborator of this project"});}
+        await query('UPDATE project_collaborators SET status=$1 WHERE project_id=$2 AND user_id=$3',['rejected',proj_id,user_id]);
+        return res.status(200).json({msg:"You are successfully removed from this project collaboration"});
+
+    }
+    const proj=await query('SELECT * FROM projects WHERE id=$1',[proj_id]);
+    if(req.loggedInUser.id!=proj.rows[0].author_id){
+           return res.status(400).json({ msg: "You are not allowed to remove the collaborator" });
+    }
+    if(isExist.rows[0].status!='accepted'  && isExist.rows[0].status!='pending')    {return res.status(400).json({msg:"User is not a collaborator of this project"});}
+    await query('UPDATE project_collaborators SET status=$1 WHERE project_id=$2 AND user_id=$3',['removed',proj_id,user_id]);
+    return res.status(200).json({msg:"Successfully removed the collaborator from this project collaboration"});
+
+})
 
 module.exports = router;
