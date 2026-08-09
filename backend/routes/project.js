@@ -243,15 +243,35 @@ router.post('/createTable', requireAuth, async (req, res) => {
 
     return res.status(200).json({ msg: 'Table successfully created' });
 })
-// router.post('/corsOrigin',requireAuth,async (req,res)=>{
-//     const {proj_id,origin}=req.body;
-//     const isExist=await query('SELECT * FROM projects WHERE id=$1 AND author_id=$2', [proj_id,req.loggedInUser.id]);
-//     if (isExist.rows.length === 0) {
-//         return res.status(404).json({ msg: "You have no project in this name" });
-//     }
-//     const isOriginExist=await query('SELECT * FROM project_cors_origin WHERE proj_id=$1', [proj_id,req.loggedInUser.id]);
-//     if (isExist.rows.length === 0) {
+router.post('/addcorsOrigin',requireAuth,async (req,res)=>{
+    const {proj_id,origin}=req.body;
+    const isExist=await query('SELECT * FROM projects WHERE id=$1 AND author_id=$2', [proj_id,req.loggedInUser.id]);
+    if (isExist.rows.length === 0) {
+        return res.status(400).json({ msg: "You are not allowed to add cors origin of this project" });
+    }
+    if(origin.trim().length<1) { return res.status(400).json({ msg: "Cors origin can not be blank" });}
+    const isOriginExist=await query('SELECT * FROM project_cors_origin WHERE project_id=$1', [proj_id]);
+    if (isOriginExist.rows.length > 0) {
+        await query('UPDATE project_cors_origin SET origin=$1 WHERE project_id=$2', [origin,proj_id]);
+        return res.status(200).json({msg:"Successfully updated cors origin"});
+    }
+     await query('INSERT INTO project_cors_origin(project_id,origin) VALUES($1,$2)', [proj_id,origin]);
+    return res.status(200).json({msg:"Successfully added cors origin"});
 
-// })
+});
+router.post('/removecorsOrigin',requireAuth,async (req,res)=>{
+    const {proj_id}=req.body;
+    const isExist=await query('SELECT * FROM projects WHERE id=$1 AND author_id=$2', [proj_id,req.loggedInUser.id]);
+    if (isExist.rows.length === 0) {
+        return res.status(400).json({ msg: "You are not allowed to remove cors origin of this project" });
+    }
+    const isOriginExist=await query('SELECT * FROM project_cors_origin WHERE project_id=$1', [proj_id]);
+    if (isOriginExist.rows.length <1) {
+        return res.status(400).json({msg:"No cors origin exist for this project"});
+    }
+    await query('DELETE FROM project_cors_origin WHERE project_id=$1', [proj_id]);
+    return res.status(200).json({msg:"Successfully removed cors origin"});
+
+});
 
 module.exports = router;
