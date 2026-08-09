@@ -143,9 +143,9 @@ router.post('/likeTemplate', requireAuth, async (req, res) => {
 });
 router.post('/rateTemplate', requireAuth, async (req, res) => {
     const { template_id, rating, review } = req.body;
-    const isExist = await query('SELECT * FROM template_clones WHERE id=$1 AND template_id=$2', [req.loggedInUser.id,template_id]);
+    const isExist = await query('SELECT * FROM template_clones WHERE id=$1 AND template_id=$2', [req.loggedInUser.id, template_id]);
     if (isExist.rows.length === 0) {
-        return res.status(400).json({ msg:"You have to clone the template first to rate it" });
+        return res.status(400).json({ msg: "You have to clone the template first to rate it" });
     }
     if (!(rating >= 1 && rating <= 5)) {
         return res.status(400).json({ msg: "Rating should be integer between 1 to 5" });
@@ -163,11 +163,11 @@ router.post('/rateTemplate', requireAuth, async (req, res) => {
 });
 router.post('/feedbackTemplate', requireAuth, async (req, res) => {
     const { template_id, message } = req.body;
-    const isExist = await query('SELECT * FROM template_clones WHERE id=$1 AND template_id=$2', [req.loggedInUser.id,template_id]);
-    // if (isExist.rows.length === 0) {
-    //     return res.status(400).json({ msg:"You have to clone the template first to give feedback" });
-    // }
-      if (message.trim().length==0) {
+    const isExist = await query('SELECT * FROM template_clones WHERE id=$1 AND template_id=$2', [req.loggedInUser.id, template_id]);
+    if (isExist.rows.length === 0) {
+        return res.status(400).json({ msg: "You have to clone the template first to give feedback" });
+    }
+    if (message.trim().length == 0) {
         return res.status(400).json({ msg: "You can not send empty feedback" });
     }
     if (message.length > 500) {
@@ -176,8 +176,5 @@ router.post('/feedbackTemplate', requireAuth, async (req, res) => {
     await query('INSERT INTO template_feedback(template_id,user_id,message) VALUES($1,$2,$3)', [template_id, req.loggedInUser.id, message]);
     res.status(200).json({ msg: "Successfully gave feedback to the template" });
 });
-
-
-
 
 module.exports = router;
