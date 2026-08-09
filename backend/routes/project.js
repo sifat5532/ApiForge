@@ -143,7 +143,7 @@ router.post('/likeTemplate', requireAuth, async (req, res) => {
 });
 router.post('/rateTemplate', requireAuth, async (req, res) => {
     const { template_id, rating, review } = req.body;
-    const isExist = await query('SELECT * FROM template_clones WHERE id=$1 AND template_id=$2', [req.loggedInUser.id, template_id]);
+    const isExist = await query('SELECT * FROM template_clones WHERE user_id=$1 AND template_id=$2', [req.loggedInUser.id, template_id]);
     if (isExist.rows.length === 0) {
         return res.status(400).json({ msg: "You have to clone the template first to rate it" });
     }
@@ -163,7 +163,7 @@ router.post('/rateTemplate', requireAuth, async (req, res) => {
 });
 router.post('/feedbackTemplate', requireAuth, async (req, res) => {
     const { template_id, message } = req.body;
-    const isExist = await query('SELECT * FROM template_clones WHERE id=$1 AND template_id=$2', [req.loggedInUser.id, template_id]);
+    const isExist = await query('SELECT * FROM template_clones WHERE user_id=$1 AND template_id=$2', [req.loggedInUser.id, template_id]);
     if (isExist.rows.length === 0) {
         return res.status(400).json({ msg: "You have to clone the template first to give feedback" });
     }
