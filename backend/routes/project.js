@@ -126,14 +126,16 @@ router.post('/proceedCollabInvitation', requireAuth, async (req, res) => {
 router.post('/likeTemplate',requireAuth,async(req,res)=>{
     const {template_id,isLike}=req.body;
     console.log(template_id,isLike);
-     const isExist=await query('SELECT * FROM projects WHERE id=$1 AND is_template=$2',[template_id,true]);
+     const isExist=await query('SELECT * FROM projects WHERE id=$1 AND is_template=$2',[template_id,false]);
     if(isExist.rows.length===0)  {
         return res.status(404).json({msg:"Template not found"});
     }
     const likeExist=await query('SELECT * FROM template_likes WHERE template_id=$1 AND user_id=$2',[template_id,req.loggedInUser.id]);
     if(likeExist.rows.length>0){
         if(isLike)    return res.status(400).json({msg:"You have already liked this tamplate"});
-
+        if(!isLike)    {
+            await query('DELETE FROM template_likes WHERE template_id=$1 AND user_id=$2',[template_id,req.loggedInUser.id]);
+            return res.status(200).json({msg:"Successfully cancel like in the template"});}
     }
     if(!isLike)  return res.status(400).json({msg:"You have not yet like the template"});
     await  query('INSERT INTO template_likes(template_id,user_id) VALUES($1,$2)',[template_id,req.loggedInUser.id]);
