@@ -130,14 +130,14 @@ CREATE TABLE IF NOT EXISTS schema_tables (
 CREATE TABLE IF NOT EXISTS schema_columns (
    id serial PRIMARY KEY,
    schema_table_id INTEGER NOT NULL,
-   col_name VARCHAR(30) NOT NULL,
-   col_type VARCHAR(20) NOT NULL,
-   default_value VARCHAR(30),
-   col_length INTEGER,
-   is_primary_key BOOLEAN DEFAULT FALSE,
-   is_auto_increment BOOLEAN DEFAULT FALSE,
-   is_nullable BOOLEAN DEFAULT TRUE,
-   is_unique BOOLEAN DEFAULT FALSE,
+   col_name VARCHAR(30) NOT NULL,--0
+   col_type VARCHAR(20) NOT NULL,--1
+   default_value VARCHAR(30),--2
+   col_length INTEGER,--3
+   is_primary_key BOOLEAN DEFAULT FALSE,--4
+   is_auto_increment BOOLEAN DEFAULT FALSE,--5
+   is_nullable BOOLEAN DEFAULT TRUE,--6
+   is_unique BOOLEAN DEFAULT FALSE,--7
    created_at TIMESTAMP NOT NULL DEFAULT now(),
    CONSTRAINT fk_schema_columns_schema_table_id FOREIGN KEY (schema_table_id) REFERENCES schema_tables (id) ON DELETE CASCADE,
    CONSTRAINT unique_schema_column_table_id_col_name UNIQUE (schema_table_id, col_name)
