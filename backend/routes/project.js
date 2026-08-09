@@ -111,17 +111,17 @@ router.post('/proceedCollabInvitation', requireAuth, async (req, res) => {
     const { proj_id, acceptInvitation } = req.body;
     const isExist = await query('SELECT * FROM project_collaborators WHERE project_id = $1 AND user_id = $2;', [proj_id, req.loggedInUser.id]);
     if (isExist.rows.length === 0) {
-        return res.status(404).json({ msg: 'Invitition not found' });
+        return res.status(404).json({ msg: 'Invitation not found' });
     }
     if (isExist.rows[0].status == 'accepted') {
         return res.status(400).json({ msg: 'Already collaborating to this project' });
     }
     if (!acceptInvitation) {
-        await query('UPDATE project_collaborators SET status=$1 WHERE project_id=$2,created_at=CURRENT_TIMESTAMP AND user_id=$3;', ['declined', proj_id, req.loggedInUser.id]);
-        return res.status(200).json({ msg: 'Successfully reject the collaboration invitation' });
+        await query('UPDATE project_collaborators SET status=$1 WHERE project_id=$2,created_at=CURRENT_TIMESTAMP AND user_id=$3;', ['rejected', proj_id, req.loggedInUser.id]);
+        return res.status(200).json({ msg: 'Successfully rejected the collaboration invitation' });
     }
     await query('UPDATE project_collaborators SET status=$1 ,created_at=CURRENT_TIMESTAMP WHERE project_id=$2 AND user_id=$3;', ['accepted', proj_id, req.loggedInUser.id]);
-    return res.status(200).json({ msg: 'Successfully accept the collaboration invitation' });
+    return res.status(200).json({ msg: 'Successfully accepted the collaboration invitation' });
 });
 
 
