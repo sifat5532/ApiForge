@@ -123,24 +123,45 @@ router.post('/proceedCollabInvitation', requireAuth, async (req, res) => {
     await query('UPDATE project_collaborators SET status=$1 ,created_at=CURRENT_TIMESTAMP WHERE project_id=$2 AND user_id=$3;', ['accepted', proj_id, req.loggedInUser.id]);
     return res.status(200).json({ msg: 'Successfully accepted the collaboration invitation' });
 });
-router.post('/likeTemplate',requireAuth,async(req,res)=>{
-    const {template_id,isLike}=req.body;
-    console.log(template_id,isLike);
-     const isExist=await query('SELECT * FROM projects WHERE id=$1 AND is_template=$2',[template_id,false]);
-    if(isExist.rows.length===0)  {
-        return res.status(404).json({msg:"Template not found"});
+router.post('/likeTemplate', requireAuth, async (req, res) => {
+    const { template_id, isLike } = req.body;
+    const isExist = await query('SELECT * FROM projects WHERE id=$1 AND is_template=$2', [template_id, false]);
+    if (isExist.rows.length === 0) {
+        return res.status(404).json({ msg: "Template not found" });
     }
-    const likeExist=await query('SELECT * FROM template_likes WHERE template_id=$1 AND user_id=$2',[template_id,req.loggedInUser.id]);
-    if(likeExist.rows.length>0){
-        if(isLike)    return res.status(400).json({msg:"You have already liked this tamplate"});
-        if(!isLike)    {
-            await query('DELETE FROM template_likes WHERE template_id=$1 AND user_id=$2',[template_id,req.loggedInUser.id]);
-            return res.status(200).json({msg:"Successfully cancel like in the template"});}
+    const likeExist = await query('SELECT * FROM template_likes WHERE template_id=$1 AND user_id=$2', [template_id, req.loggedInUser.id]);
+    if (likeExist.rows.length > 0) {
+        if (isLike) return res.status(400).json({ msg: "You have already liked this tamplate" });
+        if (!isLike) {
+            await query('DELETE FROM template_likes WHERE template_id=$1 AND user_id=$2', [template_id, req.loggedInUser.id]);
+            return res.status(200).json({ msg: "Successfully cancel like in the template" });
+        }
     }
-    if(!isLike)  return res.status(400).json({msg:"You have not yet like the template"});
-    await  query('INSERT INTO template_likes(template_id,user_id) VALUES($1,$2)',[template_id,req.loggedInUser.id]);
-    res.status(200).json({msg:"Successfully like the template"});
+    if (!isLike) return res.status(400).json({ msg: "You have not yet like the template" });
+    await query('INSERT INTO template_likes(template_id,user_id) VALUES($1,$2)', [template_id, req.loggedInUser.id]);
+    res.status(200).json({ msg: "Successfully like the template" });
+});
+router.post('/rateTemplate', requireAuth, async (req, res) => {
+    const { template_id, rating, review } = req.body;
+    const isExist = await query('SELECT * FROM projects WHERE id=$1 AND is_template=$2', [template_id, false]);
+    if (isExist.rows.length === 0) {
+        return res.status(404).json({ msg: "Template not found" });
+    }
+    if (!(rating >= 1 && rating <= 5)) {
+        return res.status(400).json({ msg: "Rating should be integer between 1 to 5" });
+    }
+    if (review != null && review.length > 500) {
+        return res.status(400).json({ msg: "Please give review within 500 characters" });
+    }
+    const ratingExist = await query('SELECT * FROM template_ratings WHERE template_id=$1 AND user_id=$2', [template_id, req.loggedInUser.id]);
+    if (ratingExist.rows.length > 0) {
+        if (rating) await query('UPDATE  template_ratings SET rating=$1 , review_text=$2,created_at=CURRENT_TIMESTAMP WHERE template_id=$3 AND user_id=$4', [rating, review, template_id, req.loggedInUser.id]);
+        return res.status(200).json({ msg: "Successfully update the rating" });
+    }
+    await query('INSERT INTO template_ratings(template_id,user_id,rating,review_text) VALUES($1,$2,$3,$4)', [template_id, req.loggedInUser.id, rating, review]);
+    res.status(200).json({ msg: "Successfully rate the template" });
 })
+
 
 
 module.exports = router;
