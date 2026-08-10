@@ -34,6 +34,16 @@ async function validateColumnDefault(pool, pgType, defaultValue) {
     }
 }
 
+const requireAccessToProject = async (req, res, next) => {
+    const { proj_id } = req.body;
+    if (!proj_id) return res.status(400).json({ msg: "You should insert a project id with your request" });
+
+    const result = await query('SELECT * FROM projects WHERE id=$1 AND author_id=$2', [proj_id, req.loggedInUser.id]);
+    if (result.rows.length === 0) {
+        return res.status(400).json({ msg: "You don't have access to make any change to this project" });
+    }
+};
+
 router.post('/createProject', requireAuth, async (req, res) => {
     const { proj_name, description, enable_auth, tags } = req.body;
     const author_id = req.loggedInUser.id;
@@ -67,7 +77,7 @@ router.post('/createProject', requireAuth, async (req, res) => {
     const api_key_hashed = crypto.createHash('sha256').update(api_key).digest('hex');
 
     const proj = await query('INSERT INTO projects(author_id,name,description,api_key_hashed,api_key_prefix,auth_enabled) VALUES($1,$2,$3,$4,$5,$6) RETURNING id',
-        [author_id, proj_name, description, api_key_hashed, api_key_prefix, (enable_auth === true ? true:false)]
+        [author_id, proj_name, description, api_key_hashed, api_key_prefix, (enable_auth === true ? true : false)]
     );
     const proj_id = proj.rows[0].id;
     if (tags != null) {
@@ -87,23 +97,19 @@ router.post('/createProject', requireAuth, async (req, res) => {
     res.status(201).json({ msg: 'Project created successfully', api_key: api_key });
 });
 
-router.post('/regenerateKey', requireAuth, async (req, res) => {
-    const user_id = req.loggedInUser.id;
+router.post('/regenerateKey', requireAuth, requireAccessToProject, async (req, res) => {
     const { proj_id } = req.body;
+
     const api_key = crypto.randomBytes(32).toString('hex');
     const api_key_prefix = api_key.substring(0, 6);
     const api_key_hashed = crypto.createHash('sha256').update(api_key).digest('hex');
-    const result = await query('SELECT * FROM projects WHERE id=$1 AND author_id=$2', [proj_id, user_id]);
-    if (result.rows.length === 0) {
-        return res.status(400).json({ msg: "You don't have access to change the api key" });
-    }
-    else {
-        await query('UPDATE projects SET api_key_hashed=$1 , api_key_prefix=$2 WHERE id=$3', [api_key_hashed, api_key_prefix, proj_id]);
-        res.status(200).json({ msg: 'Api key regenerated successfully', api_key: api_key });
-    }
+
+    await query('UPDATE projects SET api_key_hashed=$1 , api_key_prefix=$2 WHERE id=$3', [api_key_hashed, api_key_prefix, proj_id]);
+    res.status(200).json({ msg: 'Api key regenerated successfully', api_key: api_key });
+
 });
 
-router.post('/collabInvitation', requireAuth, async (req, res) => {
+router.post('/collabInvitation', requireAuth, requireAccessToProject, async (req, res) => {
     const { proj_id, user_id } = req.body;
     if (user_id == req.loggedInUser.id) {
         return res.status(400).json({ msg: "You can't invite yourself as a collaborator" });
@@ -112,11 +118,6 @@ router.post('/collabInvitation', requireAuth, async (req, res) => {
     const findUser = await query('SELECT username FROM users WHERE id = $1', [user_id]);
     if (findUser.rows.length === 0) {
         return res.status(200).json({ msg: 'You are trying to add an invalid user' });
-    }
-
-    const result = await query('SELECT * FROM projects WHERE id=$1 AND author_id=$2', [proj_id, req.loggedInUser.id]);
-    if (result.rows.length === 0) {
-        return res.status(400).json({ msg: "You don't have access to add collaborators to this project" });
     }
 
     const isExist = await query('SELECT * FROM project_collaborators WHERE project_id = $1 AND user_id = $2;', [proj_id, user_id]);
@@ -265,12 +266,9 @@ router.post('/createTable', requireAuth, async (req, res) => {
 
 });
 
-router.post('/addCorsOrigin', requireAuth, async (req, res) => {
+router.post('/addCorsOrigin', requireAuth, requireAccessToProject, async (req, res) => {
     const { proj_id, origin } = req.body;
-    const isExist = await query('SELECT * FROM projects WHERE id=$1 AND author_id=$2', [proj_id, req.loggedInUser.id]);
-    if (isExist.rows.length === 0) {
-        return res.status(400).json({ msg: "You are not allowed to add cors origin of this project" });
-    }
+
     if (origin.trim().length < 1) { return res.status(400).json({ msg: "Cors origin can not be blank" }); }
     const isOriginExist = await query('SELECT * FROM project_cors_origin WHERE project_id=$1 AND origin=$2', [proj_id, origin]);
     if (isOriginExist.rows.length > 0) {
@@ -281,12 +279,9 @@ router.post('/addCorsOrigin', requireAuth, async (req, res) => {
 
 });
 
-router.post('/removeCorsOrigin', requireAuth, async (req, res) => {
+router.post('/removeCorsOrigin', requireAuth, requireAccessToProject, async (req, res) => {
     const { proj_id, origin } = req.body;
-    const isExist = await query('SELECT * FROM projects WHERE id=$1 AND author_id=$2', [proj_id, req.loggedInUser.id]);
-    if (isExist.rows.length === 0) {
-        return res.status(400).json({ msg: "You are not allowed to remove cors origin of this project" });
-    }
+
     const isOriginExist = await query('SELECT * FROM project_cors_origin WHERE project_id=$1 AND origin=$2', [proj_id, origin]);
     if (isOriginExist.rows.length < 1) {
         return res.status(400).json({ msg: "The cors origin does not exist for this project" });
