@@ -27,12 +27,29 @@ const PG_RESERVED_WORDS = new Set([
 async function validateColumnDefault(pool, pgType, defaultValue) {
     try {
         await pool.query(`SELECT $1::${pgType}`, [defaultValue]);
-        return { value: true };
+        return true;
     }
     catch (err) {
-        return { valid: false, error: err.message };
+        return false;
     }
 }
+
+const validateName = (req, res, name, instanceType, id) => {
+    if (name >= '0' && name <= '9') {
+        res.status(400).json({ msg: `${instanceType} name should start with letters(a to z) or _`, id });
+        return { isResSent: true };
+    }
+    if (!/^[a-z0-9_]{1,30}$/.test(name)) {
+        res.status(400).json({ msg: `Please give ${instanceType} name within 30 characters using a-z,A-Z,0-9,-,_ or . only`, id });
+        return { isResSent: true };
+    }
+    if (PG_RESERVED_WORDS.has(name.toLowerCase())) {
+        res.status(400).json({ msg: `Your given ${instanceType} name is a postgreSQL reserved word`, id });
+        return { isResSent: true };
+    }
+    return { isResSent: false };
+
+};
 
 const requireAccessToProject = async (req, res, next) => {
     const { proj_id } = req.body;
@@ -173,8 +190,12 @@ router.post('/removeCollaboration', requireAuth, async (req, res) => {
 });
 
 router.post('/createTable', requireAuth, async (req, res) => {
+    // transaction should be added here later
     const { proj_id, name, cols } = req.body;
-    const isProj = await query('SELECT * FROM projects WHERE id=$1', [proj_id]);
+    if (!proj_id || !name || !cols) {
+        return res.status(400).json({ msg: "You should insert all necessary information" });
+    }
+    const isProj = await query('SELECT * FROM projects WHERE id=$1 AND is_template=$2', [proj_id, false]);
     const isCollab = await query('SELECT * FROM project_collaborators WHERE project_id=$1 AND user_id=$2 AND role=$3 AND status=$4', [proj_id, req.loggedInUser.id, 'editor', 'accepted']);
     if (isProj.rows.length < 1 || (isProj.rows[0].author_id != req.loggedInUser.id && isCollab.rows.length < 1)) {
         return res.status(400).json({ msg: "You are not allowed to make table for this project" });
@@ -183,87 +204,90 @@ router.post('/createTable', requireAuth, async (req, res) => {
         return res.status(400).json({ msg: "Please fill the table name" });
     }
     const table_name = name.trim().toLowerCase();
-    if (table_name[0] >= '0' && table_name[0] <= '9') return res.status(400).json({ msg: 'Table name should start with letters(a to z) or _' });
-    if (!/^[a-z0-9_]{1,30}$/.test(table_name)) {
-        return res.status(400).json({ msg: 'Please give table name within 30 characters using a-z,A-Z,0-9,-,_ or . only' });
+    if (validateName(req, res, table_name, 'table', 'NULL').isResSent) return; // can be added table front end id here later
+
+    if (cols == null || cols.length < 1) {
+        return res.status(400).json({ msg: "You should create at least one column" });
     }
-    if (PG_RESERVED_WORDS.has(name.toLowerCase())) {
-        return res.status(400).json({ msg: 'Your given table name is a postgreSQL reserved word' });
+    if (cols.length > 100) {
+        return res.status(400).json({ msg: "You can create at most 100 columns for a table" });
     }
     const isExist = await query('SELECT * FROM schema_tables WHERE project_id=$1 AND table_name=$2', [proj_id, table_name]);
     if (isExist.rows.length > 0) {
         return res.status(400).json({ msg: 'Your alredy have a table in the project in this name' });
     }
-    const schema_name = isProj.rows[0].name + '_' + proj_id + '_' + isProj.rows[0].author_id;
-    const result = await query('INSERT INTO schema_tables(project_id,table_name,db_schema_name) VALUES($1,$2,$3) RETURNING id', [proj_id, table_name, schema_name]);
+    const result = await query('INSERT INTO schema_tables(project_id,table_name) VALUES($1, $2) RETURNING id', [proj_id, table_name]);
     const table_id = result.rows[0].id;
-    for (let i = 0; cols != null && i < cols.length; i++) {
+    for (let i = 0; i < cols.length; i++) {
         //0 col_name,1 col_type,2 default,3(array) col_len,4 is_pk,5 is_auto_inc
-        // 6 is_nullable,7 is_unique
+        // 6 is_nullable,7 is_unique, 8 element_id_frontend
+
+        cols[i][2] = cols[i][2] == '' ? 'NULL' : cols[i][2];
+        cols[i][3] = cols[i][3] == '' ? -1 : cols[i][3];
+
+        cols[i][4] = cols[i][4] === true ? true : false; // is_pk
+        cols[i][5] = cols[i][5] === true ? true : false; // is_auto_inc
+        cols[i][6] = cols[i][6] === true ? true : false; // is_nullable
+        cols[i][7] = cols[i][7] === true ? true : false; // is_unique
+
         if (cols[i][0] == null || cols[i][0].trim().length < 1) {
-            return res.status(400).json({ msg: "Please fill the column name" });
+            return res.status(400).json({ msg: "Please in fill the column name", id: cols[i][8] });
         }
         const col_name = cols[i][0].trim().toLowerCase();
-        if (col_name[0] >= '0' && col_name[0] <= '9') return res.status(400).json({ msg: 'Column name should start with letters(a to z) or _' });
-        if (!/^[a-z0-9_]{1,30}$/.test(col_name)) {
-            return res.status(400).json({ msg: 'Please give column name within 30 characters using a-z,A-Z,0-9,-,_ or . only' });
-        }
-        if (PG_RESERVED_WORDS.has(name.toLowerCase())) {
-            return res.status(400).json({ msg: 'Your given column name is a postgreSQL reserved word' });
-        }
-        console.log(cols[i][0], cols[i][1]);
+        if (validateName(req, res, col_name, 'column', cols[i][8]).isResSent) return;
+
         for (let j = 0; j < i; j++) {
             if (col_name == cols[j][0].trim().toLowerCase()) {
-                return res.status(400).json({ msg: 'Every column name should be unique in a table' });
+                return res.status(400).json({ msg: 'Every column name should be unique in a table', id: cols[i][8] });
             }
         }
-        if (!(cols[i][1] === 'INTEGER' || cols[i][1] === 'TEXT' || cols[i][1] === 'NUMARIC' || cols[i][1] === 'BOOLEAN' || cols[i][1] === 'VARCHAR' || cols[i][1] === 'DATE' || cols[i][1] === 'TIMESTAMP')) {
-            return res.status(400).json({ msg: 'Your given data type is not valid' });
+        if (!(cols[i][1] === 'INTEGER' || cols[i][1] === 'TEXT' || cols[i][1] === 'NUMERIC' || cols[i][1] === 'BOOLEAN' || cols[i][1] === 'VARCHAR' || cols[i][1] === 'DATE' || cols[i][1] === 'TIMESTAMP')) {
+            return res.status(400).json({ msg: 'Your given data type is not valid', id: cols[i][8] });
         }
         //used a pg function written on top to chk if default value matched with datatype 
         if (!validateColumnDefault(pool, cols[i][1], cols[i][2])) {
-            return res.status(400).json({ msg: 'Your given default value does not matched with the give data type' });
+            return res.status(400).json({ msg: 'Your given default value does not match with the give data type', id: cols[i][8] });
         }
         if (cols[i][1] === 'VARCHAR') {
-            if (cols[i][3] < 1) return res.status(400).json({ msg: 'Give valid length of the column' });
+            if (cols[i][3] < 1) return res.status(400).json({ msg: 'Give valid length of the column', id: cols[i][8] });
         }
-        if (cols[i][1] === 'NUMARIC') {
-            try {
-                await pool.query(`SELECT $1::numeric($1,$2)`, [cols[i][3][0], cols[i][3][1]]);
 
-            } catch {
-                return res.status(400).json({ msg: "Give valid precision and scale" });
-            }
+        if (cols[i][5] === true && (cols[i][1] != 'INTEGER' || (cols[i][4] != true && cols[i][7] != true))) {
+            return res.status(409).json({ msg: "Auto increment is not possible for this key", id: cols[i][8] });
         }
-        const is_pk = cols[i][4] === true ? true : false;
-        const is_auto_inc = cols[i][5] === true ? true : false;
-        const is_nullable = cols[i][6] === true ? true : false;
-        const is_unique = cols[i][7] === true ? true : false;
-        if (is_auto_inc === true && (cols[i][1] != 'INTEGER' || (is_pk != true && is_unique != true))) {
-            return res.status(409).json({ msg: "Auto increment is not possible for this key" });
-        }
-        if (is_pk === true && (is_nullable != false || is_unique != true)) {
-            return res.status(409).json({ msg: "Primary key must be not nullable and unique" });
-        }
-        if (cols[i][1] != 'VARCHAR' || cols[i][1] != 'NUMARIC') {
-            await query('INSERT INTO schema_columns(schema_table_id,col_name,col_type,default_value,is_primary_key,is_auto_increment,is_nullable,is_unique) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
-                [table_id, cols[i][0], cols[i][1], cols[i][2], is_pk, is_auto_inc, is_nullable, is_unique]
-            );
-        }
-        else if (cols[i][1] != 'VARCHAR') {
-            await query('INSERT INTO schema_columns(schema_table_id,col_name,col_type,col_length,default_value,is_primary_key,is_auto_increment,is_nullable,is_unique) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',
-                [table_id, cols[i][0], cols[i][1], cols[i][2], cols[i][3], is_pk, is_auto_inc, is_nullable, is_unique]
-            );
-        }
-        else if (cols[i][1] != 'NUMARIC') {//**there is no precision column in schema_columns table how can we store numaric data type precision?I temporarily just added  len */
-            await query('INSERT INTO schema_columns(schema_table_id,col_name,col_type,col_length,default_value,is_primary_key,is_auto_increment,is_nullable,is_unique) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',
-                [table_id, cols[i][0], cols[i][1], cols[i][2], cols[i][3][0], is_pk, is_auto_inc, is_nullable, is_unique]
-            );
+        if (cols[i][4] === true && (cols[i][6] == true || cols[i][7] == true)) {
+            return res.status(409).json({ msg: "Primary key must be not nullable and unique", id: cols[i][8] });
         }
     }
+
+    let query_string = 'INSERT INTO schema_columns(schema_table_id, col_name, col_type, default_value, col_length, is_primary_key, is_auto_increment, is_nullable, is_unique) VALUES';
+    let c = 1;
+    const values = [];
+    let values_param = '';
+    for (let i = 0; i < cols.length; i++) {
+        values_param += '(';
+        for (let j = 0; j < cols[i].length; j++) { // ignoring the front end id but adding the table_id :)
+            if (j != cols[i].length - 1) {
+                values_param += '$' + c + ', ';
+            } else {
+                values_param += '$' + c;
+            }
+            if (j == 0) {
+                values.push(table_id);
+            } else {
+                values.push(cols[i][j - 1]);
+            }
+            c++;
+        }
+        if (i != cols.length - 1) {
+            values_param += '), '
+        } else {
+            values_param += ');'
+        }
+    }
+    query_string += values_param;
+    query(query_string, values);
     return res.status(200).json({ msg: 'Table successfully created' });
-
-
 });
 
 router.post('/addCorsOrigin', requireAuth, requireAccessToProject, async (req, res) => {

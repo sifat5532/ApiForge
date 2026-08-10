@@ -123,7 +123,6 @@ CREATE TABLE IF NOT EXISTS schema_tables (
    id serial PRIMARY KEY,
    project_id INTEGER NOT NULL,
    table_name VARCHAR(30) NOT NULL,
-   db_schema_name VARCHAR(30) NOT NULL,
    created_at TIMESTAMP NOT NULL DEFAULT now(),
    CONSTRAINT fk_schema_tables_project_id FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
    CONSTRAINT unique_schema_table_project_id_table_name UNIQUE (project_id, table_name)
@@ -134,7 +133,7 @@ CREATE TABLE IF NOT EXISTS schema_columns (
    schema_table_id INTEGER NOT NULL,
    col_name VARCHAR(30) NOT NULL, --0
    col_type VARCHAR(20) NOT NULL, --1
-   default_value VARCHAR(30), --2
+   default_value VARCHAR(200), --2
    col_length INTEGER, --3
    is_primary_key BOOLEAN DEFAULT FALSE, --4
    is_auto_increment BOOLEAN DEFAULT FALSE, --5
