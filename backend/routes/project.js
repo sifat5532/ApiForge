@@ -4,7 +4,7 @@ const query = require('./../db/query');
 const router = express.Router();
 const { requireAuth } = require('./auth');
 const { table } = require('console');
-const {pool}=require('./../db/connection');
+const { pool } = require('./../db/connection');
 const PG_RESERVED_WORDS = new Set([
     'all', 'analyse', 'analyze', 'and', 'any', 'array', 'as', 'asc',
     'asymmetric', 'authorization', 'binary', 'both', 'case', 'cast',
@@ -23,6 +23,7 @@ const PG_RESERVED_WORDS = new Set([
     'true', 'union', 'unique', 'user', 'using', 'variadic', 'verbose',
     'when', 'where', 'window', 'with'
 ]);
+
 async function validateColumnDefault(pool, pgType, defaultValue) {
     try {
         await pool.query(`SELECT $1::${pgType}`, [defaultValue]);
@@ -32,21 +33,19 @@ async function validateColumnDefault(pool, pgType, defaultValue) {
         return { valid: false, error: err.message };
     }
 }
+
 router.post('/createProject', requireAuth, async (req, res) => {
     const { proj_name, description, enable_auth, tags } = req.body;
     const author_id = req.loggedInUser.id;
     if (!proj_name) {
         return res.status(400).json({ msg: 'Please fill in project name' });
-
     }
     if (!/^[A-Za-z0-9-_.]{1,30}$/.test(proj_name)) {
         return res.status(400).json({ msg: 'Please give project name within 30 characters using a-z,A-Z,0-9,-,_ or . only' });
-
     }
 
     if (description != null && description.length > 500) {
         return res.status(400).json({ msg: 'Please give project description within 500 characters' });
-
     }
     if (tags != null) {
         if (tags.length > 10) {
@@ -56,7 +55,6 @@ router.post('/createProject', requireAuth, async (req, res) => {
             const t = tags[i].trim().toLowerCase();
             if (t.length < 2 || t.length > 20) return res.status(400).json({ msg: 'Tag length must be between 2 to 20 characters' });
             if (!(t[0] >= 'a' && t[0] <= 'z')) return res.status(400).json({ msg: 'Tag name must start with an alphabet(a-z or A-Z)' });
-
         }
     }
     const result = await query('SELECT * FROM projects WHERE author_id=$1 AND name=$2', [author_id, proj_name]);
@@ -69,7 +67,7 @@ router.post('/createProject', requireAuth, async (req, res) => {
     const api_key_hashed = crypto.createHash('sha256').update(api_key).digest('hex');
 
     const proj = await query('INSERT INTO projects(author_id,name,description,api_key_hashed,api_key_prefix,auth_enabled) VALUES($1,$2,$3,$4,$5,$6) RETURNING id',
-        [author_id, proj_name, description, api_key_hashed, api_key_prefix, enable_auth]
+        [author_id, proj_name, description, api_key_hashed, api_key_prefix, (enable_auth === true ? true:false)]
     );
     const proj_id = proj.rows[0].id;
     if (tags != null) {
@@ -84,12 +82,11 @@ router.post('/createProject', requireAuth, async (req, res) => {
             else tag_id = tag_result.rows[0].id;
 
             await query('INSERT INTO project_tags(project_id,tag_id) VALUES ($1,$2)', [proj_id, tag_id]);
-
         }
     }
     res.status(201).json({ msg: 'Project created successfully', api_key: api_key });
-}
-)
+});
+
 router.post('/regenerateKey', requireAuth, async (req, res) => {
     const user_id = req.loggedInUser.id;
     const { proj_id } = req.body;
@@ -151,59 +148,7 @@ router.post('/proceedCollabInvitation', requireAuth, async (req, res) => {
     await query('UPDATE project_collaborators SET status=$1 ,created_at=CURRENT_TIMESTAMP WHERE project_id=$2 AND user_id=$3;', ['accepted', proj_id, req.loggedInUser.id]);
     return res.status(200).json({ msg: 'Successfully accepted the collaboration invitation' });
 });
-router.post('/likeTemplate', requireAuth, async (req, res) => {
-    const { template_id, isLike } = req.body;
-    const isExist = await query('SELECT * FROM projects WHERE id=$1 AND is_template=$2', [template_id, true]);
-    if (isExist.rows.length === 0) {
-        return res.status(404).json({ msg: "Template not found" });
-    }
-    const likeExist = await query('SELECT * FROM template_likes WHERE template_id=$1 AND user_id=$2', [template_id, req.loggedInUser.id]);
-    if (likeExist.rows.length > 0) {
-        if (isLike) return res.status(400).json({ msg: "You have already liked this tamplate" });
-        if (!isLike) {
-            await query('DELETE FROM template_likes WHERE template_id=$1 AND user_id=$2', [template_id, req.loggedInUser.id]);
-            return res.status(200).json({ msg: "Successfully cancel like in the template" });
-        }
-    }
-    if (!isLike) return res.status(400).json({ msg: "You have not yet like the template" });
-    await query('INSERT INTO template_likes(template_id,user_id) VALUES($1,$2)', [template_id, req.loggedInUser.id]);
-    res.status(200).json({ msg: "Successfully liked the template" });
-});
-router.post('/rateTemplate', requireAuth, async (req, res) => {
-    const { template_id, rating, review } = req.body;
-    const isExist = await query('SELECT * FROM template_clones WHERE user_id=$1 AND template_id=$2', [req.loggedInUser.id, template_id]);
-    if (isExist.rows.length === 0) {
-        return res.status(400).json({ msg: "You have to clone the template first to rate it" });
-    }
-    if (!(rating >= 1 && rating <= 5)) {
-        return res.status(400).json({ msg: "Rating should be integer between 1 to 5" });
-    }
-    if (review != null && review.length > 500) {
-        return res.status(400).json({ msg: "Please give review within 500 characters" });
-    }
-    const ratingExist = await query('SELECT * FROM template_ratings WHERE template_id=$1 AND user_id=$2', [template_id, req.loggedInUser.id]);
-    if (ratingExist.rows.length > 0) {
-        if (rating) await query('UPDATE  template_ratings SET rating=$1 , review_text=$2,created_at=CURRENT_TIMESTAMP WHERE template_id=$3 AND user_id=$4', [rating, review, template_id, req.loggedInUser.id]);
-        return res.status(200).json({ msg: "Successfully updated the rating" });
-    }
-    await query('INSERT INTO template_ratings(template_id,user_id,rating,review_text) VALUES($1,$2,$3,$4)', [template_id, req.loggedInUser.id, rating, review]);
-    res.status(200).json({ msg: "Successfully rated the template" });
-});
-router.post('/feedbackTemplate', requireAuth, async (req, res) => {
-    const { template_id, message } = req.body;
-    const isExist = await query('SELECT * FROM template_clones WHERE user_id=$1 AND template_id=$2', [req.loggedInUser.id, template_id]);
-    if (isExist.rows.length === 0) {
-        return res.status(400).json({ msg: "You have to clone the template first to give feedback" });
-    }
-    if (message.trim().length == 0) {
-        return res.status(400).json({ msg: "You can not send empty feedback" });
-    }
-    if (message.length > 500) {
-        return res.status(400).json({ msg: "Please give feedback within 500 characters" });
-    }
-    await query('INSERT INTO template_feedback(template_id,user_id,message) VALUES($1,$2,$3)', [template_id, req.loggedInUser.id, message]);
-    res.status(200).json({ msg: "Successfully gave feedback to the template" });
-});
+
 router.post('/removeCollaboration', requireAuth, async (req, res) => {
     const { user_id, proj_id } = req.body;
     const isExist = await query('SELECT * FROM project_collaborators WHERE project_id=$1 AND user_id=$2', [proj_id, user_id]);
@@ -213,7 +158,7 @@ router.post('/removeCollaboration', requireAuth, async (req, res) => {
     if (user_id == req.loggedInUser.id) {
         if (isExist.rows[0].status != 'accepted' && isExist.rows[0].status != 'pending') { return res.status(400).json({ msg: "You are not a collaborator of this project" }); }
         await query('UPDATE project_collaborators SET status=$1 WHERE project_id=$2 AND user_id=$3', ['rejected', proj_id, user_id]);
-        return res.status(200).json({ msg: "You are successfully removed from this project collaboration" });
+        return res.status(200).json({ msg: "You have successfully removed yourself from this project as a collaborator" });
 
     }
     const proj = await query('SELECT * FROM projects WHERE id=$1', [proj_id]);
@@ -222,7 +167,7 @@ router.post('/removeCollaboration', requireAuth, async (req, res) => {
     }
     if (isExist.rows[0].status != 'accepted' && isExist.rows[0].status != 'pending') { return res.status(400).json({ msg: "User is not a collaborator of this project" }); }
     await query('UPDATE project_collaborators SET status=$1 WHERE project_id=$2 AND user_id=$3', ['removed', proj_id, user_id]);
-    return res.status(200).json({ msg: "Successfully removed the collaborator from this project collaboration" });
+    return res.status(200).json({ msg: "Successfully removed the collaborator from this project as a collaborator" });
 
 });
 
@@ -250,8 +195,8 @@ router.post('/createTable', requireAuth, async (req, res) => {
     }
     const schema_name = isProj.rows[0].name + '_' + proj_id + '_' + isProj.rows[0].author_id;
     const result = await query('INSERT INTO schema_tables(project_id,table_name,db_schema_name) VALUES($1,$2,$3) RETURNING id', [proj_id, table_name, schema_name]);
-    const table_id=result.rows[0].id;
-    for (let i = 0;cols!=null && i < cols.length; i++) {
+    const table_id = result.rows[0].id;
+    for (let i = 0; cols != null && i < cols.length; i++) {
         //0 col_name,1 col_type,2 default,3(array) col_len,4 is_pk,5 is_auto_inc
         // 6 is_nullable,7 is_unique
         if (cols[i][0] == null || cols[i][0].trim().length < 1) {
@@ -265,7 +210,7 @@ router.post('/createTable', requireAuth, async (req, res) => {
         if (PG_RESERVED_WORDS.has(name.toLowerCase())) {
             return res.status(400).json({ msg: 'Your given column name is a postgreSQL reserved word' });
         }
-        console.log(cols[i][0],cols[i][1]);
+        console.log(cols[i][0], cols[i][1]);
         for (let j = 0; j < i; j++) {
             if (col_name == cols[j][0].trim().toLowerCase()) {
                 return res.status(400).json({ msg: 'Every column name should be unique in a table' });
@@ -289,37 +234,38 @@ router.post('/createTable', requireAuth, async (req, res) => {
                 return res.status(400).json({ msg: "Give valid precision and scale" });
             }
         }
-        const is_pk=cols[i][4]===true?true:false;
-        const is_auto_inc=cols[i][5]===true?true:false;
-        const is_nullable=cols[i][6]===true?true:false;
-        const is_unique=cols[i][7]===true?true:false;
-        if (is_auto_inc === true && (cols[i][1]!='INTEGER'||(is_pk!=true && is_unique!=true))){
-               return res.status(409).json({ msg: "Auto increment is not possible for this key" });
+        const is_pk = cols[i][4] === true ? true : false;
+        const is_auto_inc = cols[i][5] === true ? true : false;
+        const is_nullable = cols[i][6] === true ? true : false;
+        const is_unique = cols[i][7] === true ? true : false;
+        if (is_auto_inc === true && (cols[i][1] != 'INTEGER' || (is_pk != true && is_unique != true))) {
+            return res.status(409).json({ msg: "Auto increment is not possible for this key" });
         }
-        if (is_pk === true && (is_nullable!=false || is_unique!=true)){
-               return res.status(409).json({ msg: "Primary key must be not nullable and unique" });
+        if (is_pk === true && (is_nullable != false || is_unique != true)) {
+            return res.status(409).json({ msg: "Primary key must be not nullable and unique" });
         }
-        if(cols[i][1]!='VARCHAR'||cols[i][1]!='NUMARIC'){
-           await query('INSERT INTO schema_columns(schema_table_id,col_name,col_type,default_value,is_primary_key,is_auto_increment,is_nullable,is_unique) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
-            [table_id,cols[i][0],cols[i][1],cols[i][2],is_pk,is_auto_inc,is_nullable,is_unique]
-           );
+        if (cols[i][1] != 'VARCHAR' || cols[i][1] != 'NUMARIC') {
+            await query('INSERT INTO schema_columns(schema_table_id,col_name,col_type,default_value,is_primary_key,is_auto_increment,is_nullable,is_unique) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
+                [table_id, cols[i][0], cols[i][1], cols[i][2], is_pk, is_auto_inc, is_nullable, is_unique]
+            );
         }
-        else  if(cols[i][1]!='VARCHAR'){
-           await query('INSERT INTO schema_columns(schema_table_id,col_name,col_type,col_length,default_value,is_primary_key,is_auto_increment,is_nullable,is_unique) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',
-            [table_id,cols[i][0],cols[i][1],cols[i][2],cols[i][3],is_pk,is_auto_inc,is_nullable,is_unique]
-           );
+        else if (cols[i][1] != 'VARCHAR') {
+            await query('INSERT INTO schema_columns(schema_table_id,col_name,col_type,col_length,default_value,is_primary_key,is_auto_increment,is_nullable,is_unique) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+                [table_id, cols[i][0], cols[i][1], cols[i][2], cols[i][3], is_pk, is_auto_inc, is_nullable, is_unique]
+            );
         }
-         else  if(cols[i][1]!='NUMARIC'){//**there is no precision column in schema_columns table how can we store numaric data type precision?I temporarily just added  len */
-           await query('INSERT INTO schema_columns(schema_table_id,col_name,col_type,col_length,default_value,is_primary_key,is_auto_increment,is_nullable,is_unique) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',
-            [table_id,cols[i][0],cols[i][1],cols[i][2],cols[i][3][0],is_pk,is_auto_inc,is_nullable,is_unique]
-           );
+        else if (cols[i][1] != 'NUMARIC') {//**there is no precision column in schema_columns table how can we store numaric data type precision?I temporarily just added  len */
+            await query('INSERT INTO schema_columns(schema_table_id,col_name,col_type,col_length,default_value,is_primary_key,is_auto_increment,is_nullable,is_unique) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+                [table_id, cols[i][0], cols[i][1], cols[i][2], cols[i][3][0], is_pk, is_auto_inc, is_nullable, is_unique]
+            );
         }
-     }
+    }
     return res.status(200).json({ msg: 'Table successfully created' });
 
 
-})
-router.post('/addcorsOrigin', requireAuth, async (req, res) => {
+});
+
+router.post('/addCorsOrigin', requireAuth, async (req, res) => {
     const { proj_id, origin } = req.body;
     const isExist = await query('SELECT * FROM projects WHERE id=$1 AND author_id=$2', [proj_id, req.loggedInUser.id]);
     if (isExist.rows.length === 0) {
@@ -334,7 +280,8 @@ router.post('/addcorsOrigin', requireAuth, async (req, res) => {
     return res.status(200).json({ msg: "Successfully added cors origin" });
 
 });
-router.post('/removecorsOrigin', requireAuth, async (req, res) => {
+
+router.post('/removeCorsOrigin', requireAuth, async (req, res) => {
     const { proj_id, origin } = req.body;
     const isExist = await query('SELECT * FROM projects WHERE id=$1 AND author_id=$2', [proj_id, req.loggedInUser.id]);
     if (isExist.rows.length === 0) {
