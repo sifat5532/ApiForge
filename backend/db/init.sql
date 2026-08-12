@@ -4,7 +4,6 @@ CREATE TABLE IF NOT EXISTS users (
    email VARCHAR(40) UNIQUE CONSTRAINT user_email_check CHECK (email LIKE '%@%'),
    username VARCHAR(40) NOT NULL UNIQUE,
    password_hash VARCHAR(100) NOT NULL,
-   dp VARCHAR(100),
    settings VARCHAR(30) NOT NULL DEFAULT 'Default goes here', -- Note: Settings will be JSONB
    joined_at TIMESTAMP(0) DEFAULT now()
 );
@@ -59,7 +58,8 @@ CREATE TABLE IF NOT EXISTS projects (
    originates_from_id INTEGER,
    CONSTRAINT fk_project_author FOREIGN KEY (author_id) REFERENCES users (id) ON DELETE CASCADE,
    CONSTRAINT fk_project_cloned_from FOREIGN KEY (cloned_from_id) REFERENCES projects (id) ON DELETE SET NULL,
-   CONSTRAINT fk_template_originates_from FOREIGN KEY (originates_from_id) REFERENCES projects (id) ON DELETE SET NULL
+   CONSTRAINT fk_template_originates_from FOREIGN KEY (originates_from_id) REFERENCES projects (id) ON DELETE SET NULL,
+   CONSTRAINT chk_template_clone CHECK (NOT (is_template AND is_clone))
 );
 
 CREATE INDEX IF NOT EXISTS idx_project_author_id_name ON projects (author_id, name);
@@ -91,7 +91,7 @@ CREATE INDEX IF NOT EXISTS idx_project_tags_tag_id ON project_tags (tag_id);
 CREATE TABLE IF NOT EXISTS project_logs (
    id serial PRIMARY KEY,
    project_id INTEGER NOT NULL,
-   changed_by INTEGER NOT NULL,
+   changed_by INTEGER,
    created_at TIMESTAMP NOT NULL DEFAULT now(),
    entity_type VARCHAR(30) NOT NULL,
    entity_id INTEGER NOT NULL,
@@ -160,7 +160,7 @@ CREATE TABLE IF NOT EXISTS api_definitions (
    id serial PRIMARY KEY,
    name VARCHAR(30) NOT NULL,
    project_id INTEGER NOT NULL,
-   METHOD VARCHAR(15) NOT NULL,
+   method VARCHAR(15) NOT NULL,
    query_definition JSONB NOT NULL,
    generated_sql TEXT NOT NULL,
    parameters TEXT,
@@ -211,7 +211,8 @@ CREATE TABLE IF NOT EXISTS template_clones (
    cloned_project_id INTEGER,
    created_at TIMESTAMP NOT NULL DEFAULT now(),
    CONSTRAINT fk_template_clones_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-   CONSTRAINT fk_template_clones_template_id FOREIGN KEY (template_id) REFERENCES projects (id) ON DELETE CASCADE
+   CONSTRAINT fk_template_clones_template_id FOREIGN KEY (template_id) REFERENCES projects (id) ON DELETE CASCADE,
+   CONSTRAINT fk_template_clones_cloned_project_id FOREIGN KEY (cloned_project_id) REFERENCES projects (id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS template_feedback (
@@ -233,6 +234,7 @@ CREATE TABLE IF NOT EXISTS template_ratings (
    rating INTEGER NOT NULL CONSTRAINT rating_range_check CHECK (rating BETWEEN 1 AND 5),
    review_text TEXT,
    created_at TIMESTAMP NOT NULL DEFAULT now(),
+   updated_at TIMESTAMP,
    PRIMARY KEY (user_id, template_id),
    CONSTRAINT fk_template_ratings_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
    CONSTRAINT fk_template_ratings_template_id FOREIGN KEY (template_id) REFERENCES projects (id) ON DELETE CASCADE
