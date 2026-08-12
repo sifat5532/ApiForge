@@ -44,6 +44,7 @@ CREATE INDEX IF NOT EXISTS idx_notifications_entity_sorting ON notifications (re
 CREATE TABLE IF NOT EXISTS projects (
    id serial PRIMARY KEY,
    author_id INTEGER NOT NULL,
+   subscription_status NOT NULL DEFAULT 'active' CONSTRAINT project_subscription_status_check  VARCHAR(20)   CHECK(subscription_status IN('active','locked')),
    name VARCHAR(30) NOT NULL,
    description VARCHAR(500),
    api_key_hashed VARCHAR(100) NOT NULL,
@@ -124,6 +125,7 @@ CREATE TABLE IF NOT EXISTS schema_tables (
    id serial PRIMARY KEY,
    project_id INTEGER NOT NULL,
    table_name VARCHAR(30) NOT NULL CHECK(table_name ~ '^[a-z0-9_]{1,30}$'),
+   subscription_status  NOT NULL DEFAULT 'active' CONSTRAINT table_subscription_status_check  VARCHAR(20)   CHECK(subscription_status IN('active','locked')),
    created_at TIMESTAMP NOT NULL DEFAULT now(),
    CONSTRAINT fk_schema_tables_project_id FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
    CONSTRAINT unique_schema_table_project_id_table_name UNIQUE (project_id, table_name)
@@ -134,6 +136,7 @@ CREATE TABLE IF NOT EXISTS schema_columns (
    schema_table_id INTEGER NOT NULL,
    col_name VARCHAR(30) NOT NULL CHECK(col_name ~ '^[a-z0-9_]{1,30}$'), 
    col_type VARCHAR(20) NOT NULL CHECK(col_type IN('INTEGER' , 'TEXT' , 'NUMERIC' ,'BOOLEAN' , 'VARCHAR' , 'DATE', 'TIMESTAMP')), 
+   subscription_status  NOT NULL DEFAULT 'active'  CONSTRAINT col_subscription_status_check  VARCHAR(20)   CHECK(subscription_status IN('active','locked')),
    default_value VARCHAR(200), 
    col_length INTEGER, 
    is_primary_key BOOLEAN DEFAULT FALSE, 
@@ -164,6 +167,7 @@ CREATE TABLE IF NOT EXISTS api_definitions (
    id serial PRIMARY KEY,
    name VARCHAR(30) NOT NULL,
    project_id INTEGER NOT NULL,
+   subscription_status  NOT NULL DEFAULT 'active' CONSTRAINT api_subscription_status_check  VARCHAR(20)   CHECK(subscription_status IN('active','locked')),
    method VARCHAR(15) NOT NULL  CHECK(method IN('GET','POST','PUT','DELETE')),
    query_definition JSONB NOT NULL,
    generated_sql TEXT NOT NULL,
