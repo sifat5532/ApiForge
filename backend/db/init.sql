@@ -1,10 +1,10 @@
 CREATE TABLE IF NOT EXISTS users (
    id serial PRIMARY KEY,
    name VARCHAR(30),
-   email VARCHAR(40) UNIQUE CONSTRAINT user_email_check CHECK (email LIKE '%@%'),
+   email VARCHAR(40) UNIQUE CONSTRAINT user_email_check CHECK (email LIKE '%@%' AND STRPOS(email,' ')=0),
    username VARCHAR(40) NOT NULL UNIQUE,
    password_hash VARCHAR(100) NOT NULL,
-   settings VARCHAR(30) NOT NULL DEFAULT 'Default goes here', -- Note: Settings will be JSONB
+   settings JSONB  DEFAULT '{}'::jsonb, -- Note: Settings will be JSONB
    joined_at TIMESTAMP(0) DEFAULT now()
 );
 
@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS user_sessions (
    CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES Users (id) ON DELETE CASCADE,
    CONSTRAINT uq_session_token_hashed UNIQUE (session_token_hashed)
 );
+CREATE INDEX IF NOT EXISTS user_session_user_id ON user_sessions (user_id);
 
 CREATE TABLE IF NOT EXISTS notifications (
    id serial PRIMARY KEY,
@@ -50,7 +51,7 @@ CREATE TABLE IF NOT EXISTS projects (
    auth_enabled BOOLEAN DEFAULT TRUE,
    like_count INTEGER DEFAULT 0,
    total_review_given INTEGER DEFAULT 0,
-   avg_rating REAL DEFAULT 0,
+   avg_rating REAL DEFAULT 0 CHECK(avg_rating BETWEEN 0 AND 5),
    is_template BOOLEAN DEFAULT FALSE,
    is_clone BOOLEAN DEFAULT FALSE,
    created_at TIMESTAMP(0) DEFAULT now(),
@@ -110,7 +111,7 @@ CREATE TABLE IF NOT EXISTS project_collaborators (
    project_id INTEGER NOT NULL,
    user_id INTEGER NOT NULL,
    created_at TIMESTAMP NOT NULL DEFAULT now(),
-   role VARCHAR(15) NOT NULL,
+   role VARCHAR(15) NOT NULL check(role IN('editor')),
    status VARCHAR(15) NOT NULL DEFAULT 'pending',
    CONSTRAINT fk_collaborates_project FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
    CONSTRAINT fk_collaborates_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
@@ -122,7 +123,7 @@ CREATE INDEX IF NOT EXISTS idx_collaborators_user_id ON project_collaborators (u
 CREATE TABLE IF NOT EXISTS schema_tables (
    id serial PRIMARY KEY,
    project_id INTEGER NOT NULL,
-   table_name VARCHAR(30) NOT NULL,
+   table_name VARCHAR(30) NOT NULL CHECK(table_name ~ '^[a-z0-9_]{1,30}$'),
    created_at TIMESTAMP NOT NULL DEFAULT now(),
    CONSTRAINT fk_schema_tables_project_id FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
    CONSTRAINT unique_schema_table_project_id_table_name UNIQUE (project_id, table_name)
@@ -131,17 +132,20 @@ CREATE TABLE IF NOT EXISTS schema_tables (
 CREATE TABLE IF NOT EXISTS schema_columns (
    id serial PRIMARY KEY,
    schema_table_id INTEGER NOT NULL,
-   col_name VARCHAR(30) NOT NULL, --0
-   col_type VARCHAR(20) NOT NULL, --1
-   default_value VARCHAR(200), --2
-   col_length INTEGER, --3
-   is_primary_key BOOLEAN DEFAULT FALSE, --4
-   is_auto_increment BOOLEAN DEFAULT FALSE, --5
-   is_nullable BOOLEAN DEFAULT TRUE, --6
-   is_unique BOOLEAN DEFAULT FALSE, --7
+   col_name VARCHAR(30) NOT NULL CHECK(col_name ~ '^[a-z0-9_]{1,30}$'), 
+   col_type VARCHAR(20) NOT NULL CHECK(col_type IN('INTEGER' , 'TEXT' , 'NUMERIC' ,'BOOLEAN' , 'VARCHAR' , 'DATE', 'TIMESTAMP')), 
+   default_value VARCHAR(200), 
+   col_length INTEGER, 
+   is_primary_key BOOLEAN DEFAULT FALSE, 
+   is_auto_increment BOOLEAN DEFAULT FALSE, 
+   is_nullable BOOLEAN DEFAULT TRUE, 
+   is_unique BOOLEAN DEFAULT FALSE, 
    created_at TIMESTAMP NOT NULL DEFAULT now(),
    CONSTRAINT fk_schema_columns_schema_table_id FOREIGN KEY (schema_table_id) REFERENCES schema_tables (id) ON DELETE CASCADE,
-   CONSTRAINT unique_schema_column_table_id_col_name UNIQUE (schema_table_id, col_name)
+   CONSTRAINT unique_schema_column_table_id_col_name UNIQUE (schema_table_id, col_name),
+   CONSTRAINT chk_if_primary_key CHECK (NOT is_primary_key OR (NOT is_nullable AND is_unique)),
+   CONSTRAINT chk_if_auto_increment CHECK (NOT is_auto_increment OR (col_type='INTEGER' AND is_unique))
+
 );
 
 CREATE TABLE IF NOT EXISTS schema_foreign_keys (
@@ -149,8 +153,8 @@ CREATE TABLE IF NOT EXISTS schema_foreign_keys (
    parent_col_id INTEGER NOT NULL,
    fk_name VARCHAR(30) NOT NULL,
    db_schema_name VARCHAR(30) NOT NULL,
-   on_delete VARCHAR(20),
-   on_update VARCHAR(20),
+   on_delete VARCHAR(20)  CHECK(on_delete IN('CASCADE','SET NULL','RESTRICT')),
+   on_update VARCHAR(20)  CHECK(on_update IN('CASCADE','SET NULL','RESTRICT')),
    created_at TIMESTAMP NOT NULL DEFAULT now(),
    CONSTRAINT fk_schema_fks_child FOREIGN KEY (child_col_id) REFERENCES schema_columns (id) ON DELETE CASCADE,
    CONSTRAINT fk_schema_fks_parent FOREIGN KEY (parent_col_id) REFERENCES schema_columns (id) ON DELETE CASCADE
@@ -160,12 +164,12 @@ CREATE TABLE IF NOT EXISTS api_definitions (
    id serial PRIMARY KEY,
    name VARCHAR(30) NOT NULL,
    project_id INTEGER NOT NULL,
-   method VARCHAR(15) NOT NULL,
+   method VARCHAR(15) NOT NULL  CHECK(method IN('GET','POST','PUT','DELETE')),
    query_definition JSONB NOT NULL,
    generated_sql TEXT NOT NULL,
    parameters TEXT,
    is_active BOOLEAN DEFAULT TRUE,
-   rate_limit_per_day INTEGER NOT NULL,
+   rate_limit_per_day INTEGER NOT NULL CHECK(rate_limit_per_day>0),
    updating_parameters TEXT,
    created_at TIMESTAMP NOT NULL DEFAULT now(),
    CONSTRAINT fk_api_definitions_project_id FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
@@ -179,10 +183,12 @@ CREATE TABLE IF NOT EXISTS api_logs (
    api_definition_id INTEGER NOT NULL,
    ip_address INET NOT NULL,
    status_code INTEGER NOT NULL,
-   response_time_ms INTEGER NOT NULL,
+   response_time_ms INTEGER NOT NULL CHECK(response_time_ms>=0),
    created_at TIMESTAMP NOT NULL DEFAULT now(),
    CONSTRAINT fk_api_logs_api_definitions FOREIGN KEY (api_definition_id) REFERENCES api_definitions (id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_api_logs_api_definition_id ON api_logs (api_definition_id);
 
 CREATE TABLE IF NOT EXISTS api_table_dependencies (
    api_definition_id INTEGER NOT NULL,
