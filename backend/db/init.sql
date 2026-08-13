@@ -44,7 +44,7 @@ CREATE INDEX IF NOT EXISTS idx_notifications_entity_sorting ON notifications (re
 CREATE TABLE IF NOT EXISTS projects (
    id serial PRIMARY KEY,
    author_id INTEGER NOT NULL,
-   subscription_status NOT NULL DEFAULT 'active' CONSTRAINT project_subscription_status_check  VARCHAR(20)   CHECK(subscription_status IN('active','locked')),
+   subscription_status VARCHAR(20) NOT NULL DEFAULT 'active' CONSTRAINT project_subscription_status_check  VARCHAR(20)   CHECK(subscription_status IN('active','locked')),
    name VARCHAR(30) NOT NULL,
    description VARCHAR(500),
    api_key_hashed VARCHAR(100) NOT NULL,
@@ -125,7 +125,6 @@ CREATE TABLE IF NOT EXISTS schema_tables (
    id serial PRIMARY KEY,
    project_id INTEGER NOT NULL,
    table_name VARCHAR(30) NOT NULL CHECK(table_name ~ '^[a-z0-9_]{1,30}$'),
-   subscription_status  NOT NULL DEFAULT 'active' CONSTRAINT table_subscription_status_check  VARCHAR(20)   CHECK(subscription_status IN('active','locked')),
    created_at TIMESTAMP NOT NULL DEFAULT now(),
    CONSTRAINT fk_schema_tables_project_id FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
    CONSTRAINT unique_schema_table_project_id_table_name UNIQUE (project_id, table_name)
@@ -136,7 +135,6 @@ CREATE TABLE IF NOT EXISTS schema_columns (
    schema_table_id INTEGER NOT NULL,
    col_name VARCHAR(30) NOT NULL CHECK(col_name ~ '^[a-z0-9_]{1,30}$'), 
    col_type VARCHAR(20) NOT NULL CHECK(col_type IN('INTEGER' , 'TEXT' , 'NUMERIC' ,'BOOLEAN' , 'VARCHAR' , 'DATE', 'TIMESTAMP')), 
-   subscription_status  NOT NULL DEFAULT 'active'  CONSTRAINT col_subscription_status_check  VARCHAR(20)   CHECK(subscription_status IN('active','locked')),
    default_value VARCHAR(200), 
    col_length INTEGER, 
    is_primary_key BOOLEAN DEFAULT FALSE, 
@@ -167,7 +165,6 @@ CREATE TABLE IF NOT EXISTS api_definitions (
    id serial PRIMARY KEY,
    name VARCHAR(30) NOT NULL,
    project_id INTEGER NOT NULL,
-   subscription_status  NOT NULL DEFAULT 'active' CONSTRAINT api_subscription_status_check  VARCHAR(20)   CHECK(subscription_status IN('active','locked')),
    method VARCHAR(15) NOT NULL  CHECK(method IN('GET','POST','PUT','DELETE')),
    query_definition JSONB NOT NULL,
    generated_sql TEXT NOT NULL,
@@ -258,7 +255,55 @@ CREATE TABLE IF NOT EXISTS template_likes (
    CONSTRAINT fk_template_likes_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
    CONSTRAINT fk_template_likes_template_id FOREIGN KEY (template_id) REFERENCES projects (id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS plans (
+   plan_id serial PRIMARY KEY,
+   name VARCHAR(15)  NOT NULL UNIQUE,
+   cost_per_month INTEGER NOT NULL  DEFAULT 0,
+   project_count INTEGER ,
+   table_per_project INTEGER,
+   api_per_project INTEGER ,
+   api_call_per_day INTEGER ,
+   CONSTRAINT chk_plan_name CHECK (name IN('free','lite','pro')),
+   CONSTRAINT chk_plan_cost_per_month CHECK (cost_per_month>=0),
+   CONSTRAINT chk_plan_project_count CHECK (project_count>0 OR project_count IS NULL),
+   CONSTRAINT chk_plan_table_count CHECK (table_per_project>0 OR table_per_project IS NULL),
+   CONSTRAINT chk_plan_api_per_project CHECK (api_per_project>0 OR api_per_project IS NULL),
+   CONSTRAINT chk_plan_api_call_per_day CHECK (api_call_per_day>0 OR api_call_per_day IS NULL),
+   CONSTRAINT chk_plan_validation CHECK (((project_count IS NULL OR table_per_project IS NULL OR api_per_project IS NULL OR api_call_per_day IS NULL) AND plan_id=3)
+                                         OR(table_per_project IS NOT NULL OR plan_id=2 ))
 
+);
+CREATE TABLE IF NOT EXISTS subscriptions (
+   subscription_id serial PRIMARY KEY,
+   user_id INTEGER  NOT NULL,
+   plan_id INTEGER NOT NULL,
+   start_date TIMESTAMP NOT NULL DEFAULT now(),
+   end_date TIMESTAMP ,
+   status VARCHAR(15) NOT NULL DEFAULT 'active',
+   CONSTRAINT fk_subscriptions_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+   CONSTRAINT fk_subscriptions_plan_id FOREIGN KEY (plan_id) REFERENCES plans (plan_id) ON DELETE RESTRICT,
+   CONSTRAINT chk_subscription_duration CHECK (end_date>start_date),
+   CONSTRAINT chk_subscriptions_status CHECK (status IN('active','inactive'))
+);
+CREATE UNIQUE INDEX one_active_subscription_per_user ON subscriptions(user_id) WHERE status='active';
+CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
+
+CREATE TABLE IF NOT EXISTS subscription_log (
+   log_id serial PRIMARY KEY,
+   subscription_id INTEGER NOT NULL,
+   trxn_id VARCHAR(30)  UNIQUE,
+   payment_method VARCHAR(20),
+   payment_status VARCHAR(15) NOT NULL DEFAULT 'free' ,
+   amount NUMERIC(20,2) NOT NULL DEFAULT 0,
+   monthly_count INTEGER ,
+   created_at TIMESTAMP NOT NULL DEFAULT now(),
+   CONSTRAINT fk_subscription_log_subscription_id FOREIGN KEY (subscription_id) REFERENCES subscriptions (subscription_id) ON DELETE CASCADE,
+   CONSTRAINT chk_subscription_log_amount CHECK (amount>=0),
+   CONSTRAINT chk_subscription_log_payment_status CHECK (payment_status IN('free','paid','failed')),
+   CONSTRAINT chk_subscription_log_monthly_count CHECK (monthly_count>0 OR (monthly_count IS NULL AND payment_status='free'))
+
+);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_log_subscription_id ON subscriptions(subscription_id);
 -- Trigger Function and Trigger to automatically update like count of template
 CREATE OR REPLACE FUNCTION tgfunc_update_like_count () RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
