@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS projects (
    CONSTRAINT fk_project_author FOREIGN KEY (author_id) REFERENCES users (id) ON DELETE CASCADE,
    CONSTRAINT fk_project_cloned_from FOREIGN KEY (cloned_from_id) REFERENCES projects (id) ON DELETE SET NULL,
    CONSTRAINT fk_template_originates_from FOREIGN KEY (originates_from_id) REFERENCES projects (id) ON DELETE SET NULL,
-   CONSTRAINT chk_template_clone CHECK (NOT (is_template AND is_clone)),
+   CONSTRAINT chk_template_clone CHECK (NOT (is_template AND is_clone))
 );
 
 CREATE INDEX IF NOT EXISTS idx_project_author_id_name ON projects (author_id, name);
