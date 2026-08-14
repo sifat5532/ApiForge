@@ -39,8 +39,8 @@ const validateName = (req, res, name, instanceType, id) => {
         res.status(400).json({ msg: `${instanceType} name should start with letters(a to z) or _`, id });
         return { isResSent: true };
     }
-    if (!/^[a-z0-9_]{1,30}$/.test(name)) {
-        res.status(400).json({ msg: `Please give ${instanceType} name within 30 characters using a-z,A-Z,0-9,-,_ or . only`, id });
+    if (!/^[a-z_][a-z0-9_]{0,29}$/.test(name)) {
+        res.status(400).json({ msg: `Please give ${instanceType} name within 30 characters using a-z, 0-9 or _ only`, id });
         return { isResSent: true };
     }
     if (PG_RESERVED_WORDS.has(name.toLowerCase())) {
@@ -67,8 +67,8 @@ router.post('/createProject', requireAuth, async (req, res) => {
     if (!proj_name) {
         return res.status(400).json({ msg: 'Please fill in project name' });
     }
-    if (!/^[A-Za-z0-9-_.]{1,30}$/.test(proj_name)) {
-        return res.status(400).json({ msg: 'Please give project name within 30 characters using a-z,A-Z,0-9,-,_ or . only' });
+    if (!/^[a-z][a-z0-9_]{0,29}$/.test(proj_name)) {
+        return res.status(400).json({ msg: 'Please give project name within 30 characters using a-z, 0-9 or _ only and first letter within a-z' });
     }
 
     if (description != null && description.length > 500) {

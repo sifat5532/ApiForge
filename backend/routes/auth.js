@@ -51,7 +51,7 @@ const requireAuth = async (req, res, next) => {
     }
 };
 
-router.post('/register', requireGuest, async (req, res) => {
+router.post('/register', requireGuest, async (req, res) => { // need to check whether the format of username, email etc are correct
     const { name, email, username, password, confirm_password } = req.body;
     if (!name || !email || !username || !password || !confirm_password) {
         return res.status(400).json({ msg: 'Please fill in all fields' });
