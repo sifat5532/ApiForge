@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS projects (
    id serial PRIMARY KEY,
    author_id INTEGER NOT NULL,
    subscription_status VARCHAR(20) NOT NULL DEFAULT 'active' CONSTRAINT chk_project_subscription_status CHECK(subscription_status IN('active','locked')),
-   name VARCHAR(30) NOT NULL CONSTRAINT chk_project_name CHECK(name ~ '^[a-z][a-z0-9_]{0,29}$'),
+   name VARCHAR(30) NOT NULL CONSTRAINT chk_project_name CHECK(name ~ '^[A-Za-z][a-zA-Z0-9_]{0,29}$'),
    description VARCHAR(500),
    api_key_hashed VARCHAR(100) NOT NULL,
    api_key_prefix VARCHAR(30) NOT NULL,
@@ -150,9 +150,8 @@ CREATE TABLE IF NOT EXISTS schema_foreign_keys (
    child_col_id INTEGER PRIMARY KEY,
    parent_col_id INTEGER NOT NULL,
    fk_name VARCHAR(30) NOT NULL CONSTRAINT chk_fk_name CHECK(fk_name ~ '^[a-z_][a-z0-9_]{0,29}$'),
-   db_schema_name VARCHAR(30) NOT NULL,
    on_delete VARCHAR(20) CONSTRAINT chk_fk_on_delete CHECK(UPPER(on_delete) IN('CASCADE','SET NULL','RESTRICT')),
-   on_update VARCHAR(20) CONSTRAINT chk_fk_on_update CHECK(UPPER(on_update) IN('CASCADE','SET NULL','RESTRICT')),
+   on_update VARCHAR(20) CONSTRAINT chk_fk_on_update CHECK(UPPER(on_update) IN('CASCADE','SET NULL','RESTRICT','NO ACTION')),
    created_at TIMESTAMP(0) NOT NULL DEFAULT now(),
    CONSTRAINT fk_schema_fks_child FOREIGN KEY (child_col_id) REFERENCES schema_columns (id) ON DELETE CASCADE,
    CONSTRAINT fk_schema_fks_parent FOREIGN KEY (parent_col_id) REFERENCES schema_columns (id) ON DELETE CASCADE
@@ -260,13 +259,12 @@ CREATE TABLE IF NOT EXISTS plans (
    table_per_project INTEGER,
    api_per_project INTEGER ,
    api_call_per_day INTEGER ,
-   CONSTRAINT chk_plan_name CHECK (name IN('free','lite','pro')),
    CONSTRAINT chk_plan_cost_per_month CHECK (cost_per_month >= 0),
    CONSTRAINT chk_plan_project_count CHECK (project_count > 0 OR project_count IS NULL),
    CONSTRAINT chk_plan_table_count CHECK (table_per_project > 0 OR table_per_project IS NULL),
    CONSTRAINT chk_plan_api_per_project CHECK (api_per_project > 0 OR api_per_project IS NULL),
    CONSTRAINT chk_plan_api_call_per_day CHECK (api_call_per_day > 0 OR api_call_per_day IS NULL),
-   CONSTRAINT chk_plan_validation CHECK ((name = 'pro' OR (project_count IS NOT NULL AND table_per_project IS NOT NULL AND api_per_project IS NOT NULL AND api_call_per_day IS NOT NULL)) OR (name != 'lite' OR table_per_project IS NULL))
+   
 );
 CREATE TABLE IF NOT EXISTS subscriptions (
    subscription_id serial PRIMARY KEY,
@@ -294,7 +292,6 @@ CREATE TABLE IF NOT EXISTS subscription_log (
    created_at TIMESTAMP(0) NOT NULL DEFAULT now(),
    CONSTRAINT fk_subscription_log_subscription_id FOREIGN KEY (subscription_id) REFERENCES subscriptions (subscription_id) ON DELETE CASCADE,
    CONSTRAINT chk_subscription_log_amount CHECK (amount >= 0),
-   CONSTRAINT chk_subscription_log_payment_status CHECK (payment_status IN('free', 'paid', 'failed')),
    CONSTRAINT chk_subscription_log_month_count CHECK ((payment_status = 'free' AND month_count IS NULL) OR (payment_status <> 'free' AND month_count > 0))
 );
 CREATE INDEX IF NOT EXISTS idx_subscriptions_log_subscription_id ON subscriptions(subscription_id);
