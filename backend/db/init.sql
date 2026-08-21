@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS users (
    id serial PRIMARY KEY,
    name VARCHAR(50) NOT NULL,
-   email VARCHAR(50) NOT NULL UNIQUE  chk_user_email CHECK ( email ~* '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'),
+   email VARCHAR(50) NOT NULL UNIQUE CONSTRAINT chk_user_email CHECK ( email ~* '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'),
    username VARCHAR(50) NOT NULL UNIQUE CONSTRAINT chk_user_username CHECK(username ~ '^[a-z][a-z0-9_]{0,49}$'),
    password_hash VARCHAR(100) NOT NULL,
    settings JSONB  DEFAULT '{}'::jsonb,
