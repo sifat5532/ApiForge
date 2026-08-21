@@ -62,14 +62,14 @@ const requireProjectAuthor = async (req, res, next) => {
     next();
 };
 //it also chk is if the proj is not a template 
-const requireProjectAccess= async (req, res, next) => {
+const requireProjectAccess = async (req, res, next) => {
     const { proj_id } = req.body;
     if (!proj_id) return res.status(400).json({ msg: "You should insert a project id with your request" });
 
-    const result = await query('SELECT * FROM projects WHERE id=$1 AND author_id=$2  AND is_template=$3', [proj_id, req.loggedInUser.id,false]);
+    const result = await query('SELECT * FROM projects WHERE id=$1 AND author_id=$2  AND is_template=$3', [proj_id, req.loggedInUser.id, false]);
 
     const isCollab = await query('SELECT * FROM project_collaborators WHERE project_id=$1 AND user_id=$2 AND role=$3 AND status=$4', [proj_id, req.loggedInUser.id, 'editor', 'accepted']);
-    if (isCollab.rows.length===0 && result.rows.length === 0  ) {
+    if (isCollab.rows.length === 0 && result.rows.length === 0) {
         return res.status(403).json({ msg: "You don't have access to make any change to this project" });
     }
     next();
@@ -139,7 +139,7 @@ router.post('/regenerateKey', requireAuth, requireProjectAuthor, async (req, res
 
 });
 
-router.post('/collabInvitation', requireAuth,requireProjectAccess, async (req, res) => {
+router.post('/collabInvitation', requireAuth, requireProjectAccess, async (req, res) => {
     const { proj_id, user_id } = req.body;
     if (user_id == req.loggedInUser.id) {
         return res.status(400).json({ msg: "You can't invite yourself as a collaborator" });
@@ -202,13 +202,13 @@ router.post('/removeCollaboration', requireAuth, async (req, res) => {
 
 });
 
-router.post('/createTable', requireAuth,requireProjectAccess, async (req, res) => {   //requreAccesProject
+router.post('/createTable', requireAuth, requireProjectAccess, async (req, res) => {   //requreAccesProject
     // transaction should be added here later
     const { proj_id, name, cols } = req.body;
     if (!proj_id || !name || !cols) {
         return res.status(400).json({ msg: "You should insert all necessary information" });
     }
-   
+
     if (name == null || name.trim().length < 1) {
         return res.status(400).json({ msg: "Please fill the table name" });
     }
@@ -323,43 +323,43 @@ router.post('/removeCorsOrigin', requireAuth, requireProjectAuthor, async (req, 
     return res.status(200).json({ msg: "Successfully removed cors origin" });
 
 });
-router.post('/addForeignKey',requireAuth,requireProjectAccess,async(req,res)=>{
-    const {proj_id,schema_table_id,child_col_id,parent_col_id,fk_constraint_name,on_dlt,on_upd}=req.body;
+router.post('/addForeignKey', requireAuth, requireProjectAccess, async (req, res) => {
+    const { proj_id, schema_table_id, child_col_id, parent_col_id, fk_constraint_name, on_dlt, on_upd } = req.body;
     const fk_name = fk_constraint_name.trim().toLowerCase();
-    if (validateName(req, res, fk_name, 'fk_name', 'NULL').isResSent) return; 
-    const on_delete=on_dlt==null?null:on_dlt.toUpperCase();
-    const on_update=on_upd==null?'NO ACTION':on_upd.toUpperCase();
-    if(on_delete==null || (on_delete!='CASCADE'&& on_delete!='SET NULL' && on_delete!='RESTRICT')){
-        return res.status(400).json({msg:"on_delete foreign key action must be either 'CASCADE','SET NULL' or 'RESTRICT'"});
+    if (validateName(req, res, fk_name, 'fk_name', 'NULL').isResSent) return;
+    const on_delete = on_dlt == null ? 'NO ACTION' : on_dlt.toUpperCase();
+    const on_update = on_upd == null ? 'NO ACTION' : on_upd.toUpperCase();
+    if (on_delete == null || (on_delete != 'CASCADE' && on_delete != 'SET NULL' && on_delete != 'RESTRICT' && on_delete != 'NO ACTION')) {
+        return res.status(400).json({ msg: "on_delete foreign key action must be either 'CASCADE', 'SET NULL' , 'RESTRICT' or 'NO ACTION'" });
     }
-    if(on_update!='CASCADE'&& on_update!='SET NULL' && on_update!='RESTRICT'  && on_update!='NO ACTION'){
-        return res.status(400).json({msg:"on_update foreign key action must be either 'CASCADE','SET NULL' or 'RESTRICT'"});
+    if (on_update != 'CASCADE' && on_update != 'SET NULL' && on_update != 'RESTRICT' && on_update != 'NO ACTION') {
+        return res.status(400).json({ msg: "on_update foreign key action must be either 'CASCADE', 'SET NULL' 'NO ACTION' or 'RESTRICT'" });
     }
-    
-    const isExist=await query('SELECT C.col_type AS child_col_type,C.is_nullable AS child_nullable,P.col_type AS parent_col_type FROM schema_columns C JOIN schema_columns P ON true JOIN schema_tables Ct on Ct.id=C.schema_table_id JOIN schema_tables Pt on Pt.id=P.schema_table_id JOIN projects Pj ON Pj.id=CT.project_id AND Pj.id=PT.project_id where C.id=$1 AND P.id=$2 AND ( P.is_primary_key=$3 OR P.is_unique=$4 )AND CT.id=$5 AND pj.id=$6',[child_col_id,parent_col_id,true,true,schema_table_id,proj_id]);
-    if(isExist.rows.length<1){
+
+    const isExist = await query('SELECT C.col_type AS child_col_type, C.is_nullable AS child_nullable, P.col_type AS parent_col_type FROM schema_columns C JOIN schema_columns P ON true JOIN schema_tables Ct on Ct.id=C.schema_table_id JOIN schema_tables Pt on Pt.id=P.schema_table_id JOIN projects Pj ON Pj.id=CT.project_id AND Pj.id=PT.project_id where C.id=$1 AND P.id=$2 AND ( P.is_primary_key=$3 OR P.is_unique=$4 )AND CT.id=$5 AND pj.id=$6', [child_col_id, parent_col_id, true, true, schema_table_id, proj_id]);
+    if (isExist.rows.length < 1) {
         return res.status(400).json({ msg: "The parent column does not exists in this project" });
     }
-    if(isExist.rows[0].child_col_type!=isExist.rows[0].parent_col_type){
+    if (isExist.rows[0].child_col_type != isExist.rows[0].parent_col_type) {
         return res.status(400).json({ msg: "The child and parent column type should be same" });
     }
-    if(isExist.rows[0].child_nullable===false && (on_delete==='SET NULL' || on_update==='SET NULL')){
+    if (isExist.rows[0].child_nullable === false && (on_delete === 'SET NULL' || on_update === 'SET NULL')) {
         return res.status(409).json({ msg: "The child column does not allow null but you set null as foreign key delete on update action" });
     }
-    const FkName=await query('SELECT 1 from schema_tables T JOIN schema_columns C ON C.schema_table_id=T.id WHERE T.id=$1 AND EXISTS(SELECT 1 FROM schema_foreign_keys Fk where Fk.fk_name=$2 and child_col_id=C.id)',[schema_table_id,fk_name]);
-    if(FkName.rows.length>0){
+    const FkName = await query('SELECT 1 from schema_tables T JOIN schema_columns C ON C.schema_table_id=T.id WHERE T.id=$1 AND EXISTS(SELECT 1 FROM schema_foreign_keys Fk where Fk.fk_name=$2 and child_col_id=C.id)', [schema_table_id, fk_name]);
+    if (FkName.rows.length > 0) {
         return res.status(400).json({ msg: "You already have a constraint in this fk name in this table" });
     }
-    await query('INSERT INTO schema_foreign_keys(child_col_id,parent_id,fk_name,on_delete,on_update) VALUES($1,$2,$3,$4,$5)',[child_col_id,parent_col_id,fk_name,on_delete,on_update]);
-    return   res.status(200).json({msg:"Foreign key constraint successfully added to the table"});
+    await query('INSERT INTO schema_foreign_keys(child_col_id,parent_id,fk_name,on_delete,on_update) VALUES($1, $2, $3, $4, $5)', [child_col_id, parent_col_id, fk_name, on_delete, on_update]);
+    return res.status(200).json({ msg: "Foreign key constraint successfully added to the table" });
 
 
 })
-router.post('/removeForeignKey',requireAuth,async(req,res)=>{
-    const {proj_id, schema_table_id, child_col_id}=req.body;
-    const result=await query("DELETE FROM schema_foreign_keys FK USING schema_columns C, schema_tables T, projects P  WHERE FK.child_col_id=C.id AND C.schema_table_id=T.id AND T.project_id=P.id AND FK.child_col_id=$1 AND T.id=$2 AND P.id=$3 AND (P.author_id=$4 OR EXISTS (SELECT 1 FROM project_collaborators PC WHERE PC.project_id=P.id AND PC.user_id=$4 AND PC.role='editor' AND PC.status='accepted'))",[child_col_id,schema_table_id,proj_id,req.loggedInUser.id]);
-    if(result.rowCount===0) return  res.status(400).json({msg:'Can not remove the foreign key.Try again leter'});
-    return  res.status(200).json({msg:'Successfully deleted the foreign key'});
+router.post('/removeForeignKey', requireAuth, async (req, res) => {
+    const { proj_id, schema_table_id, child_col_id } = req.body;
+    const result = await query("DELETE FROM schema_foreign_keys FK USING schema_columns C, schema_tables T, projects P  WHERE FK.child_col_id=C.id AND C.schema_table_id=T.id AND T.project_id=P.id AND FK.child_col_id=$1 AND T.id=$2 AND P.id=$3 AND (P.author_id=$4 OR EXISTS (SELECT 1 FROM project_collaborators PC WHERE PC.project_id=P.id AND PC.user_id=$4 AND PC.role='editor' AND PC.status='accepted'))", [child_col_id, schema_table_id, proj_id, req.loggedInUser.id]);
+    if (result.rowCount === 0) return res.status(400).json({ msg: 'Can not remove the foreign key.Try again leter' });
+    return res.status(200).json({ msg: 'Successfully deleted the foreign key' });
 
 
 })

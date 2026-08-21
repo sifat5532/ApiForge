@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cookieParser = require('cookie-parser');
-
+const pool=require('.//db/connection');
 const authRoutes = require('./routes/auth');
 const projRoutes = require('./routes/project');
 const templateRoutes = require('./routes/template');
@@ -27,3 +27,7 @@ app.use(errorHandler);
 app.listen(process.env.PORT, () => {
   console.log(`Server running at http://localhost:${process.env.PORT}`);
 });
+
+
+const query = require('./db/query');
+

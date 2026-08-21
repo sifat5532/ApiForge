@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
-const query = require('./../db/query');
+
 const router = express.Router();
 
 const saltRounds = 10;
