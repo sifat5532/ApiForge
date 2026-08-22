@@ -566,3 +566,94 @@ AFTER DELETE ON projects FOR EACH ROW
 EXECUTE FUNCTION tgfunc_delete_notification_by_project ();
 
 ----------------------- NOTIFICATION TRIGGERS ENDS HERE -----------------------
+
+
+------------------------Create schema table trigger--------------------------------
+CREATE
+OR
+REPLACE FUNCTION tgfunc_create_schema_table () RETURNS TRIGGER LANGUAGE plpgsql AS $$ DECLARE
+v_is_template BOOLEAN;
+BEGIN
+  SELECT
+    P.is_template INTO v_is_template
+  FROM
+    projects P
+  WHERE
+    P.id = NEW.project_ID;
+  IF NOT v_is_template THEN
+    EXECUTE FORMAT ('CREATE TABLE %I.%I ()', 'PROJECTS', NEW.TABLE_NAME);
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER tg_insert_schema_table AFTER INSERT ON schema_tables FOR EACH ROW
+  EXECUTE FUNCTION tgfunc_create_schema_table ();
+  
+  
+  
+  CREATE OR REPLACE FUNCTION tgfunc_add_columns () RETURNS TRIGGER LANGUAGE plpgsql AS $$ 
+  DECLARE 
+  rec RECORD;
+  v_col_def TEXT;
+  BEGIN
+    SELECT P.is_template , S.TABLE_NAME INTO rec
+    FROM schema_tables S
+    JOIN projects P ON P.id = S.project_id
+    WHERE S.id = NEW.schema_table_id;
+     v_col_def := NEW.col_type;
+    IF NEW.col_type = 'NUMERIC' THEN
+      v_col_def := v_col_def || ' (' || NEW.col_length || ',6) ';
+    ELSIF NEW.col_type = 'VARCHAR' THEN
+      v_col_def := v_col_def || ' (' || NEW.col_length || ') ';
+    END IF;
+    IF NEW.is_auto_increment THEN
+      v_col_def := v_col_def || ' GENERATED ALWAYS AS IDENTITY ';
+    END IF;
+    IF NEW.is_primary_key THEN
+      v_col_def := v_col_def || ' PRIMARY KEY ';
+    END IF;
+    IF NOT NEW.is_primary_key
+      AND NEW.is_unique THEN
+      v_col_def := v_col_def || ' UNIQUE ';
+    END IF;
+    IF NOT NEW.is_primary_key
+      AND NOT NEW.is_nullable THEN
+      v_col_def := v_col_def || ' NOT NULL';
+    END IF;
+    IF NEW.default_value IS NOT NULL AND NOT NEW.is_auto_increment
+     THEN
+        IF NEW.col_type IN ('INTEGER', 'NUMERIC') THEN
+            IF NEW.default_value !~ '^-?[0-9]+(\.[0-9]+)?$' THEN
+               RAISE EXCEPTION 'Invalid numeric default value: %',NEW.default_value;
+            END IF;    
+          v_col_def := v_col_def || FORMAT (' DEFAULT %s', NEW.default_value);
+         END IF;
+        ELSIF NEW.col_type IN ('TEXT', 'VARCHAR') THEN
+           v_col_def := v_col_def || FORMAT (' DEFAULT %L', NEW.default_value);
+        ELSIF NEW.col_type IN ('DATE', 'TIMESTAMP') THEN
+              IF UPPER(NEW.default_value) IN ('NOW()', 'CURRENT_TIMESTAMP', 'CURRENT_DATE') THEN
+                 v_col_def := v_col_def || FORMAT (' DEFAULT %s', NEW.default_value);
+              ELSE v_col_def := v_col_def || FORMAT (' DEFAULT %L', NEW.default_value);
+              END IF;
+        ELSIF NEW.col_type = 'BOOLEAN' THEN
+            IF LOWER(NEW.default_value) IN ('true', 'false') THEN
+                v_col_def := v_col_def || FORMAT (' DEFAULT %s', LOWER(NEW.default_value));
+            ELSE RAISE EXCEPTION 'Invalid BOOLEAN default value: % ',NEW.default_value;
+            END IF;
+        ELSE RAISE EXCEPTION 'Invalid data type: % ',NEW.col_type;
+      END IF;
+      END IF;
+      IF NOT rec.is_template THEN
+        EXECUTE FORMAT ('ALTER TABLE %I.%I ADD COLUMN %I %s ', 'PROJECTS',rec.TABLE_NAME, NEW.col_name, v_col_def);
+     END IF;
+      RETURN NEW;
+    END;
+    $$;
+     
+     CREATE TRIGGER tg_insert_schema_column AFTER INSERT ON schema_columns FOR EACH ROW
+      EXECUTE FUNCTION tgfunc_add_columns ();
+      
+
+
+
