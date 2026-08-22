@@ -1,10 +1,12 @@
 CREATE TABLE IF NOT EXISTS users (
    id serial PRIMARY KEY,
    name VARCHAR(50) NOT NULL,
-   email VARCHAR(50) NOT NULL UNIQUE CONSTRAINT chk_user_email CHECK ( email ~* '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'),
-   username VARCHAR(50) NOT NULL UNIQUE CONSTRAINT chk_user_username CHECK(username ~ '^[a-z][a-z0-9_]{0,49}$'),
+   email VARCHAR(50) NOT NULL UNIQUE CONSTRAINT chk_user_email CHECK (
+      email ~* '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+   ),
+   username VARCHAR(50) NOT NULL UNIQUE CONSTRAINT chk_user_username CHECK (username ~ '^[a-z][a-z0-9_]{0,49}$'),
    password_hash VARCHAR(100) NOT NULL,
-   settings JSONB  DEFAULT '{}'::jsonb,
+   settings JSONB DEFAULT '{}'::JSONB,
    joined_at TIMESTAMP(0) DEFAULT now()
 );
 
@@ -21,6 +23,7 @@ CREATE TABLE IF NOT EXISTS user_sessions (
    CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
    CONSTRAINT uq_session_token_hashed UNIQUE (session_token_hashed)
 );
+
 CREATE INDEX IF NOT EXISTS user_session_user_id ON user_sessions (user_id);
 
 CREATE TABLE IF NOT EXISTS notifications (
@@ -44,8 +47,8 @@ CREATE INDEX IF NOT EXISTS idx_notifications_entity_sorting ON notifications (re
 CREATE TABLE IF NOT EXISTS projects (
    id serial PRIMARY KEY,
    author_id INTEGER NOT NULL,
-   subscription_status VARCHAR(20) NOT NULL DEFAULT 'active' CONSTRAINT chk_project_subscription_status CHECK(subscription_status IN('active','locked')),
-   name VARCHAR(30) NOT NULL CONSTRAINT chk_project_name CHECK(name ~ '^[A-Za-z][a-zA-Z0-9_]{0,29}$'),
+   subscription_status VARCHAR(20) NOT NULL DEFAULT 'active' CONSTRAINT chk_project_subscription_status CHECK (subscription_status IN ('active', 'locked')),
+   name VARCHAR(30) NOT NULL CONSTRAINT chk_project_name CHECK (name ~ '^[A-Za-z][a-zA-Z0-9_]{0,29}$'),
    description VARCHAR(500),
    api_key_hashed VARCHAR(100),
    api_key_prefix VARCHAR(30),
@@ -53,14 +56,31 @@ CREATE TABLE IF NOT EXISTS projects (
    is_template BOOLEAN DEFAULT FALSE,
    is_clone BOOLEAN DEFAULT FALSE,
    created_at TIMESTAMP(0) DEFAULT now(),
-   cloned_from_id INTEGER CONSTRAINT chk_project_clone_from_id CHECK(is_clone = true OR cloned_from_id IS NULL),
-   originates_from_id INTEGER CONSTRAINT chk_project_originate_from CHECK(is_template = true OR originates_from_id IS NULL),
-   CONSTRAINT chk_project_api_key CHECK(is_template = false OR api_key_hashed IS NULL),
-   CONSTRAINT chk_project_api_key_prefix CHECK(is_template = false OR api_key_prefix IS NULL),
+   cloned_from_id INTEGER CONSTRAINT chk_project_clone_from_id CHECK (
+      is_clone = TRUE
+      OR cloned_from_id IS NULL
+   ),
+   originates_from_id INTEGER CONSTRAINT chk_project_originate_from CHECK (
+      is_template = TRUE
+      OR originates_from_id IS NULL
+   ),
+   CONSTRAINT chk_project_api_key CHECK (
+      is_template = FALSE
+      OR api_key_hashed IS NULL
+   ),
+   CONSTRAINT chk_project_api_key_prefix CHECK (
+      is_template = FALSE
+      OR api_key_prefix IS NULL
+   ),
    CONSTRAINT fk_project_author FOREIGN KEY (author_id) REFERENCES users (id) ON DELETE CASCADE,
    CONSTRAINT fk_project_cloned_from FOREIGN KEY (cloned_from_id) REFERENCES projects (id) ON DELETE SET NULL,
    CONSTRAINT fk_template_originates_from FOREIGN KEY (originates_from_id) REFERENCES projects (id) ON DELETE SET NULL,
-   CONSTRAINT chk_template_clone CHECK (NOT (is_template AND is_clone))
+   CONSTRAINT chk_template_clone CHECK (
+      NOT (
+         is_template
+         AND is_clone
+      )
+   )
 );
 
 CREATE INDEX IF NOT EXISTS idx_project_author_id_name ON projects (author_id, name);
@@ -111,8 +131,10 @@ CREATE TABLE IF NOT EXISTS project_collaborators (
    project_id INTEGER NOT NULL,
    user_id INTEGER NOT NULL,
    created_at TIMESTAMP(0) NOT NULL DEFAULT now(),
-   role VARCHAR(15) NOT NULL CONSTRAINT chk_collaborator_role check(role IN('editor')),
-   status VARCHAR(15) NOT NULL DEFAULT 'pending' CONSTRAINT chk_collaborator_status CHECK(status IN('pending','accepted','rejected','removed')),
+   role VARCHAR(15) NOT NULL CONSTRAINT chk_collaborator_role CHECK (role IN ('editor')),
+   status VARCHAR(15) NOT NULL DEFAULT 'pending' CONSTRAINT chk_collaborator_status CHECK (
+      status IN ('pending', 'accepted', 'rejected', 'removed')
+   ),
    CONSTRAINT fk_collaborates_project FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
    CONSTRAINT fk_collaborates_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
    PRIMARY KEY (project_id, user_id)
@@ -123,7 +145,7 @@ CREATE INDEX IF NOT EXISTS idx_collaborators_user_id ON project_collaborators (u
 CREATE TABLE IF NOT EXISTS schema_tables (
    id serial PRIMARY KEY,
    project_id INTEGER NOT NULL,
-   table_name VARCHAR(30) NOT NULL CONSTRAINT chk_table_name CHECK(table_name ~ '^[a-z_][a-z0-9_]{0,29}$'),
+   table_name VARCHAR(30) NOT NULL CONSTRAINT chk_table_name CHECK (table_name ~ '^[a-z_][a-z0-9_]{0,29}$'),
    created_at TIMESTAMP(0) NOT NULL DEFAULT now(),
    CONSTRAINT fk_schema_tables_project_id FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
    CONSTRAINT unique_schema_table_project_id_table_name UNIQUE (project_id, table_name)
@@ -132,28 +154,53 @@ CREATE TABLE IF NOT EXISTS schema_tables (
 CREATE TABLE IF NOT EXISTS schema_columns (
    id serial PRIMARY KEY,
    schema_table_id INTEGER NOT NULL,
-   col_name VARCHAR(30) NOT NULL CONSTRAINT chk_column_name CHECK(col_name ~ '^[a-z_][a-z0-9_]{0,29}$'), 
-   col_type VARCHAR(20) NOT NULL CONSTRAINT chk_col_type CHECK(UPPER(col_type) IN('INTEGER' , 'TEXT' , 'NUMERIC' ,'BOOLEAN' , 'VARCHAR' , 'DATE', 'TIMESTAMP')), 
-   default_value VARCHAR(200), 
-   col_length INTEGER, 
-   is_primary_key BOOLEAN DEFAULT FALSE, 
-   is_auto_increment BOOLEAN DEFAULT FALSE, 
-   is_nullable BOOLEAN DEFAULT TRUE, 
-   is_unique BOOLEAN DEFAULT FALSE, 
+   col_name VARCHAR(30) NOT NULL CONSTRAINT chk_column_name CHECK (col_name ~ '^[a-z_][a-z0-9_]{0,29}$'),
+   col_type VARCHAR(20) NOT NULL CONSTRAINT chk_col_type CHECK (
+      UPPER(col_type) IN (
+         'INTEGER',
+         'TEXT',
+         'NUMERIC',
+         'BOOLEAN',
+         'VARCHAR',
+         'DATE',
+         'TIMESTAMP'
+      )
+   ),
+   default_value VARCHAR(200),
+   col_length INTEGER,
+   is_primary_key BOOLEAN DEFAULT FALSE,
+   is_auto_increment BOOLEAN DEFAULT FALSE,
+   is_nullable BOOLEAN DEFAULT TRUE,
+   is_unique BOOLEAN DEFAULT FALSE,
    created_at TIMESTAMP(0) NOT NULL DEFAULT now(),
    CONSTRAINT fk_schema_columns_schema_table_id FOREIGN KEY (schema_table_id) REFERENCES schema_tables (id) ON DELETE CASCADE,
    CONSTRAINT unique_schema_column_table_id_col_name UNIQUE (schema_table_id, col_name),
-   CONSTRAINT chk_if_primary_key CHECK (NOT is_primary_key OR (NOT is_nullable AND is_unique)),
-   CONSTRAINT chk_if_auto_increment CHECK (NOT is_auto_increment OR (col_type='INTEGER' AND is_unique))
-
+   CONSTRAINT chk_if_primary_key CHECK (
+      NOT is_primary_key
+      OR (
+         NOT is_nullable
+         AND is_unique
+      )
+   ),
+   CONSTRAINT chk_if_auto_increment CHECK (
+      NOT is_auto_increment
+      OR (
+         col_type = 'INTEGER'
+         AND is_unique
+      )
+   )
 );
 
 CREATE TABLE IF NOT EXISTS schema_foreign_keys (
    child_col_id INTEGER PRIMARY KEY,
    parent_col_id INTEGER NOT NULL,
-   fk_name VARCHAR(30) NOT NULL CONSTRAINT chk_fk_name CHECK(fk_name ~ '^[a-z_][a-z0-9_]{0,29}$'),
-   on_delete VARCHAR(20) CONSTRAINT chk_fk_on_delete CHECK(UPPER(on_delete) IN('CASCADE','SET NULL','RESTRICT','NO ACTION')),
-   on_update VARCHAR(20) CONSTRAINT chk_fk_on_update CHECK(UPPER(on_update) IN('CASCADE','SET NULL','RESTRICT','NO ACTION')),
+   fk_name VARCHAR(30) NOT NULL CONSTRAINT chk_fk_name CHECK (fk_name ~ '^[a-z_][a-z0-9_]{0,29}$'),
+   on_delete VARCHAR(20) CONSTRAINT chk_fk_on_delete CHECK (
+      UPPER(on_delete) IN ('CASCADE', 'SET NULL', 'RESTRICT', 'NO ACTION')
+   ),
+   on_update VARCHAR(20) CONSTRAINT chk_fk_on_update CHECK (
+      UPPER(on_update) IN ('CASCADE', 'SET NULL', 'RESTRICT', 'NO ACTION')
+   ),
    created_at TIMESTAMP(0) NOT NULL DEFAULT now(),
    CONSTRAINT fk_schema_fks_child FOREIGN KEY (child_col_id) REFERENCES schema_columns (id) ON DELETE CASCADE,
    CONSTRAINT fk_schema_fks_parent FOREIGN KEY (parent_col_id) REFERENCES schema_columns (id) ON DELETE CASCADE
@@ -161,14 +208,14 @@ CREATE TABLE IF NOT EXISTS schema_foreign_keys (
 
 CREATE TABLE IF NOT EXISTS api_definitions (
    id serial PRIMARY KEY,
-   name VARCHAR(30) NOT NULL CONSTRAINT chk_api_definition_name CHECK(name ~ '^[a-z][a-z0-9_]{0,29}$'),
+   name VARCHAR(30) NOT NULL CONSTRAINT chk_api_definition_name CHECK (name ~ '^[a-z][a-z0-9_]{0,29}$'),
    project_id INTEGER NOT NULL,
-   method VARCHAR(15) NOT NULL CONSTRAINT chk_api_definition_method CHECK(UPPER(method) IN('GET','POST','PUT','DELETE')),
+   method VARCHAR(15) NOT NULL CONSTRAINT chk_api_definition_method CHECK (UPPER(method) IN ('GET', 'POST', 'PUT', 'DELETE')),
    query_definition JSONB NOT NULL,
    generated_sql TEXT NOT NULL,
    parameters TEXT,
    is_active BOOLEAN DEFAULT TRUE,
-   rate_limit_per_day INTEGER NOT NULL CONSTRAINT chk_api_definition_rate_limit CHECK(rate_limit_per_day > 0),
+   rate_limit_per_day INTEGER NOT NULL CONSTRAINT chk_api_definition_rate_limit CHECK (rate_limit_per_day > 0),
    updating_parameters TEXT,
    created_at TIMESTAMP(0) NOT NULL DEFAULT now(),
    CONSTRAINT fk_api_definitions_project_id FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
@@ -182,7 +229,7 @@ CREATE TABLE IF NOT EXISTS api_logs (
    api_definition_id INTEGER NOT NULL,
    ip_address INET NOT NULL,
    status_code INTEGER NOT NULL,
-   response_time_ms INTEGER NOT NULL CONSTRAINT chk_api_logs_response_time CHECK(response_time_ms >= 0),
+   response_time_ms INTEGER NOT NULL CONSTRAINT chk_api_logs_response_time CHECK (response_time_ms >= 0),
    created_at TIMESTAMP(0) NOT NULL DEFAULT now(),
    CONSTRAINT fk_api_logs_api_definitions FOREIGN KEY (api_definition_id) REFERENCES api_definitions (id) ON DELETE CASCADE
 );
@@ -196,7 +243,8 @@ CREATE TABLE IF NOT EXISTS api_table_dependencies (
    created_at TIMESTAMP(0) NOT NULL DEFAULT now(),
    PRIMARY KEY (api_definition_id, schema_table_id),
    CONSTRAINT fk_api_table_dependencies_api_definition_id FOREIGN KEY (api_definition_id) REFERENCES api_definitions (id) ON DELETE CASCADE,
-   CONSTRAINT fk_api_table_dependencies_api_schema_table_id FOREIGN KEY (schema_table_id) REFERENCES schema_tables (id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED 
+   CONSTRAINT fk_api_table_dependencies_api_schema_table_id FOREIGN KEY (schema_table_id) REFERENCES schema_tables (id) ON DELETE RESTRICT
+   DEFERRABLE INITIALLY DEFERRED
 );
 
 CREATE TABLE IF NOT EXISTS api_column_dependencies (
@@ -206,7 +254,8 @@ CREATE TABLE IF NOT EXISTS api_column_dependencies (
    created_at TIMESTAMP(0) NOT NULL DEFAULT now(),
    PRIMARY KEY (api_definition_id, schema_col_id),
    CONSTRAINT fk_api_column_dependencies_api_definition_id FOREIGN KEY (api_definition_id) REFERENCES api_definitions (id) ON DELETE CASCADE,
-   CONSTRAINT fk_api_column_dependencies_schema_col_id FOREIGN KEY (schema_col_id) REFERENCES schema_columns (id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED 
+   CONSTRAINT fk_api_column_dependencies_schema_col_id FOREIGN KEY (schema_col_id) REFERENCES schema_columns (id) ON DELETE RESTRICT
+   DEFERRABLE INITIALLY DEFERRED
 );
 
 CREATE TABLE IF NOT EXISTS template_clones (
@@ -253,48 +302,75 @@ CREATE TABLE IF NOT EXISTS template_likes (
    CONSTRAINT fk_template_likes_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
    CONSTRAINT fk_template_likes_template_id FOREIGN KEY (template_id) REFERENCES projects (id) ON DELETE CASCADE
 );
+
 CREATE TABLE IF NOT EXISTS plans (
    plan_id INTEGER PRIMARY KEY,
    name VARCHAR(15) NOT NULL UNIQUE,
    cost_per_month INTEGER NOT NULL DEFAULT 0,
-   project_count INTEGER ,
+   project_count INTEGER,
    table_per_project INTEGER,
-   api_per_project INTEGER ,
-   api_call_per_day INTEGER ,
+   api_per_project INTEGER,
+   api_call_per_day INTEGER,
    CONSTRAINT chk_plan_cost_per_month CHECK (cost_per_month >= 0),
-   CONSTRAINT chk_plan_project_count CHECK (project_count > 0 OR project_count IS NULL),
-   CONSTRAINT chk_plan_table_count CHECK (table_per_project > 0 OR table_per_project IS NULL),
-   CONSTRAINT chk_plan_api_per_project CHECK (api_per_project > 0 OR api_per_project IS NULL),
-   CONSTRAINT chk_plan_api_call_per_day CHECK (api_call_per_day > 0 OR api_call_per_day IS NULL)
-   
+   CONSTRAINT chk_plan_project_count CHECK (
+      project_count > 0
+      OR project_count IS NULL
+   ),
+   CONSTRAINT chk_plan_table_count CHECK (
+      table_per_project > 0
+      OR table_per_project IS NULL
+   ),
+   CONSTRAINT chk_plan_api_per_project CHECK (
+      api_per_project > 0
+      OR api_per_project IS NULL
+   ),
+   CONSTRAINT chk_plan_api_call_per_day CHECK (
+      api_call_per_day > 0
+      OR api_call_per_day IS NULL
+   )
 );
+
 CREATE TABLE IF NOT EXISTS subscriptions (
    subscription_id serial PRIMARY KEY,
    user_id INTEGER NOT NULL,
    plan_id INTEGER NOT NULL,
    start_date TIMESTAMP(0) NOT NULL DEFAULT now(),
-   end_date TIMESTAMP(0) ,
-   status VARCHAR(15) NOT NULL DEFAULT 'active' CONSTRAINT chk_subscriptions_status CHECK (status IN('active', 'inactive')),
+   end_date TIMESTAMP(0),
+   status VARCHAR(15) NOT NULL DEFAULT 'active' CONSTRAINT chk_subscriptions_status CHECK (status IN ('active', 'inactive')),
    CONSTRAINT fk_subscriptions_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
    CONSTRAINT fk_subscriptions_plan_id FOREIGN KEY (plan_id) REFERENCES plans (plan_id) ON DELETE RESTRICT,
    CONSTRAINT chk_subscription_duration CHECK (end_date > start_date)
 );
-CREATE UNIQUE INDEX IF NOT EXISTS one_active_subscription_per_user ON subscriptions(user_id) WHERE status='active';
-CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS one_active_subscription_per_user ON subscriptions (user_id)
+WHERE
+   status = 'active';
+
+CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions (user_id);
 
 CREATE TABLE IF NOT EXISTS subscription_log (
    log_id serial PRIMARY KEY,
    subscription_id INTEGER NOT NULL,
    trxn_id VARCHAR(30),
    payment_method VARCHAR(20),
-   payment_status VARCHAR(15) NOT NULL DEFAULT 'free' ,
-   amount NUMERIC(20,4) NOT NULL DEFAULT 0  CONSTRAINT chk_subscription_log_amount CHECK (amount >= 0),
-   month_count INTEGER ,
+   payment_status VARCHAR(15) NOT NULL DEFAULT 'free',
+   amount NUMERIC(20, 4) NOT NULL DEFAULT 0 CONSTRAINT chk_subscription_log_amount CHECK (amount >= 0),
+   month_count INTEGER,
    created_at TIMESTAMP(0) NOT NULL DEFAULT now(),
    CONSTRAINT fk_subscription_log_subscription_id FOREIGN KEY (subscription_id) REFERENCES subscriptions (subscription_id) ON DELETE CASCADE,
-   CONSTRAINT chk_subscription_log_month_count CHECK ((payment_status = 'free' AND month_count IS NULL) OR (payment_status <> 'free' AND month_count > 0))
+   CONSTRAINT chk_subscription_log_month_count CHECK (
+      (
+         payment_status = 'free'
+         AND month_count IS NULL
+      )
+      OR (
+         payment_status <> 'free'
+         AND month_count > 0
+      )
+   )
 );
-CREATE INDEX IF NOT EXISTS idx_subscriptions_log_subscription_id ON subscriptions(subscription_id);
+
+CREATE INDEX IF NOT EXISTS idx_subscriptions_log_subscription_id ON subscriptions (subscription_id);
 
 ----------------------- NOTIFICATION TRIGGERS STARTS HERE -----------------------
 -- types of notifications
