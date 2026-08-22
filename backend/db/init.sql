@@ -570,19 +570,40 @@ EXECUTE FUNCTION tgfunc_delete_notification_by_project ();
 
 
 ------------------------Create schema table trigger--------------------------------
+
+CREATE OR REPLACE FUNCTION tgfunc_create_schema ()RETURNS TRIGGER LANGUAGE plpgsql AS $$ 
+DECLARE
+   rec RECORD;
+BEGIN
+  SELECT
+    P.is_template, p.author_id  INTO rec
+  FROM
+    projects P
+  WHERE
+    P.id = NEW.id;
+  IF NOT rec.is_template  THEN
+    EXECUTE FORMAT ('CREATE SCHEMA IF NOT EXISTS %I', 'PROJ'||'_'||NEW.id||'_'||rec.author_id);
+  END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER tg_insert_project AFTER INSERT ON projects FOR EACH ROW
+  EXECUTE FUNCTION tgfunc_create_schema ();
+
+
 CREATE
 OR
 REPLACE FUNCTION tgfunc_create_schema_table () RETURNS TRIGGER LANGUAGE plpgsql AS $$ DECLARE
-v_is_template BOOLEAN;
+rec RECORD;
 BEGIN
   SELECT
-    P.is_template INTO v_is_template
+    P.is_template, p.author_id INTO rec
   FROM
     projects P
   WHERE
     P.id = NEW.project_ID;
-  IF NOT v_is_template THEN
-    EXECUTE FORMAT ('CREATE TABLE %I.%I ()', 'PROJECTS', NEW.TABLE_NAME);
+  IF NOT rec.is_template THEN
+    EXECUTE FORMAT ('CREATE TABLE %I.%I ()', 'PROJ'||'_'||NEW.project_id||'_'||rec.author_id, NEW.TABLE_NAME);
   END IF;
   RETURN NEW;
 END;
@@ -599,7 +620,7 @@ CREATE TRIGGER tg_insert_schema_table AFTER INSERT ON schema_tables FOR EACH ROW
   v_col_def TEXT;
   v_pk_cols TEXT;
   BEGIN
-    SELECT P.is_template , S.TABLE_NAME INTO rec
+    SELECT P.is_template , P.id, P.author_id,  S.TABLE_NAME INTO rec
     FROM schema_tables S
     JOIN projects P ON P.id = S.project_id
     WHERE S.id = NEW.schema_table_id;
@@ -641,13 +662,13 @@ CREATE TRIGGER tg_insert_schema_table AFTER INSERT ON schema_tables FOR EACH ROW
       END IF;
       END IF;
       IF NOT rec.is_template THEN
-        EXECUTE FORMAT ('ALTER TABLE %I.%I ADD COLUMN %I %s ', 'PROJECT_tables',rec.TABLE_NAME, NEW.col_name, v_col_def);
+        EXECUTE FORMAT ('ALTER TABLE %I.%I ADD COLUMN %I %s ', 'PROJ'||'_'||rec.id||'_'||rec.author_id,rec.TABLE_NAME, NEW.col_name, v_col_def);
          IF NEW.is_primary_key THEN
             SELECT string_agg(formate('%I',col_name),',' ORDER BY col_name)
             INTO v_pk_cols 
             FROM schema_columns WHERE schema_table_id = NEW.schema_table_id AND is_primary_key = true;
-            EXECUTE FORMAT ('ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I', 'PROJECT_tables', rec.TABLE_NAME, rec.TABLE_NAME||'_pk');
-            EXECUTE FORMAT ('ALTER TABLE %I.%I ADD CONSTRAINT  %I PRIMARY KEY(%s)', 'PROJECTS-tables', rec.TABLE_NAME,rec.TABLE_NAME||'_pk', v_pk_cols);
+            EXECUTE FORMAT ('ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I', 'PROJ'||'_'||rec.id||'_'||rec.author_id, rec.TABLE_NAME, rec.TABLE_NAME||'_pk');
+            EXECUTE FORMAT ('ALTER TABLE %I.%I ADD CONSTRAINT  %I PRIMARY KEY(%s)','PROJ'||'_'||rec.id||'_'||rec.author_id, rec.TABLE_NAME,rec.TABLE_NAME||'_pk', v_pk_cols);
          END IF;
      END IF;
       RETURN NEW;
@@ -657,12 +678,18 @@ CREATE TRIGGER tg_insert_schema_table AFTER INSERT ON schema_tables FOR EACH ROW
      CREATE TRIGGER tg_insert_schema_column AFTER INSERT ON schema_columns FOR EACH ROW
       EXECUTE FUNCTION tgfunc_add_columns ();
    
+   CREATE OR REPLACE FUNCTION tgfunc_create_cloned_proj () RETURNS TRIGGER plpgsql AS $$ 
+   DECLARE 
+   BEGIN 
+      SELECT  
+
+
     CREATE OR REPLACE FUNCTION tgfunc_add_fks () RETURNS TRIGGER LANGUAGE plpgsql AS $$ 
   DECLARE 
   rec RECORD ;
   fk_def TEXT;
   BEGIN
-    SELECT P.is_template , S1.TABLE_NAME as child_table , S2.TABLE_NAME as parent_table, Ch.col_name  AS child_name, Pa.col_name AS parent_name  INTO rec
+    SELECT P.is_template , P.id, P.author_id, S1.TABLE_NAME as child_table , S2.TABLE_NAME as parent_table, Ch.col_name  AS child_name, Pa.col_name AS parent_name  INTO rec
     FROM schema_columns Ch 
     JOIN schema_tables S1 ON S1.id = Ch.schema_table_id
         JOIN projects P ON P.id = S1.project_id,
@@ -672,7 +699,7 @@ CREATE TRIGGER tg_insert_schema_table AFTER INSERT ON schema_tables FOR EACH ROW
      fk_def := 'FOREIGN KEY ( '||rec.child_name||' ) REFERENCES '
                ||rec.parent_table ||'('|| rec.parent_name ||') ON DELETE '|| NEW.on_delete ||' ON UPDATE '||NEW.on_update;
      IF NOT rec.is_template THEN
-        EXECUTE FORMAT ('ALTER TABLE %I.%I ADD CONSTRAINT %I %s ', 'PROJECTS',rec.child_table,  NEW.fk_name, fk_def );
+        EXECUTE FORMAT ('ALTER TABLE %I.%I ADD CONSTRAINT %I %s ', 'PROJ'||'_'||rec.id||'_'||rec.author_id,rec.child_table,  NEW.fk_name, fk_def );
      END IF;
       RETURN NEW;
     END;
@@ -684,3 +711,16 @@ CREATE TRIGGER tg_insert_schema_table AFTER INSERT ON schema_tables FOR EACH ROW
 
 
 
+------------------------------Subscription trigger-----------------------------
+
+CREATE OR REPLACE FUNCTION tgfunc_add_free_subscription () RETURNS TRIGGER LANGUAGE plpgsql AS $$ 
+  DECLARE 
+  v_subscription_id INTEGER;
+  BEGIN 
+    INSERT INTO subscriptions(user_id, plan_id, status) VALUES(NEW.id, 1, 'active') RETURNING subscription_id INTO v_subscription_id ;
+    INSERT INTO subscription_log(subscription_id)  VALUES(v_subscription_id);
+   RETURN NEW;
+   END ;
+   $$ ;
+   CREATE TRIGGER tg_insert_users AFTER INSERT ON users FOR EACH ROW 
+   EXECUTE FUNCTION tgfunc_add_free_subscription ;
