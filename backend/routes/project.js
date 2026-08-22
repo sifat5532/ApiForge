@@ -4,7 +4,8 @@ const query = require('./../db/query');
 const router = express.Router();
 const { requireAuth } = require('./auth');
 const { table } = require('console');
-const { pool } = require('./../db/connection');
+const pool = require('./../db/connection');
+const checkPlanLimit = require('./../utils/planLimitChecker');
 const PG_RESERVED_WORDS = new Set([
     'all', 'analyse', 'analyze', 'and', 'any', 'array', 'as', 'asc',
     'asymmetric', 'authorization', 'binary', 'both', 'case', 'cast',
@@ -61,6 +62,7 @@ const requireProjectAuthor = async (req, res, next) => {
     }
     next();
 };
+
 //it also chk is if the proj is not a template 
 const requireProjectAccess = async (req, res, next) => {
     const { proj_id } = req.body;
@@ -74,6 +76,18 @@ const requireProjectAccess = async (req, res, next) => {
     }
     next();
 };
+
+const isProjectActive = async (req, res, next) => {
+    const { proj_id } = req.body;
+    if (!proj_id) return res.status(400).json({ msg: "You should insert a project id with your request" });
+
+    const result = await query('SELECT * FROM projects WHERE id = $1 AND subscription_status = $2', [proj_id, 'active']);
+    if (result.rows.length === 0) {
+        return res.status(403).json({ msg: "Your project is locked. Upgrade your subscription to unlock it" });
+    }
+    next();
+};
+
 router.post('/createProject', requireAuth, async (req, res) => {
     const { proj_name, description, enable_auth, tags } = req.body;
     const author_id = req.loggedInUser.id;
@@ -97,7 +111,8 @@ router.post('/createProject', requireAuth, async (req, res) => {
             if (!(t[0] >= 'a' && t[0] <= 'z')) return res.status(400).json({ msg: 'Tag name must start with an alphabet(a-z or A-Z)' });
         }
     }
-    const result = await query('SELECT * FROM projects WHERE author_id=$1 AND name=$2', [author_id, proj_name]);
+
+    const result = await query('SELECT * FROM projects WHERE author_id = $1 AND name = $2', [author_id, proj_name]);
     if (result.rows.length > 0) {
         return res.status(400).json({ msg: 'You already have a project in this name' });
     }
@@ -106,40 +121,60 @@ router.post('/createProject', requireAuth, async (req, res) => {
     const api_key_prefix = api_key.substring(0, 6);
     const api_key_hashed = crypto.createHash('sha256').update(api_key).digest('hex');
 
-    const proj = await query('INSERT INTO projects(author_id,name,description,api_key_hashed,api_key_prefix,auth_enabled) VALUES($1,$2,$3,$4,$5,$6) RETURNING id',
-        [author_id, proj_name, description, api_key_hashed, api_key_prefix, (enable_auth === true ? true : false)]
-    );
-    const proj_id = proj.rows[0].id;
-    if (tags != null) {
-        for (let i = 0; i < tags.length; i++) {
-            const t1 = tags[i].trim().toLowerCase();
-            const tag_result = await query('SELECT id FROM tags WHERE name=$1', [t1]);
-            let tag_id = -1;
-            if (tag_result.rows.length === 0) {
-                const proj_tag = await query('INSERT INTO tags(name) VALUES($1) RETURNING id', [t1]);
-                tag_id = proj_tag.rows[0].id;
-            }
-            else tag_id = tag_result.rows[0].id;
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await checkPlanLimit(client, author_id, 'project');
 
-            await query('INSERT INTO project_tags(project_id,tag_id) VALUES ($1,$2)', [proj_id, tag_id]);
+        const proj = await client.query(`
+            INSERT INTO projects
+            (author_id, name, description, api_key_hashed, api_key_prefix, auth_enabled)
+            VALUES($1, $2, $3, $4, $5, $6)
+            RETURNING id`,
+            [author_id, proj_name, description, api_key_hashed, api_key_prefix, (enable_auth === true ? true : false)]
+        );
+        const proj_id = proj.rows[0].id;
+        if (tags != null) {
+            for (let i = 0; i < tags.length; i++) {
+                const t1 = tags[i].trim().toLowerCase();
+                const tag_result = await client.query('SELECT id FROM tags WHERE name=$1', [t1]);
+                let tag_id = -1;
+                if (tag_result.rows.length === 0) {
+                    const proj_tag = await client.query('INSERT INTO tags(name) VALUES($1) RETURNING id', [t1]);
+                    tag_id = proj_tag.rows[0].id;
+                }
+                else tag_id = tag_result.rows[0].id;
+
+                await client.query('INSERT INTO project_tags(project_id,tag_id) VALUES ($1,$2)', [proj_id, tag_id]);
+            }
         }
+        await client.query('COMMIT');
+        res.status(201).json({ msg: 'Project created successfully', api_key: api_key });
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error(e);
+        if (e.code === '23505') { // this checking is specific to this route only
+            return res.status(400).json({ msg: 'You already have a project in this name' });
+        }
+        res.status(e.status || 500).json({ msg: e.status ? e.message : 'There was a server side error, please try again later' });
+    } finally {
+        client.release();
     }
-    res.status(201).json({ msg: 'Project created successfully', api_key: api_key });
 });
 
-router.post('/regenerateKey', requireAuth, requireProjectAuthor, async (req, res) => {
+router.post('/regenerateKey', requireAuth, requireProjectAuthor, isProjectActive, async (req, res) => {
     const { proj_id } = req.body;
 
     const api_key = crypto.randomBytes(32).toString('hex');
     const api_key_prefix = api_key.substring(0, 6);
     const api_key_hashed = crypto.createHash('sha256').update(api_key).digest('hex');
 
-    await query('UPDATE projects SET api_key_hashed=$1 , api_key_prefix=$2 WHERE id=$3', [api_key_hashed, api_key_prefix, proj_id]);
+    await query('UPDATE projects SET api_key_hashed = $1, api_key_prefix = $2 WHERE id = $3', [api_key_hashed, api_key_prefix, proj_id]);
     res.status(200).json({ msg: 'Api key regenerated successfully', api_key: api_key });
 
 });
 
-router.post('/collabInvitation', requireAuth, requireProjectAccess, async (req, res) => {
+router.post('/collabInvitation', requireAuth, requireProjectAccess, isProjectActive, async (req, res) => {
     const { proj_id, user_id } = req.body;
     if (user_id == req.loggedInUser.id) {
         return res.status(400).json({ msg: "You can't invite yourself as a collaborator" });
@@ -202,8 +237,7 @@ router.post('/removeCollaboration', requireAuth, async (req, res) => {
 
 });
 
-router.post('/createTable', requireAuth, requireProjectAccess, async (req, res) => {   //requreAccesProject
-    // transaction should be added here later
+router.post('/createTable', requireAuth, requireProjectAccess, isProjectActive, async (req, res) => {   //requreAccesProject
     const { proj_id, name, cols } = req.body;
     if (!proj_id || !name || !cols) {
         return res.status(400).json({ msg: "You should insert all necessary information" });
@@ -225,105 +259,126 @@ router.post('/createTable', requireAuth, requireProjectAccess, async (req, res) 
     if (isExist.rows.length > 0) {
         return res.status(400).json({ msg: 'Your alredy have a table in the project in this name' });
     }
-    const result = await query('INSERT INTO schema_tables(project_id,table_name) VALUES($1, $2) RETURNING id', [proj_id, table_name]);
-    const table_id = result.rows[0].id;
-    for (let i = 0; i < cols.length; i++) {
-        //0 col_name,1 col_type,2 default,3(array) col_len,4 is_pk,5 is_auto_inc
-        // 6 is_nullable,7 is_unique, 8 element_id_frontend
 
-        cols[i][2] = cols[i][2] == '' ? 'NULL' : cols[i][2];
-        cols[i][3] = cols[i][3] == '' ? -1 : cols[i][3];
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await checkPlanLimit(client, req.loggedInUser.id, 'table', proj_id);
 
-        cols[i][4] = cols[i][4] === true ? true : false; // is_pk
-        cols[i][5] = cols[i][5] === true ? true : false; // is_auto_inc
-        cols[i][6] = cols[i][6] === true ? true : false; // is_nullable
-        cols[i][7] = cols[i][7] === true ? true : false; // is_unique
+        const result = await client.query('INSERT INTO schema_tables(project_id,table_name) VALUES($1, $2) RETURNING id', [proj_id, table_name]);
+        const table_id = result.rows[0].id;
+        for (let i = 0; i < cols.length; i++) {
+            //0 col_name,1 col_type,2 default,3(array) col_len,4 is_pk,5 is_auto_inc
+            // 6 is_nullable,7 is_unique, 8 element_id_frontend
 
-        if (cols[i][0] == null || cols[i][0].trim().length < 1) {
-            return res.status(400).json({ msg: "Please in fill the column name", id: cols[i][8] });
-        }
-        const col_name = cols[i][0].trim().toLowerCase();
-        if (validateName(req, res, col_name, 'column', cols[i][8]).isResSent) return;
+            cols[i][2] = cols[i][2] == '' ? 'NULL' : cols[i][2];
+            cols[i][3] = cols[i][3] == '' ? -1 : cols[i][3];
 
-        for (let j = 0; j < i; j++) {
-            if (col_name == cols[j][0].trim().toLowerCase()) {
-                return res.status(400).json({ msg: 'Every column name should be unique in a table', id: cols[i][8] });
+            cols[i][4] = cols[i][4] === true ? true : false; // is_pk
+            cols[i][5] = cols[i][5] === true ? true : false; // is_auto_inc
+            cols[i][6] = cols[i][6] === true ? true : false; // is_nullable
+            cols[i][7] = cols[i][7] === true ? true : false; // is_unique
+            if (cols[i][4]) {
+                cols[i][6] = false;
+                cols[i][7] = true;
+            }
+
+            if (cols[i][0] == null || cols[i][0].trim().length < 1) {
+                return res.status(400).json({ msg: "Please in fill the column name", id: cols[i][8] });
+            }
+            const col_name = cols[i][0].trim().toLowerCase();
+            if (validateName(req, res, col_name, 'column', cols[i][8]).isResSent) return;
+
+            for (let j = 0; j < i; j++) {
+                if (col_name == cols[j][0].trim().toLowerCase()) {
+                    return res.status(400).json({ msg: 'Every column name should be unique in a table', id: cols[i][8] });
+                }
+            }
+            if (!(cols[i][1] === 'INTEGER' || cols[i][1] === 'TEXT' || cols[i][1] === 'NUMERIC' || cols[i][1] === 'BOOLEAN' || cols[i][1] === 'VARCHAR' || cols[i][1] === 'DATE' || cols[i][1] === 'TIMESTAMP')) {
+                return res.status(400).json({ msg: 'Your given data type is not valid', id: cols[i][8] });
+            }
+            //used a pg function written on top to chk if default value matched with datatype 
+            if (!validateColumnDefault(pool, cols[i][1], cols[i][2])) {
+                return res.status(400).json({ msg: 'Your given default value does not match with the give data type', id: cols[i][8] });
+            }
+            if (cols[i][1] === 'VARCHAR') {
+                if (cols[i][3] < 1) return res.status(400).json({ msg: 'Give valid length of the column', id: cols[i][8] });
+            }
+
+            if (cols[i][5] === true && (cols[i][1] != 'INTEGER' || (cols[i][4] != true && cols[i][7] != true))) {
+                return res.status(409).json({ msg: "Auto increment is not possible for this key", id: cols[i][8] });
+            }
+            if (cols[i][4] === true && (cols[i][6] == true || cols[i][7] == true)) {
+                return res.status(409).json({ msg: "Primary key must be not nullable and unique", id: cols[i][8] });
             }
         }
-        if (!(cols[i][1] === 'INTEGER' || cols[i][1] === 'TEXT' || cols[i][1] === 'NUMERIC' || cols[i][1] === 'BOOLEAN' || cols[i][1] === 'VARCHAR' || cols[i][1] === 'DATE' || cols[i][1] === 'TIMESTAMP')) {
-            return res.status(400).json({ msg: 'Your given data type is not valid', id: cols[i][8] });
-        }
-        //used a pg function written on top to chk if default value matched with datatype 
-        if (!validateColumnDefault(pool, cols[i][1], cols[i][2])) {
-            return res.status(400).json({ msg: 'Your given default value does not match with the give data type', id: cols[i][8] });
-        }
-        if (cols[i][1] === 'VARCHAR') {
-            if (cols[i][3] < 1) return res.status(400).json({ msg: 'Give valid length of the column', id: cols[i][8] });
-        }
 
-        if (cols[i][5] === true && (cols[i][1] != 'INTEGER' || (cols[i][4] != true && cols[i][7] != true))) {
-            return res.status(409).json({ msg: "Auto increment is not possible for this key", id: cols[i][8] });
-        }
-        if (cols[i][4] === true && (cols[i][6] == true || cols[i][7] == true)) {
-            return res.status(409).json({ msg: "Primary key must be not nullable and unique", id: cols[i][8] });
-        }
-    }
-
-    let query_string = 'INSERT INTO schema_columns(schema_table_id, col_name, col_type, default_value, col_length, is_primary_key, is_auto_increment, is_nullable, is_unique) VALUES';
-    let c = 1;
-    const values = [];
-    let values_param = '';
-    for (let i = 0; i < cols.length; i++) {
-        values_param += '(';
-        for (let j = 0; j < cols[i].length; j++) { // ignoring the front end id but adding the table_id :)
-            if (j != cols[i].length - 1) {
-                values_param += '$' + c + ', ';
+        let query_string = 'INSERT INTO schema_columns(schema_table_id, col_name, col_type, default_value, col_length, is_primary_key, is_auto_increment, is_nullable, is_unique) VALUES';
+        let c = 1;
+        const values = [];
+        let values_param = '';
+        for (let i = 0; i < cols.length; i++) {
+            values_param += '(';
+            for (let j = 0; j < cols[i].length; j++) { // ignoring the front end id but adding the table_id :)
+                if (j != cols[i].length - 1) {
+                    values_param += '$' + c + ', ';
+                } else {
+                    values_param += '$' + c;
+                }
+                if (j == 0) {
+                    values.push(table_id);
+                } else {
+                    values.push(cols[i][j - 1]);
+                }
+                c++;
+            }
+            if (i != cols.length - 1) {
+                values_param += '), '
             } else {
-                values_param += '$' + c;
+                values_param += ');'
             }
-            if (j == 0) {
-                values.push(table_id);
-            } else {
-                values.push(cols[i][j - 1]);
-            }
-            c++;
         }
-        if (i != cols.length - 1) {
-            values_param += '), '
-        } else {
-            values_param += ');'
-        }
+        query_string += values_param;
+        await client.query(query_string, values);
+
+        await client.query('COMMIT');
+        return res.status(200).json({ msg: 'Table successfully created' });
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error(e);
+        res.status(e.status || 500).json({ msg: e.status ? e.message : 'There was a server side error, please try again later' });
+    } finally {
+        client.release();
     }
-    query_string += values_param;
-    await query(query_string, values);
-    return res.status(200).json({ msg: 'Table successfully created' });
 });
 
-router.post('/addCorsOrigin', requireAuth, requireProjectAuthor, async (req, res) => {
+router.post('/addCorsOrigin', requireAuth, requireProjectAuthor, isProjectActive, async (req, res) => {
     const { proj_id, origin } = req.body;
 
     if (origin.trim().length < 1) { return res.status(400).json({ msg: "Cors origin can not be blank" }); }
-    const isOriginExist = await query('SELECT * FROM project_cors_origin WHERE project_id=$1 AND origin=$2', [proj_id, origin]);
+    const isOriginExist = await query('SELECT * FROM project_cors_origin WHERE project_id = $1 AND origin = $2', [proj_id, origin]);
     if (isOriginExist.rows.length > 0) {
         return res.status(400).json({ msg: "The project already have this cors origin" });
     }
-    await query('INSERT INTO project_cors_origin(project_id,origin) VALUES($1,$2)', [proj_id, origin]);
+    await query('INSERT INTO project_cors_origin(project_id, origin) VALUES($1, $2)', [proj_id, origin]);
     return res.status(200).json({ msg: "Successfully added cors origin" });
 
 });
 
-router.post('/removeCorsOrigin', requireAuth, requireProjectAuthor, async (req, res) => {
+router.post('/removeCorsOrigin', requireAuth, requireProjectAuthor, isProjectActive, async (req, res) => {
     const { proj_id, origin } = req.body;
 
-    const isOriginExist = await query('SELECT * FROM project_cors_origin WHERE project_id=$1 AND origin=$2', [proj_id, origin]);
+    const isOriginExist = await query('SELECT * FROM project_cors_origin WHERE project_id = $1 AND origin = $2', [proj_id, origin]);
     if (isOriginExist.rows.length < 1) {
         return res.status(400).json({ msg: "The cors origin does not exist for this project" });
     }
-    await query('DELETE FROM project_cors_origin WHERE project_id=$1 AND origin=$2', [proj_id, origin]);
+    await query('DELETE FROM project_cors_origin WHERE project_id = $1 AND origin = $2', [proj_id, origin]);
     return res.status(200).json({ msg: "Successfully removed cors origin" });
 
 });
-router.post('/addForeignKey', requireAuth, requireProjectAccess, async (req, res) => {
+
+router.post('/addForeignKey', requireAuth, requireProjectAccess, isProjectActive, async (req, res) => {
+    // Need to inspect it again for trxn and concurrency
     const { proj_id, schema_table_id, child_col_id, parent_col_id, fk_constraint_name, on_dlt, on_upd } = req.body;
     const fk_name = fk_constraint_name.trim().toLowerCase();
     if (validateName(req, res, fk_name, 'fk_name', 'NULL').isResSent) return;
@@ -350,17 +405,17 @@ router.post('/addForeignKey', requireAuth, requireProjectAccess, async (req, res
     if (FkName.rows.length > 0) {
         return res.status(400).json({ msg: "You already have a constraint in this fk name in this table" });
     }
-    await query('INSERT INTO schema_foreign_keys(child_col_id,parent_id,fk_name,on_delete,on_update) VALUES($1, $2, $3, $4, $5)', [child_col_id, parent_col_id, fk_name, on_delete, on_update]);
+    await query('INSERT INTO schema_foreign_keys(child_col_id, parent_id, fk_name, on_delete, on_update) VALUES($1, $2, $3, $4, $5)', [child_col_id, parent_col_id, fk_name, on_delete, on_update]);
     return res.status(200).json({ msg: "Foreign key constraint successfully added to the table" });
+});
 
-
-})
-router.post('/removeForeignKey', requireAuth, async (req, res) => {
+router.post('/removeForeignKey', requireAuth, isProjectActive, async (req, res) => {
     const { proj_id, schema_table_id, child_col_id } = req.body;
     const result = await query("DELETE FROM schema_foreign_keys FK USING schema_columns C, schema_tables T, projects P  WHERE FK.child_col_id=C.id AND C.schema_table_id=T.id AND T.project_id=P.id AND FK.child_col_id=$1 AND T.id=$2 AND P.id=$3 AND (P.author_id=$4 OR EXISTS (SELECT 1 FROM project_collaborators PC WHERE PC.project_id=P.id AND PC.user_id=$4 AND PC.role='editor' AND PC.status='accepted'))", [child_col_id, schema_table_id, proj_id, req.loggedInUser.id]);
     if (result.rowCount === 0) return res.status(400).json({ msg: 'Can not remove the foreign key.Try again leter' });
     return res.status(200).json({ msg: 'Successfully deleted the foreign key' });
 
 
-})
+});
+
 module.exports = router;
