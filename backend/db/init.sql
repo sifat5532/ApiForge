@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS projects (
       is_template = FALSE
       OR api_key_prefix IS NULL
    ),
+   CONSTRAINT uq_proj_name_author UNIQUE (name , author_id) ,
    CONSTRAINT fk_project_author FOREIGN KEY (author_id) REFERENCES users (id) ON DELETE CASCADE,
    CONSTRAINT fk_project_cloned_from FOREIGN KEY (cloned_from_id) REFERENCES projects (id) ON DELETE SET NULL,
    CONSTRAINT fk_template_originates_from FOREIGN KEY (originates_from_id) REFERENCES projects (id) ON DELETE SET NULL,
@@ -596,6 +597,7 @@ CREATE TRIGGER tg_insert_schema_table AFTER INSERT ON schema_tables FOR EACH ROW
   DECLARE 
   rec RECORD;
   v_col_def TEXT;
+  v_pk_cols TEXT;
   BEGIN
     SELECT P.is_template , S.TABLE_NAME INTO rec
     FROM schema_tables S
@@ -610,15 +612,10 @@ CREATE TRIGGER tg_insert_schema_table AFTER INSERT ON schema_tables FOR EACH ROW
     IF NEW.is_auto_increment THEN
       v_col_def := v_col_def || ' GENERATED ALWAYS AS IDENTITY ';
     END IF;
-    IF NEW.is_primary_key THEN
-      v_col_def := v_col_def || ' PRIMARY KEY ';
-    END IF;
-    IF NOT NEW.is_primary_key
-      AND NEW.is_unique THEN
+    IF  NEW.is_unique THEN
       v_col_def := v_col_def || ' UNIQUE ';
     END IF;
-    IF NOT NEW.is_primary_key
-      AND NOT NEW.is_nullable THEN
+    IF NEW.is_nullable THEN
       v_col_def := v_col_def || ' NOT NULL';
     END IF;
     IF NEW.default_value IS NOT NULL AND NOT NEW.is_auto_increment
@@ -628,7 +625,6 @@ CREATE TRIGGER tg_insert_schema_table AFTER INSERT ON schema_tables FOR EACH ROW
                RAISE EXCEPTION 'Invalid numeric default value: %',NEW.default_value;
             END IF;    
           v_col_def := v_col_def || FORMAT (' DEFAULT %s', NEW.default_value);
-         END IF;
         ELSIF NEW.col_type IN ('TEXT', 'VARCHAR') THEN
            v_col_def := v_col_def || FORMAT (' DEFAULT %L', NEW.default_value);
         ELSIF NEW.col_type IN ('DATE', 'TIMESTAMP') THEN
@@ -645,7 +641,14 @@ CREATE TRIGGER tg_insert_schema_table AFTER INSERT ON schema_tables FOR EACH ROW
       END IF;
       END IF;
       IF NOT rec.is_template THEN
-        EXECUTE FORMAT ('ALTER TABLE %I.%I ADD COLUMN %I %s ', 'PROJECTS',rec.TABLE_NAME, NEW.col_name, v_col_def);
+        EXECUTE FORMAT ('ALTER TABLE %I.%I ADD COLUMN %I %s ', 'PROJECT_tables',rec.TABLE_NAME, NEW.col_name, v_col_def);
+         IF NEW.is_primary_key THEN
+            SELECT string_agg(formate('%I',col_name),',' ORDER BY col_name)
+            INTO v_pk_cols 
+            FROM schema_columns WHERE schema_table_id = NEW.schema_table_id AND is_primary_key = true;
+            EXECUTE FORMAT ('ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I', 'PROJECT_tables', rec.TABLE_NAME, rec.TABLE_NAME||'_pk');
+            EXECUTE FORMAT ('ALTER TABLE %I.%I ADD CONSTRAINT  %I PRIMARY KEY(%s)', 'PROJECTS-tables', rec.TABLE_NAME,rec.TABLE_NAME||'_pk', v_pk_cols);
+         END IF;
      END IF;
       RETURN NEW;
     END;
@@ -653,6 +656,30 @@ CREATE TRIGGER tg_insert_schema_table AFTER INSERT ON schema_tables FOR EACH ROW
      
      CREATE TRIGGER tg_insert_schema_column AFTER INSERT ON schema_columns FOR EACH ROW
       EXECUTE FUNCTION tgfunc_add_columns ();
+   
+    CREATE OR REPLACE FUNCTION tgfunc_add_fks () RETURNS TRIGGER LANGUAGE plpgsql AS $$ 
+  DECLARE 
+  rec RECORD ;
+  fk_def TEXT;
+  BEGIN
+    SELECT P.is_template , S1.TABLE_NAME as child_table , S2.TABLE_NAME as parent_table, Ch.col_name  AS child_name, Pa.col_name AS parent_name  INTO rec
+    FROM schema_columns Ch 
+    JOIN schema_tables S1 ON S1.id = Ch.schema_table_id
+        JOIN projects P ON P.id = S1.project_id,
+        schema_columns Pa
+    JOIN schema_tables S2 ON S2.id = Pa.schema_table_id
+    WHERE Ch.id = NEW.child_col_id AND pa.id = NEW.parent_col_id ;
+     fk_def := 'FOREIGN KEY ( '||rec.child_name||' ) REFERENCES '
+               ||rec.parent_table ||'('|| rec.parent_name ||') ON DELETE '|| NEW.on_delete ||' ON UPDATE '||NEW.on_update;
+     IF NOT rec.is_template THEN
+        EXECUTE FORMAT ('ALTER TABLE %I.%I ADD CONSTRAINT %I %s ', 'PROJECTS',rec.child_table,  NEW.fk_name, fk_def );
+     END IF;
+      RETURN NEW;
+    END;
+    $$;
+     
+     CREATE TRIGGER tg_insert_schema_fks AFTER INSERT ON schema_foreign_keys FOR EACH ROW
+      EXECUTE FUNCTION tgfunc_add_fks ();
       
 
 
