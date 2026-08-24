@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS projects (
       is_template = FALSE
       OR api_key_prefix IS NULL
    ),
-   CONSTRAINT uq_proj_name_author UNIQUE (name , author_id) ,
+   CONSTRAINT uq_proj_name_author UNIQUE (name, author_id),
    CONSTRAINT fk_project_author FOREIGN KEY (author_id) REFERENCES users (id) ON DELETE CASCADE,
    CONSTRAINT fk_project_cloned_from FOREIGN KEY (cloned_from_id) REFERENCES projects (id) ON DELETE SET NULL,
    CONSTRAINT fk_template_originates_from FOREIGN KEY (originates_from_id) REFERENCES projects (id) ON DELETE SET NULL,
@@ -373,6 +373,13 @@ CREATE TABLE IF NOT EXISTS subscription_log (
 
 CREATE INDEX IF NOT EXISTS idx_subscriptions_log_subscription_id ON subscriptions (subscription_id);
 
+
+/*##################################################################################
+
+Need to think about writing generic functions to insert rows into any log table
+
+##################################################################################*/
+
 ----------------------- NOTIFICATION TRIGGERS STARTS HERE -----------------------
 -- types of notifications
 /*
@@ -567,33 +574,22 @@ AFTER DELETE ON projects FOR EACH ROW
 EXECUTE FUNCTION tgfunc_delete_notification_by_project ();
 
 ----------------------- NOTIFICATION TRIGGERS ENDS HERE -----------------------
-
-
 ------------------------Create schema table trigger--------------------------------
-
-CREATE OR REPLACE FUNCTION tgfunc_create_schema ()RETURNS TRIGGER LANGUAGE plpgsql AS $$ 
-DECLARE
-   rec RECORD;
+CREATE OR REPLACE FUNCTION tgfunc_create_schema () RETURNS TRIGGER LANGUAGE plpgsql AS $$ 
 BEGIN
-  SELECT
-    P.is_template, p.author_id  INTO rec
-  FROM
-    projects P
-  WHERE
-    P.id = NEW.id;
-  IF NOT rec.is_template  THEN
-    EXECUTE FORMAT ('CREATE SCHEMA IF NOT EXISTS %I', 'PROJ'||'_'||NEW.id||'_'||rec.author_id);
-  END IF;
-  RETURN NEW;
+   EXECUTE FORMAT ('CREATE SCHEMA IF NOT EXISTS %I', 'PROJ'||'_'||NEW.id||'_'||NEW.author_id);
+   RETURN NEW;
 END;
 $$;
-CREATE TRIGGER tg_insert_project AFTER INSERT ON projects FOR EACH ROW
-  EXECUTE FUNCTION tgfunc_create_schema ();
 
+DROP TRIGGER IF EXISTS tg_insert_project ON projects;
 
-CREATE
-OR
-REPLACE FUNCTION tgfunc_create_schema_table () RETURNS TRIGGER LANGUAGE plpgsql AS $$ DECLARE
+CREATE TRIGGER tg_insert_project
+AFTER INSERT ON projects FOR EACH ROW WHEN (NEW.is_template = FALSE)
+EXECUTE FUNCTION tgfunc_create_schema ();
+
+CREATE OR REPLACE FUNCTION tgfunc_create_schema_table () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
 rec RECORD;
 BEGIN
   SELECT
@@ -609,82 +605,121 @@ BEGIN
 END;
 $$;
 
-CREATE TRIGGER tg_insert_schema_table AFTER INSERT ON schema_tables FOR EACH ROW
-  EXECUTE FUNCTION tgfunc_create_schema_table ();
-  
-  
-  
-  CREATE OR REPLACE FUNCTION tgfunc_add_columns () RETURNS TRIGGER LANGUAGE plpgsql AS $$ 
-  DECLARE 
-  rec RECORD;
-  v_col_def TEXT;
-  v_pk_cols TEXT;
-  BEGIN
-    SELECT P.is_template , P.id, P.author_id,  S.TABLE_NAME INTO rec
+DROP TRIGGER IF EXISTS tg_insert_schema_table ON schema_tables;
+
+CREATE TRIGGER tg_insert_schema_table
+AFTER INSERT ON schema_tables FOR EACH ROW
+EXECUTE FUNCTION tgfunc_create_schema_table (); -- we need to insert a row into the project_logs table that a new table has been inserted, it will be implemented later
+
+CREATE OR REPLACE FUNCTION tgfunc_add_columns () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+    rec       RECORD;
+    v_col_def TEXT;
+    v_pk_cols TEXT;
+BEGIN
+    SELECT P.is_template, P.id, P.author_id, S.TABLE_NAME
+    INTO rec
     FROM schema_tables S
     JOIN projects P ON P.id = S.project_id
     WHERE S.id = NEW.schema_table_id;
-     v_col_def := NEW.col_type;
+
+    v_col_def := NEW.col_type;
+
     IF NEW.col_type = 'NUMERIC' THEN
-      v_col_def := v_col_def || ' (' || NEW.col_length || ',6) ';
+        v_col_def := v_col_def || ' (' || NEW.col_length || ',6) ';
     ELSIF NEW.col_type = 'VARCHAR' THEN
-      v_col_def := v_col_def || ' (' || NEW.col_length || ') ';
+        v_col_def := v_col_def || ' (' || NEW.col_length || ') ';
     END IF;
+
     IF NEW.is_auto_increment THEN
-      v_col_def := v_col_def || ' GENERATED ALWAYS AS IDENTITY ';
+        v_col_def := v_col_def || ' GENERATED ALWAYS AS IDENTITY ';
     END IF;
-    IF  NEW.is_unique THEN
-      v_col_def := v_col_def || ' UNIQUE ';
+
+    IF NEW.is_unique THEN
+        v_col_def := v_col_def || ' UNIQUE ';
     END IF;
+
     IF NEW.is_nullable THEN
-      v_col_def := v_col_def || ' NOT NULL';
+        v_col_def := v_col_def || ' NOT NULL';
     END IF;
-    IF NEW.default_value IS NOT NULL AND NOT NEW.is_auto_increment
-     THEN
+
+    IF NEW.default_value IS NOT NULL AND NOT NEW.is_auto_increment THEN
         IF NEW.col_type IN ('INTEGER', 'NUMERIC') THEN
             IF NEW.default_value !~ '^-?[0-9]+(\.[0-9]+)?$' THEN
-               RAISE EXCEPTION 'Invalid numeric default value: %',NEW.default_value;
-            END IF;    
-          v_col_def := v_col_def || FORMAT (' DEFAULT %s', NEW.default_value);
+                RAISE EXCEPTION 'Invalid numeric default value: %', NEW.default_value;
+            END IF;
+            v_col_def := v_col_def || FORMAT(' DEFAULT %s', NEW.default_value);
+
         ELSIF NEW.col_type IN ('TEXT', 'VARCHAR') THEN
-           v_col_def := v_col_def || FORMAT (' DEFAULT %L', NEW.default_value);
+            v_col_def := v_col_def || FORMAT(' DEFAULT %L', NEW.default_value);
+
         ELSIF NEW.col_type IN ('DATE', 'TIMESTAMP') THEN
-              IF UPPER(NEW.default_value) IN ('NOW()', 'CURRENT_TIMESTAMP', 'CURRENT_DATE') THEN
-                 v_col_def := v_col_def || FORMAT (' DEFAULT %s', NEW.default_value);
-              ELSE v_col_def := v_col_def || FORMAT (' DEFAULT %L', NEW.default_value);
-              END IF;
+            IF UPPER(NEW.default_value) IN ('NOW()', 'CURRENT_TIMESTAMP', 'CURRENT_DATE') THEN
+                v_col_def := v_col_def || FORMAT(' DEFAULT %s', NEW.default_value);
+            ELSE
+                v_col_def := v_col_def || FORMAT(' DEFAULT %L', NEW.default_value);
+            END IF;
+
         ELSIF NEW.col_type = 'BOOLEAN' THEN
             IF LOWER(NEW.default_value) IN ('true', 'false') THEN
-                v_col_def := v_col_def || FORMAT (' DEFAULT %s', LOWER(NEW.default_value));
-            ELSE RAISE EXCEPTION 'Invalid BOOLEAN default value: % ',NEW.default_value;
+                v_col_def := v_col_def || FORMAT(' DEFAULT %s', LOWER(NEW.default_value));
+            ELSE
+                RAISE EXCEPTION 'Invalid BOOLEAN default value: %', NEW.default_value;
             END IF;
-        ELSE RAISE EXCEPTION 'Invalid data type: % ',NEW.col_type;
-      END IF;
-      END IF;
-      IF NOT rec.is_template THEN
-        EXECUTE FORMAT ('ALTER TABLE %I.%I ADD COLUMN %I %s ', 'PROJ'||'_'||rec.id||'_'||rec.author_id,rec.TABLE_NAME, NEW.col_name, v_col_def);
-         IF NEW.is_primary_key THEN
-            SELECT string_agg(formate('%I',col_name),',' ORDER BY col_name)
-            INTO v_pk_cols 
-            FROM schema_columns WHERE schema_table_id = NEW.schema_table_id AND is_primary_key = true;
-            EXECUTE FORMAT ('ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I', 'PROJ'||'_'||rec.id||'_'||rec.author_id, rec.TABLE_NAME, rec.TABLE_NAME||'_pk');
-            EXECUTE FORMAT ('ALTER TABLE %I.%I ADD CONSTRAINT  %I PRIMARY KEY(%s)','PROJ'||'_'||rec.id||'_'||rec.author_id, rec.TABLE_NAME,rec.TABLE_NAME||'_pk', v_pk_cols);
-         END IF;
-     END IF;
-      RETURN NEW;
-    END;
-    $$;
-     
-     CREATE TRIGGER tg_insert_schema_column AFTER INSERT ON schema_columns FOR EACH ROW
-      EXECUTE FUNCTION tgfunc_add_columns ();
-   
-   CREATE OR REPLACE FUNCTION tgfunc_create_cloned_proj () RETURNS TRIGGER plpgsql AS $$ 
-   DECLARE 
-   BEGIN 
-      SELECT  
 
+        ELSE
+            RAISE EXCEPTION 'Invalid data type: %', NEW.col_type;
+        END IF;
+    END IF;
 
-    CREATE OR REPLACE FUNCTION tgfunc_add_fks () RETURNS TRIGGER LANGUAGE plpgsql AS $$ 
+    IF NOT rec.is_template THEN
+        EXECUTE FORMAT(
+            'ALTER TABLE %I.%I ADD COLUMN %I %s',
+            'PROJ' || '_' || rec.id || '_' || rec.author_id,
+            rec.TABLE_NAME,
+            NEW.col_name,
+            v_col_def
+        );
+
+        IF NEW.is_primary_key THEN
+            SELECT string_agg(format('%I', col_name), ',' ORDER BY col_name)
+            INTO v_pk_cols
+            FROM schema_columns
+            WHERE schema_table_id = NEW.schema_table_id
+              AND is_primary_key = true;
+
+            EXECUTE FORMAT(
+                'ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I',
+                'PROJ' || '_' || rec.id || '_' || rec.author_id,
+                rec.TABLE_NAME,
+                rec.TABLE_NAME || '_pk'
+            );
+
+            EXECUTE FORMAT(
+                'ALTER TABLE %I.%I ADD CONSTRAINT %I PRIMARY KEY(%s)',
+                'PROJ' || '_' || rec.id || '_' || rec.author_id,
+                rec.TABLE_NAME,
+                rec.TABLE_NAME || '_pk',
+                v_pk_cols
+            );
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS tg_insert_schema_column ON schema_columns;
+
+CREATE TRIGGER tg_insert_schema_column
+AFTER INSERT ON schema_columns FOR EACH ROW
+EXECUTE FUNCTION tgfunc_add_columns (); -- we need to insert a row into the project_logs table that a new column has been inserted, it will be implemented later. But it should be ensured that only when an actual alter table is called (adding col to existing tabel), it will insert into logs
+
+-- CREATE OR REPLACE FUNCTION tgfunc_create_cloned_proj () RETURNS TRIGGER plpgsql AS $$ 
+-- DECLARE 
+-- BEGIN 
+--    SELECT  
+CREATE OR REPLACE FUNCTION tgfunc_add_fks () RETURNS TRIGGER LANGUAGE plpgsql AS $$ 
   DECLARE 
   rec RECORD ;
   fk_def TEXT;
@@ -704,15 +739,14 @@ CREATE TRIGGER tg_insert_schema_table AFTER INSERT ON schema_tables FOR EACH ROW
       RETURN NEW;
     END;
     $$;
-     
-     CREATE TRIGGER tg_insert_schema_fks AFTER INSERT ON schema_foreign_keys FOR EACH ROW
-      EXECUTE FUNCTION tgfunc_add_fks ();
-      
 
+DROP TRIGGER IF EXISTS tg_insert_schema_fks ON schema_foreign_keys;
 
+CREATE TRIGGER tg_insert_schema_fks
+AFTER INSERT ON schema_foreign_keys FOR EACH ROW
+EXECUTE FUNCTION tgfunc_add_fks (); -- we need to insert a row into the project_logs table that a new table has been inserted, it will be implemented later
 
 ------------------------------Subscription trigger-----------------------------
-
 CREATE OR REPLACE FUNCTION tgfunc_add_free_subscription () RETURNS TRIGGER LANGUAGE plpgsql AS $$ 
   DECLARE 
   v_subscription_id INTEGER;
@@ -721,6 +755,10 @@ CREATE OR REPLACE FUNCTION tgfunc_add_free_subscription () RETURNS TRIGGER LANGU
     INSERT INTO subscription_log(subscription_id)  VALUES(v_subscription_id);
    RETURN NEW;
    END ;
-   $$ ;
-   CREATE TRIGGER tg_insert_users AFTER INSERT ON users FOR EACH ROW 
-   EXECUTE FUNCTION tgfunc_add_free_subscription ;
+   $$;
+
+DROP TRIGGER IF EXISTS tg_insert_users ON users;
+
+CREATE TRIGGER tg_insert_users
+AFTER INSERT ON users FOR EACH ROW
+EXECUTE FUNCTION tgfunc_add_free_subscription ();
