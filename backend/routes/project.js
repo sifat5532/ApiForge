@@ -25,6 +25,10 @@ const PG_RESERVED_WORDS = new Set([
     'when', 'where', 'window', 'with'
 ]);
 
+// ######################################################
+// There are some incomplete routes in this page
+// ######################################################
+
 async function validateColumnDefault(pool, pgType, defaultValue) {
     try {
         await pool.query(`SELECT $1::${pgType}`, [defaultValue]);
@@ -208,7 +212,7 @@ router.post('/proceedCollabInvitation', requireAuth, async (req, res) => {
         return res.status(400).json({ msg: 'Already collaborating to this project' });
     }
     if (acceptInvitation == false) {
-        await query('UPDATE project_collaborators SET status=$1 WHERE project_id=$2,created_at=CURRENT_TIMESTAMP AND user_id=$3;', ['rejected', proj_id, req.loggedInUser.id]);
+        await query('UPDATE project_collaborators SET status=$1, created_at=CURRENT_TIMESTAMP WHERE project_id=$2, AND user_id=$3;', ['rejected', proj_id, req.loggedInUser.id]);
         return res.status(200).json({ msg: 'Successfully rejected the collaboration invitation' });
     }
     await query('UPDATE project_collaborators SET status=$1 ,created_at=CURRENT_TIMESTAMP WHERE project_id=$2 AND user_id=$3;', ['accepted', proj_id, req.loggedInUser.id]);
@@ -360,7 +364,12 @@ router.post('/addCorsOrigin', requireAuth, requireProjectAuthor, isProjectActive
     if (isOriginExist.rows.length > 0) {
         return res.status(400).json({ msg: "The project already have this cors origin" });
     }
-    await query('INSERT INTO project_cors_origin(project_id, origin) VALUES($1, $2)', [proj_id, origin]);
+    await query(`
+        INSERT INTO project_cors_origin
+        (project_id, origin)
+        VALUES($1, $2)
+        ON CONFLICT (project_id, origin)
+        DO NOTHING;`, [proj_id, origin]);
     return res.status(200).json({ msg: "Successfully added cors origin" });
 
 });
@@ -378,7 +387,7 @@ router.post('/removeCorsOrigin', requireAuth, requireProjectAuthor, isProjectAct
 });
 
 router.post('/addForeignKey', requireAuth, requireProjectAccess, isProjectActive, async (req, res) => {
-    // Need to inspect it again for trxn and concurrency
+    // Need to inspect it again for trxn and concurrency, ALSO NEED TO REDUCE REDUNDANT INPUTS
     const { proj_id, schema_table_id, child_col_id, parent_col_id, fk_constraint_name, on_dlt, on_upd } = req.body;
     const fk_name = fk_constraint_name.trim().toLowerCase();
     if (validateName(req, res, fk_name, 'fk_name', 'NULL').isResSent) return;
@@ -410,6 +419,7 @@ router.post('/addForeignKey', requireAuth, requireProjectAccess, isProjectActive
 });
 
 router.post('/removeForeignKey', requireAuth, isProjectActive, async (req, res) => {
+    // NEED TO REDUCE REDUNDANT INPUT
     const { proj_id, schema_table_id, child_col_id } = req.body;
     const result = await query("DELETE FROM schema_foreign_keys FK USING schema_columns C, schema_tables T, projects P  WHERE FK.child_col_id=C.id AND C.schema_table_id=T.id AND T.project_id=P.id AND FK.child_col_id=$1 AND T.id=$2 AND P.id=$3 AND (P.author_id=$4 OR EXISTS (SELECT 1 FROM project_collaborators PC WHERE PC.project_id=P.id AND PC.user_id=$4 AND PC.role='editor' AND PC.status='accepted'))", [child_col_id, schema_table_id, proj_id, req.loggedInUser.id]);
     if (result.rowCount === 0) return res.status(400).json({ msg: 'Can not remove the foreign key.Try again leter' });
