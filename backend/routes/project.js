@@ -3,7 +3,6 @@ const crypto = require('crypto');
 const query = require('./../db/query');
 const router = express.Router();
 const { requireAuth } = require('./auth');
-const { table } = require('console');
 const pool = require('./../db/connection');
 const checkPlanLimit = require('./../utils/planLimitChecker');
 const PG_RESERVED_WORDS = new Set([

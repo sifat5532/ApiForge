@@ -34,13 +34,13 @@ const requireGuest = async (req, res, next) => {
 const requireAuth = async (req, res, next) => {
     const token = req.cookies.session_token;
     if (!token) {
-        return res.status(403).json({ msg: 'You are not logged in' });
+        return res.status(401).json({ msg: 'You are not logged in' });
     } else {
         const hashedToken = hashToken(token);
         const result = await query('SELECT * FROM user_sessions WHERE session_token_hashed = $1 AND expires_at > now() AND revoked_at IS NULL', [hashedToken]);
         if (result.rows.length === 0) {
             res.clearCookie('session_token');
-            return res.status(403).json({ msg: 'You are not logged in' });
+            return res.status(401).json({ msg: 'You are not logged in' });
         } else {
             // await query('UPDATE user_sessions SET last_active_at = now() WHERE session_token_hashed = $1',[hashedToken]);
 
