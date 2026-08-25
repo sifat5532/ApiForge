@@ -176,18 +176,11 @@ CREATE TABLE IF NOT EXISTS schema_columns (
    created_at TIMESTAMP(0) NOT NULL DEFAULT now(),
    CONSTRAINT fk_schema_columns_schema_table_id FOREIGN KEY (schema_table_id) REFERENCES schema_tables (id) ON DELETE CASCADE,
    CONSTRAINT unique_schema_column_table_id_col_name UNIQUE (schema_table_id, col_name),
-   CONSTRAINT chk_if_primary_key CHECK (
-      NOT is_primary_key
-      OR (
-         NOT is_nullable
-         AND is_unique
-      )
-   ),
    CONSTRAINT chk_if_auto_increment CHECK (
       NOT is_auto_increment
       OR (
          col_type = 'INTEGER'
-         AND is_unique
+         AND ( is_unique  OR is_primary_key )
       )
    )
 );
@@ -588,6 +581,12 @@ CREATE TRIGGER tg_insert_project
 AFTER INSERT ON projects FOR EACH ROW WHEN (NEW.is_template = FALSE)
 EXECUTE FUNCTION tgfunc_create_schema ();
 
+DROP TRIGGER IF EXISTS tg_insert_project_clone ON projects;
+
+CREATE TRIGGER tg_insert_project_clone
+AFTER INSERT ON projects FOR EACH ROW WHEN ( NEW.is_clone = TRUE)
+EXECUTE FUNCTION tgfunc_clone_template();
+
 CREATE OR REPLACE FUNCTION tgfunc_create_schema_table () RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE
 rec RECORD;
@@ -613,7 +612,7 @@ EXECUTE FUNCTION tgfunc_create_schema_table (); -- we need to insert a row into 
 
 CREATE OR REPLACE FUNCTION tgfunc_add_columns () RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE
-    rec       RECORD;
+    rec   RECORD;
     v_col_def TEXT;
     v_pk_cols TEXT;
 BEGIN
@@ -639,7 +638,7 @@ BEGIN
         v_col_def := v_col_def || ' UNIQUE ';
     END IF;
 
-    IF NEW.is_nullable THEN
+    IF NOT NEW.is_nullable THEN
         v_col_def := v_col_def || ' NOT NULL';
     END IF;
 
@@ -648,21 +647,21 @@ BEGIN
             IF NEW.default_value !~ '^-?[0-9]+(\.[0-9]+)?$' THEN
                 RAISE EXCEPTION 'Invalid numeric default value: %', NEW.default_value;
             END IF;
-            v_col_def := v_col_def || FORMAT(' DEFAULT %s', NEW.default_value);
+            v_col_def := v_col_def || FORMATE(' DEFAULT %s', NEW.default_value);
 
         ELSIF NEW.col_type IN ('TEXT', 'VARCHAR') THEN
-            v_col_def := v_col_def || FORMAT(' DEFAULT %L', NEW.default_value);
+            v_col_def := v_col_def || FORMATE(' DEFAULT %L', NEW.default_value);
 
         ELSIF NEW.col_type IN ('DATE', 'TIMESTAMP') THEN
             IF UPPER(NEW.default_value) IN ('NOW()', 'CURRENT_TIMESTAMP', 'CURRENT_DATE') THEN
-                v_col_def := v_col_def || FORMAT(' DEFAULT %s', NEW.default_value);
+                v_col_def := v_col_def || FORMATE(' DEFAULT %s', NEW.default_value);
             ELSE
-                v_col_def := v_col_def || FORMAT(' DEFAULT %L', NEW.default_value);
+                v_col_def := v_col_def || FORMATE(' DEFAULT %L', NEW.default_value);
             END IF;
 
         ELSIF NEW.col_type = 'BOOLEAN' THEN
             IF LOWER(NEW.default_value) IN ('true', 'false') THEN
-                v_col_def := v_col_def || FORMAT(' DEFAULT %s', LOWER(NEW.default_value));
+                v_col_def := v_col_def || FORMATE(' DEFAULT %s', LOWER(NEW.default_value));
             ELSE
                 RAISE EXCEPTION 'Invalid BOOLEAN default value: %', NEW.default_value;
             END IF;
@@ -673,7 +672,7 @@ BEGIN
     END IF;
 
     IF NOT rec.is_template THEN
-        EXECUTE FORMAT(
+        EXECUTE FORMATE(
             'ALTER TABLE %I.%I ADD COLUMN %I %s',
             'PROJ' || '_' || rec.id || '_' || rec.author_id,
             rec.TABLE_NAME,
@@ -682,20 +681,20 @@ BEGIN
         );
 
         IF NEW.is_primary_key THEN
-            SELECT string_agg(format('%I', col_name), ',' ORDER BY col_name)
+            SELECT string_agg(FORMATE('%I', col_name), ',' ORDER BY col_name)
             INTO v_pk_cols
             FROM schema_columns
             WHERE schema_table_id = NEW.schema_table_id
               AND is_primary_key = true;
 
-            EXECUTE FORMAT(
+            EXECUTE FORMATE(
                 'ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I',
                 'PROJ' || '_' || rec.id || '_' || rec.author_id,
                 rec.TABLE_NAME,
                 rec.TABLE_NAME || '_pk'
             );
 
-            EXECUTE FORMAT(
+            EXECUTE FORMATE(
                 'ALTER TABLE %I.%I ADD CONSTRAINT %I PRIMARY KEY(%s)',
                 'PROJ' || '_' || rec.id || '_' || rec.author_id,
                 rec.TABLE_NAME,
@@ -708,7 +707,6 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS tg_insert_schema_column ON schema_columns;
 
 CREATE TRIGGER tg_insert_schema_column
@@ -731,8 +729,7 @@ CREATE OR REPLACE FUNCTION tgfunc_add_fks () RETURNS TRIGGER LANGUAGE plpgsql AS
         schema_columns Pa
     JOIN schema_tables S2 ON S2.id = Pa.schema_table_id
     WHERE Ch.id = NEW.child_col_id AND pa.id = NEW.parent_col_id ;
-     fk_def := 'FOREIGN KEY ( '||rec.child_name||' ) REFERENCES '
-               ||rec.parent_table ||'('|| rec.parent_name ||') ON DELETE '|| NEW.on_delete ||' ON UPDATE '||NEW.on_update;
+     fk_def := FORMATE('FOREIGN KEY (%I) REFERENCES %I(%I) ON DELETE %s ON UPDATE %s ',REC.child_name, rec.parent_table, rec.parent_name, NEW.on_delete, NEW.on_update );
      IF NOT rec.is_template THEN
         EXECUTE FORMAT ('ALTER TABLE %I.%I ADD CONSTRAINT %I %s ', 'PROJ'||'_'||rec.id||'_'||rec.author_id,rec.child_table,  NEW.fk_name, fk_def );
      END IF;
@@ -745,6 +742,31 @@ DROP TRIGGER IF EXISTS tg_insert_schema_fks ON schema_foreign_keys;
 CREATE TRIGGER tg_insert_schema_fks
 AFTER INSERT ON schema_foreign_keys FOR EACH ROW
 EXECUTE FUNCTION tgfunc_add_fks (); -- we need to insert a row into the project_logs table that a new table has been inserted, it will be implemented later
+
+--------------------------------Clone Template------------------------------------
+
+CREATE OR REPLACE FUNCTION tgfunc_clone_template() RETURNS TRIGGER LANGUAGE plpgsql AS $$ 
+DECLARE 
+    rec RECORD ;
+    col_def RECORD;
+    table_id INTEGER ;
+    BEGIN 
+         INSERT INTO template_clones(user_id, template_id, cloned_project_id)  VALUES( NEW.author_id, NEW.id, NEW.cloned_from_id ) ;
+         FOR rec IN
+         SELECT id, project_id, table_name FROM schema_tables WHERE project_id = NEW.cloned_from_id
+         LOOP 
+         INSERT INTO schema_tables(project_id, table_name) VALUES (NEW.id, rec.table_name) RETURNING id INTO table_id;
+         FOR col_def IN
+         SELECT * FROM schema_columns WHERE schema_table_id = rec.id
+         LOOP
+         INSERT INTO schema_columns( schema_table_id, col_name, col_type, default_value, col_length, is_primary_key, is_auto_increment, is_nullable, is_unique)
+         VALUES (table_id, col_def.col_name,  col_def.col_type,  col_def.default_value,  col_def.col_length,  col_def.is_primary_key,  col_def.is_auto_increment,  col_def.is_nullable,  col_def.is_unique);
+         END LOOP ;
+         END LOOP;
+
+       RETURN NEW;
+    END;
+    $$;
 
 ------------------------------Subscription trigger-----------------------------
 CREATE OR REPLACE FUNCTION tgfunc_add_free_subscription () RETURNS TRIGGER LANGUAGE plpgsql AS $$ 
