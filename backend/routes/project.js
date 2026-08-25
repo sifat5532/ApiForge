@@ -26,7 +26,7 @@ const PG_RESERVED_WORDS = new Set([
 ]);
 
 // ######################################################
-// There are some incomplete routes in this page
+// all the routes are complete in this file
 // ######################################################
 
 async function validateColumnDefault(pool, pgType, defaultValue) {
@@ -60,7 +60,7 @@ const requireProjectAuthor = async (req, res, next) => {
     const { proj_id } = req.body;
     if (!proj_id) return res.status(400).json({ msg: "You should insert a project id with your request" });
 
-    const result = await query('SELECT * FROM projects WHERE id=$1 AND author_id=$2', [proj_id, req.loggedInUser.id]);
+    const result = await query('SELECT id FROM projects WHERE id=$1 AND author_id=$2', [proj_id, req.loggedInUser.id]);
     if (result.rows.length === 0) {
         return res.status(403).json({ msg: "You don't have access to make any change to this project" });
     }
@@ -72,9 +72,9 @@ const requireProjectAccess = async (req, res, next) => {
     const { proj_id } = req.body;
     if (!proj_id) return res.status(400).json({ msg: "You should insert a project id with your request" });
 
-    const result = await query('SELECT * FROM projects WHERE id=$1 AND author_id=$2  AND is_template=$3', [proj_id, req.loggedInUser.id, false]);
+    const result = await query('SELECT id FROM projects WHERE id=$1 AND author_id=$2  AND is_template=$3', [proj_id, req.loggedInUser.id, false]);
 
-    const isCollab = await query('SELECT * FROM project_collaborators WHERE project_id=$1 AND user_id=$2 AND role=$3 AND status=$4', [proj_id, req.loggedInUser.id, 'editor', 'accepted']);
+    const isCollab = await query('SELECT project_id FROM project_collaborators WHERE project_id=$1 AND user_id=$2 AND role=$3 AND status=$4', [proj_id, req.loggedInUser.id, 'editor', 'accepted']);
     if (isCollab.rows.length === 0 && result.rows.length === 0) {
         return res.status(403).json({ msg: "You don't have access to make any change to this project" });
     }
@@ -85,7 +85,7 @@ const isProjectActive = async (req, res, next) => {
     const { proj_id } = req.body;
     if (!proj_id) return res.status(400).json({ msg: "You should insert a project id with your request" });
 
-    const result = await query('SELECT * FROM projects WHERE id = $1 AND subscription_status = $2', [proj_id, 'active']);
+    const result = await query('SELECT id FROM projects WHERE id = $1 AND subscription_status = $2', [proj_id, 'active']);
     if (result.rows.length === 0) {
         return res.status(403).json({ msg: "Your project is locked. Upgrade your subscription to unlock it" });
     }
@@ -178,7 +178,7 @@ router.post('/regenerateKey', requireAuth, requireProjectAuthor, isProjectActive
 
 });
 
-router.post('/collabInvitation', requireAuth, requireProjectAccess, isProjectActive, async (req, res) => {
+router.post('/collabInvitation', requireAuth, requireProjectAuthor, isProjectActive, async (req, res) => {
     const { proj_id, user_id } = req.body;
     if (user_id == req.loggedInUser.id) {
         return res.status(400).json({ msg: "You can't invite yourself as a collaborator" });
@@ -264,6 +264,46 @@ router.post('/createTable', requireAuth, requireProjectAccess, isProjectActive, 
         return res.status(400).json({ msg: 'Your alredy have a table in the project in this name' });
     }
 
+    for (let i = 0; i < cols.length; i++) {
+        //0 col_name,1 col_type,2 default,3(array) col_len,4 is_pk,5 is_auto_inc
+        // 6 is_nullable,7 is_unique, 8 element_id_frontend
+
+        cols[i][2] = cols[i][2] == '' ? null : cols[i][2];
+        cols[i][3] = cols[i][3] == '' ? 6 : (cols[i][3] < 6 ? cols[i][3] + 6 : cols[i][3]);
+
+        cols[i][4] = cols[i][4] === true ? true : false; // is_pk
+        cols[i][5] = cols[i][5] === true ? true : false; // is_auto_inc
+        cols[i][6] = cols[i][6] === true ? true : false; // is_nullable
+        cols[i][7] = cols[i][7] === true ? true : false; // is_unique
+
+        if (cols[i][0] == null || cols[i][0].trim().length < 1) {
+            return res.status(400).json({ msg: "Please in fill the column name", id: cols[i][8] });
+        }
+        const col_name = cols[i][0].trim().toLowerCase();
+        if (validateName(req, res, col_name, 'column', cols[i][8]).isResSent) { return; }
+
+        for (let j = 0; j < i; j++) {
+            if (col_name == cols[j][0].trim().toLowerCase()) {
+                return res.status(400).json({ msg: 'Every column name should be unique in a table', id: cols[i][8] });
+            }
+        }
+        if (!(cols[i][1] === 'INTEGER' || cols[i][1] === 'TEXT' || cols[i][1] === 'NUMERIC' || cols[i][1] === 'BOOLEAN' || cols[i][1] === 'VARCHAR' || cols[i][1] === 'DATE' || cols[i][1] === 'TIMESTAMP')) {
+            return res.status(400).json({ msg: 'Your given data type is not valid', id: cols[i][8] });
+        }
+        //used a pg function written on top to chk if default value matched with datatype 
+        if (!await validateColumnDefault(pool, cols[i][1], cols[i][2])) {
+            return res.status(400).json({ msg: 'Your given default value does not match with the give data type', id: cols[i][8] });
+        }
+
+        if (cols[i][1] === 'VARCHAR' || cols[i][1] === 'NUMERIC') {
+            if (cols[i][3] < 1)  return res.status(400).json({ msg: 'Give valid length of the column', id: cols[i][8] });
+        }
+
+        if (cols[i][5] === true && (cols[i][1] != 'INTEGER' || (cols[i][4] != true && cols[i][7] != true))) {
+            return res.status(409).json({ msg: "Auto increment is not possible for this key", id: cols[i][8] });
+        }
+    }
+
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -271,51 +311,6 @@ router.post('/createTable', requireAuth, requireProjectAccess, isProjectActive, 
 
         const result = await client.query('INSERT INTO schema_tables(project_id,table_name) VALUES($1, $2) RETURNING id', [proj_id, table_name]);
         const table_id = result.rows[0].id;
-        for (let i = 0; i < cols.length; i++) {
-            //0 col_name,1 col_type,2 default,3(array) col_len,4 is_pk,5 is_auto_inc
-            // 6 is_nullable,7 is_unique, 8 element_id_frontend
-
-            cols[i][2] = cols[i][2] == '' ? 'NULL' : cols[i][2];
-            cols[i][3] = cols[i][3] == '' ? -1 : cols[i][3];
-
-            cols[i][4] = cols[i][4] === true ? true : false; // is_pk
-            cols[i][5] = cols[i][5] === true ? true : false; // is_auto_inc
-            cols[i][6] = cols[i][6] === true ? true : false; // is_nullable
-            cols[i][7] = cols[i][7] === true ? true : false; // is_unique
-            if (cols[i][4]) {
-                cols[i][6] = false;
-                cols[i][7] = true;
-            }
-
-            if (cols[i][0] == null || cols[i][0].trim().length < 1) {
-                return res.status(400).json({ msg: "Please in fill the column name", id: cols[i][8] });
-            }
-            const col_name = cols[i][0].trim().toLowerCase();
-            if (validateName(req, res, col_name, 'column', cols[i][8]).isResSent) return;
-
-            for (let j = 0; j < i; j++) {
-                if (col_name == cols[j][0].trim().toLowerCase()) {
-                    return res.status(400).json({ msg: 'Every column name should be unique in a table', id: cols[i][8] });
-                }
-            }
-            if (!(cols[i][1] === 'INTEGER' || cols[i][1] === 'TEXT' || cols[i][1] === 'NUMERIC' || cols[i][1] === 'BOOLEAN' || cols[i][1] === 'VARCHAR' || cols[i][1] === 'DATE' || cols[i][1] === 'TIMESTAMP')) {
-                return res.status(400).json({ msg: 'Your given data type is not valid', id: cols[i][8] });
-            }
-            //used a pg function written on top to chk if default value matched with datatype 
-            if (!validateColumnDefault(pool, cols[i][1], cols[i][2])) {
-                return res.status(400).json({ msg: 'Your given default value does not match with the give data type', id: cols[i][8] });
-            }
-            if (cols[i][1] === 'VARCHAR') {
-                if (cols[i][3] < 1) return res.status(400).json({ msg: 'Give valid length of the column', id: cols[i][8] });
-            }
-
-            if (cols[i][5] === true && (cols[i][1] != 'INTEGER' || (cols[i][4] != true && cols[i][7] != true))) {
-                return res.status(409).json({ msg: "Auto increment is not possible for this key", id: cols[i][8] });
-            }
-            if (cols[i][4] === true && (cols[i][6] == true || cols[i][7] == true)) {
-                return res.status(409).json({ msg: "Primary key must be not nullable and unique", id: cols[i][8] });
-            }
-        }
 
         let query_string = 'INSERT INTO schema_columns(schema_table_id, col_name, col_type, default_value, col_length, is_primary_key, is_auto_increment, is_nullable, is_unique) VALUES';
         let c = 1;
@@ -387,8 +382,10 @@ router.post('/removeCorsOrigin', requireAuth, requireProjectAuthor, isProjectAct
 });
 
 router.post('/addForeignKey', requireAuth, requireProjectAccess, isProjectActive, async (req, res) => {
-    // Need to inspect it again for trxn and concurrency, ALSO NEED TO REDUCE REDUNDANT INPUTS
     const { proj_id, schema_table_id, child_col_id, parent_col_id, fk_constraint_name, on_dlt, on_upd } = req.body;
+    if (child_col_id == parent_col_id) {
+        return res.status(400).json({ msg: "Child column id and parent column id can not be same" });
+    }
     const fk_name = fk_constraint_name.trim().toLowerCase();
     if (validateName(req, res, fk_name, 'fk_name', 'NULL').isResSent) return;
     const on_delete = on_dlt == null ? 'NO ACTION' : on_dlt.toUpperCase();
@@ -399,32 +396,119 @@ router.post('/addForeignKey', requireAuth, requireProjectAccess, isProjectActive
     if (on_update != 'CASCADE' && on_update != 'SET NULL' && on_update != 'RESTRICT' && on_update != 'NO ACTION') {
         return res.status(400).json({ msg: "on_update foreign key action must be either 'CASCADE', 'SET NULL' 'NO ACTION' or 'RESTRICT'" });
     }
-
-    const isExist = await query('SELECT C.col_type AS child_col_type, C.is_nullable AS child_nullable, P.col_type AS parent_col_type FROM schema_columns C JOIN schema_columns P ON true JOIN schema_tables Ct on Ct.id=C.schema_table_id JOIN schema_tables Pt on Pt.id=P.schema_table_id JOIN projects Pj ON Pj.id=CT.project_id AND Pj.id=PT.project_id where C.id=$1 AND P.id=$2 AND ( P.is_primary_key=$3 OR P.is_unique=$4 )AND CT.id=$5 AND pj.id=$6', [child_col_id, parent_col_id, true, true, schema_table_id, proj_id]);
-    if (isExist.rows.length < 1) {
-        return res.status(400).json({ msg: "The parent column does not exists in this project" });
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;");
+        const isExist = await client.query(`
+                                    SELECT
+                                        C.col_type AS child_col_type,
+                                        C.is_nullable AS child_nullable,
+                                        P.col_type AS parent_col_type
+                                    FROM
+                                        schema_columns C
+                                        JOIN schema_columns P ON TRUE
+                                        JOIN schema_tables Ct ON Ct.id = C.schema_table_id
+                                        JOIN schema_tables Pt ON Pt.id = P.schema_table_id
+                                        JOIN projects Pj ON Pj.id = Ct.project_id
+                                        AND Pj.id = Pt.project_id
+                                    WHERE
+                                        C.id = $1
+                                        AND P.id = $2
+                                        AND (
+                                            P.is_primary_key = $3
+                                            OR P.is_unique = $4
+                                        )
+                                        AND Ct.id = $5
+                                        AND pj.id = $6`,
+            [child_col_id, parent_col_id, true, true, schema_table_id, proj_id]);
+        if (isExist.rows.length < 1) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ msg: "Your input combination is not valid." });
+        }
+        if (isExist.rows[0].child_col_type != isExist.rows[0].parent_col_type) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ msg: "The child and parent column type should be same" });
+        }
+        if (isExist.rows[0].child_nullable === false && (on_delete === 'SET NULL' || on_update === 'SET NULL')) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ msg: "The child column does not allow null but you set null as foreign key delete on update action" });
+        }
+        const FkName = await client.query(`
+                                    SELECT
+                                        1
+                                    FROM
+                                        schema_tables T
+                                        JOIN schema_columns C ON C.schema_table_id = T.id
+                                    WHERE
+                                        T.id = $1
+                                        AND EXISTS (
+                                            SELECT
+                                                1
+                                            FROM
+                                                schema_foreign_keys Fk
+                                            WHERE
+                                                Fk.fk_name = $2
+                                                AND Fk.child_col_id = C.id
+                                        )`,
+            [schema_table_id, fk_name]);
+        if (FkName.rows.length > 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ msg: "You already have a Foreign key constraint in this name in this table" });
+        }
+        await client.query(`
+                        INSERT INTO
+                            schema_foreign_keys (
+                                child_col_id,
+                                parent_col_id,
+                                fk_name,
+                                on_delete,
+                                on_update
+                            )
+                        VALUES
+                            ($1, $2, $3, $4, $5)`,
+            [child_col_id, parent_col_id, fk_name, on_delete, on_update]);
+        await client.query("COMMIT");
+        return res.status(200).json({ msg: "Foreign key constraint successfully added to the table" });
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error(e);
+        res.status(e.status || 500).json({ msg: e.status ? e.message : 'There was a server side error, please try again later' });
+    } finally {
+        client.release();
     }
-    if (isExist.rows[0].child_col_type != isExist.rows[0].parent_col_type) {
-        return res.status(400).json({ msg: "The child and parent column type should be same" });
-    }
-    if (isExist.rows[0].child_nullable === false && (on_delete === 'SET NULL' || on_update === 'SET NULL')) {
-        return res.status(409).json({ msg: "The child column does not allow null but you set null as foreign key delete on update action" });
-    }
-    const FkName = await query('SELECT 1 from schema_tables T JOIN schema_columns C ON C.schema_table_id=T.id WHERE T.id=$1 AND EXISTS(SELECT 1 FROM schema_foreign_keys Fk where Fk.fk_name=$2 and child_col_id=C.id)', [schema_table_id, fk_name]);
-    if (FkName.rows.length > 0) {
-        return res.status(400).json({ msg: "You already have a constraint in this fk name in this table" });
-    }
-    await query('INSERT INTO schema_foreign_keys(child_col_id, parent_id, fk_name, on_delete, on_update) VALUES($1, $2, $3, $4, $5)', [child_col_id, parent_col_id, fk_name, on_delete, on_update]);
-    return res.status(200).json({ msg: "Foreign key constraint successfully added to the table" });
 });
 
 router.post('/removeForeignKey', requireAuth, isProjectActive, async (req, res) => {
-    // NEED TO REDUCE REDUNDANT INPUT
     const { proj_id, schema_table_id, child_col_id } = req.body;
-    const result = await query("DELETE FROM schema_foreign_keys FK USING schema_columns C, schema_tables T, projects P  WHERE FK.child_col_id=C.id AND C.schema_table_id=T.id AND T.project_id=P.id AND FK.child_col_id=$1 AND T.id=$2 AND P.id=$3 AND (P.author_id=$4 OR EXISTS (SELECT 1 FROM project_collaborators PC WHERE PC.project_id=P.id AND PC.user_id=$4 AND PC.role='editor' AND PC.status='accepted'))", [child_col_id, schema_table_id, proj_id, req.loggedInUser.id]);
-    if (result.rowCount === 0) return res.status(400).json({ msg: 'Can not remove the foreign key.Try again leter' });
-    return res.status(200).json({ msg: 'Successfully deleted the foreign key' });
+    const result = await query(`
+                                DELETE FROM schema_foreign_keys FK USING schema_columns C,
+                                schema_tables T,
+                                projects P
+                                WHERE
+                                    FK.child_col_id = C.id
+                                    AND C.schema_table_id = T.id
+                                    AND T.project_id = P.id
+                                    AND FK.child_col_id = $1
+                                    AND T.id = $2
+                                    AND P.id = $3
+                                    AND (
+                                        P.author_id = $4
+                                        OR EXISTS (
+                                            SELECT
+                                                1
+                                            FROM
+                                                project_collaborators PC
+                                            WHERE
+                                                PC.project_id = P.id
+                                                AND PC.user_id = $4
+                                                AND PC.role = 'editor'
+                                                AND PC.status = 'accepted'
+                                        )
+                                    )`,
+        [child_col_id, schema_table_id, proj_id, req.loggedInUser.id]);
 
+    if (result.rowCount === 0) return res.status(400).json({ msg: 'Can\'t remove the foreign key. Try again later!' });
+    return res.status(200).json({ msg: 'Successfully deleted the foreign key' });
 
 });
 
