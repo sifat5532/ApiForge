@@ -7,6 +7,8 @@
    Redirects to /login on 401.
    =================================================================== */
 
+import { BACKEND_URL } from './config.js';
+
 // App State
 const state = {
   activeTab: 'my-projects', // 'my-projects' | 'shared-projects'
@@ -45,7 +47,7 @@ async function fetchAndRenderProjects() {
 
   try {
     const res = await fetch(
-      `/view/allProjects?page=1&limit=500`, // fetch all; pagination is client-side
+      `${BACKEND_URL}/view/allProjects`, // fetch all; pagination is client-side
       { credentials: 'include' }
     );
 

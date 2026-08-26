@@ -1,3 +1,5 @@
+import {BACKEND_URL} from './config.js';
+
 document.getElementById('login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
 
@@ -11,16 +13,16 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   errorBox.textContent = '';
   errorBox.classList.remove('is-visible');
 
-  if (!identity || !password) {
-    showError('Please fill in all fields');
-    return;
-  }
+  // if (!identity || !password) {
+  //   showError('Please fill in all fields');
+  //   return;
+  // }
 
   submitBtn.disabled = true;
   submitBtn.textContent = 'Logging in...';
 
   try {
-    const res = await fetch(`${BACKEND_URL}/login`, {
+    const res = await fetch(`${BACKEND_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include', // required so the httpOnly session cookie is stored/sent cross-origin

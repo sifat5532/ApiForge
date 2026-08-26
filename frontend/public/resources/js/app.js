@@ -4,13 +4,12 @@
    Each block checks for its target element before running, so this
    single file is safe to include on every page.
    =================================================================== */
+import {BACKEND_URL} from './config.js';
 
 document.addEventListener('DOMContentLoaded', () => {
   initNavToggle();
   redirectIfLoggedIn();
   initTerminalTyping();
-  initLoginForm();
-  initSignupForm();
 });
 
 /* ------------------------- mobile nav ------------------------- */
@@ -29,7 +28,7 @@ function initNavToggle() {
    If the user already has a valid session, skip landing/login/signup
    and send them straight to the dashboard. */
 function redirectIfLoggedIn() {
-  fetch('/auth/me', { credentials: 'include' })
+  fetch(BACKEND_URL+'/auth/me', { credentials: 'include' })
     .then((r) => (r.ok ? r.json() : null))
     .then((data) => {
       if (data && data.user && !document.body.dataset.skipRedirect) {
