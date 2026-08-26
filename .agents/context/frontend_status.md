@@ -119,7 +119,6 @@ Sections in order (each preceded by a `/* --- */` comment header):
 | Function | What it does |
 |---|---|
 | `initNavToggle()` | Hamburger toggle for `.nav__links` on mobile |
-| `redirectIfLoggedIn()` | `GET /auth/me` — if session valid, redirects to dashboard |
 | `initTerminalTyping()` | Animated terminal demo on `index.html` |
 | `renderTerminalLines()` | Helper — renders terminal lines without animation (reduced-motion) |
 | `escapeHtml()` | Escapes `&`, `<`, `>` for terminal output |
@@ -128,6 +127,12 @@ Sections in order (each preceded by a `/* --- */` comment header):
 | `showError(el, msg)` | Adds `.is-visible` to `.form__error` element |
 | `hideError(el)` | Removes `.is-visible` from `.form__error` element |
 | `setLoading(btn, bool, label)` | Toggles `.btn--loading` + disabled state on submit button |
+
+### `js/auth-redirect.js` — public pages only
+Self-executing script that checks session status (`/auth/me`) and redirects to `/dashboard` if the user is already logged in. Used on `index.html`, `login.html`, and `signup.html`.
+
+### `js/auth-guard.js` — dashboard pages only
+Self-executing script that checks session status (`/auth/me`). Redirects to `/login` if unauthenticated, or `/` if the backend is down. Used on all private dashboard pages to protect routes.
 
 ### `js/dashboard.js` — dashboard shell only
 

@@ -7,7 +7,6 @@
 
 document.addEventListener('DOMContentLoaded', () => {
   initNavToggle();
-  redirectIfLoggedIn();
   initTerminalTyping();
 });
 
@@ -21,23 +20,6 @@ function initNavToggle() {
     const isOpen = links.classList.toggle('is-open');
     toggle.setAttribute('aria-expanded', String(isOpen));
   });
-}
-
-/* ------------------------- session redirect -------------------------
-   If the user already has a valid session, skip landing/login/signup
-   and send them straight to the dashboard. */
-function redirectIfLoggedIn() {
-  const backendUrl = window.BACKEND_URL || 'http://localhost:3000';
-  fetch(backendUrl + '/auth/me', { credentials: 'include' })
-    .then((r) => (r.ok ? r.json() : null))
-    .then((data) => {
-      if (data && data.user && !document.body.dataset.skipRedirect) {
-        window.location.href = '/dashboard';
-      }
-    })
-    .catch(() => {
-      /* not logged in / backend unreachable — stay on page */
-    });
 }
 
 /* ------------------------- terminal typing demo ------------------------- */
