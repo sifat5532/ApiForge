@@ -511,4 +511,113 @@ router.post('/removeForeignKey', requireAuth, isProjectActive, async (req, res) 
 
 });
 
+
+router.post('/createTemplate', requireAuth, async (req, res) => {
+    const { template_name,  proj_id } = req.body;
+    const author_id = req.loggedInUser.id;
+    if (!template_name) {
+        return res.status(400).json({ msg: 'Please fill in project name' });
+    }
+    if (!/^[A-Za-z][a-zA-Z0-9_]{0,29}$/.test(template_name)) {
+        return res.status(400).json({ msg: 'Please give tamplate name within 30 characters using a-z, 0-9 or _ only and first letter within a-z' });
+    }
+    
+    const result = await query('SELECT * FROM projects WHERE author_id = $1 AND name = $2', [author_id, template_name]);
+    if (result.rows.length > 0) {
+        return res.status(400).json({ msg: 'You already have a project in this name' });
+    }
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const proj = await client.query(`
+            SELECT 
+            description, auth_enabled 
+            FROM projects 
+            WHERE id= $1 AND author_id = $2`,[ proj_id, author_id ]);
+        if( proj.rows.length<1 ){
+         await client.query( 'ROLLBACK ');
+         return res.status(404).json({msg: 'You are not allowed to create template of this project '});
+        }
+        await checkPlanLimit(client, author_id, 'project');
+        const template = await client.query(`
+            INSERT INTO projects
+            (author_id, name, description, auth_enabled, is_template, originates_from_id )
+            VALUES($1, $2, $3, $4, $5, $6)
+            RETURNING id`,
+            [author_id, template_name, proj.rows[0].description, (proj.rows[0].auth_enabled === true ? true : false), true, proj_id]
+        );
+        const tags=await  client.query(`
+                        INSERT INTO project_tags 
+                         (project_id, tag_id) 
+                         SELECT $1, tag_id 
+                         FROM project_tags 
+                         WHERE project_id = $2 `,
+                         [template.rows[0].id, proj_id]);
+        await client.query('COMMIT');
+        res.status(201).json({ msg: 'Template created successfully'});
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error(e);
+        res.status(e.status || 500).json({ msg: e.status ? e.message : 'There was a server side error, please try again later' });
+    } finally {
+        client.release();
+    }
+});
+
+router.post('/cloneTemplate', requireAuth, async (req, res) => {
+    const { clone_name, auth_enabled, cloned_from_id} = req.body;
+    const author_id = req.loggedInUser.id;
+    if (!clone_name) {
+        return res.status(400).json({ msg: 'Please fill in clone name' });
+    }
+    if (!/^[A-Za-z][a-zA-Z0-9_]{0,29}$/.test(clone_name)) {
+        return res.status(400).json({ msg: 'Please give clone name within 30 characters using a-z, 0-9 or _ only and first letter within a-z' });
+    }
+    
+    const result = await query(`SELECT * 
+                                FROM projects 
+                                WHERE author_id = $1 AND name = $2`, 
+                                [author_id, clone_name]);
+    if (result.rows.length > 0) {
+        return res.status(400).json({ msg: 'You already have a project in this name' });
+    }
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const template = await client.query(`
+            SELECT 
+            description
+            FROM projects 
+            WHERE id = $1 AND is_template = $2`,[ cloned_from_id, true]);
+        if( template.rows.length<1 ){
+         await client.query( 'ROLLBACK');
+         return res.status(404).json({msg: 'You are not allowed to clone the template '});
+        }
+        await checkPlanLimit(client, author_id, 'project');
+        const clone = await client.query(`
+            INSERT INTO projects
+            (author_id, name, description, auth_enabled, is_clone, cloned_from_id )
+            VALUES($1, $2, $3, $4, $5, $6)
+            RETURNING id`,
+            [author_id, clone_name, template.rows[0].description, (auth_enabled === true ? true : false), true, cloned_from_id]
+        );
+        const tags=await  client.query(`
+                        INSERT INTO project_tags 
+                         (project_id, tag_id) 
+                         SELECT $1, tag_id 
+                         FROM project_tags 
+                         WHERE project_id = $2 `,
+                         [clone.rows[0].id, cloned_from_id]);
+        await client.query('COMMIT');
+        res.status(201).json({ msg: 'Template cloned successfully'});
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error(e);
+        res.status(e.status || 500).json({ msg: e.status ? e.message : 'There was a server side error, please try again later' });
+    } finally {
+        client.release();
+    }
+})
+
+
 module.exports = router;

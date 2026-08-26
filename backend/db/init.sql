@@ -649,21 +649,21 @@ BEGIN
             IF NEW.default_value !~ '^-?[0-9]+(\.[0-9]+)?$' THEN
                 RAISE EXCEPTION 'Invalid numeric default value: %', NEW.default_value;
             END IF;
-            v_col_def := v_col_def || FORMATE(' DEFAULT %s', NEW.default_value);
+            v_col_def := v_col_def || FORMAT(' DEFAULT %s', NEW.default_value);
 
         ELSIF NEW.col_type IN ('TEXT', 'VARCHAR') THEN
-            v_col_def := v_col_def || FORMATE(' DEFAULT %L', NEW.default_value);
+            v_col_def := v_col_def || FORMAT(' DEFAULT %L', NEW.default_value);
 
         ELSIF NEW.col_type IN ('DATE', 'TIMESTAMP') THEN
             IF UPPER(NEW.default_value) IN ('NOW()', 'CURRENT_TIMESTAMP', 'CURRENT_DATE') THEN
-                v_col_def := v_col_def || FORMATE(' DEFAULT %s', NEW.default_value);
+                v_col_def := v_col_def || FORMAT(' DEFAULT %s', NEW.default_value);
             ELSE
-                v_col_def := v_col_def || FORMATE(' DEFAULT %L', NEW.default_value);
+                v_col_def := v_col_def || FORMAT(' DEFAULT %L', NEW.default_value);
             END IF;
 
         ELSIF NEW.col_type = 'BOOLEAN' THEN
             IF LOWER(NEW.default_value) IN ('true', 'false') THEN
-                v_col_def := v_col_def || FORMATE(' DEFAULT %s', LOWER(NEW.default_value));
+                v_col_def := v_col_def || FORMAT(' DEFAULT %s', LOWER(NEW.default_value));
             ELSE
                 RAISE EXCEPTION 'Invalid BOOLEAN default value: %', NEW.default_value;
             END IF;
@@ -674,7 +674,7 @@ BEGIN
     END IF;
 
     IF NOT rec.is_template THEN
-        EXECUTE FORMATE(
+        EXECUTE FORMAT(
             'ALTER TABLE %I.%I ADD COLUMN %I %s',
             'PROJ' || '_' || rec.id || '_' || rec.author_id,
             rec.TABLE_NAME,
@@ -683,20 +683,20 @@ BEGIN
         );
 
         IF NEW.is_primary_key THEN
-            SELECT string_agg(FORMATE('%I', col_name), ',' ORDER BY col_name)
+            SELECT string_agg(FORMAT('%I', col_name), ',' ORDER BY col_name)
             INTO v_pk_cols
             FROM schema_columns
             WHERE schema_table_id = NEW.schema_table_id
               AND is_primary_key = true;
 
-            EXECUTE FORMATE(
+            EXECUTE FORMAT(
                 'ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I',
                 'PROJ' || '_' || rec.id || '_' || rec.author_id,
                 rec.TABLE_NAME,
                 rec.TABLE_NAME || '_pk'
             );
 
-            EXECUTE FORMATE(
+            EXECUTE FORMAT(
                 'ALTER TABLE %I.%I ADD CONSTRAINT %I PRIMARY KEY(%s)',
                 'PROJ' || '_' || rec.id || '_' || rec.author_id,
                 rec.TABLE_NAME,
