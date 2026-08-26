@@ -7,8 +7,6 @@
    Redirects to /login on 401.
    =================================================================== */
 
-import { BACKEND_URL } from './config.js';
-
 // App State
 const state = {
   activeTab: 'my-projects', // 'my-projects' | 'shared-projects'
@@ -45,9 +43,11 @@ async function fetchAndRenderProjects() {
 
   renderShimmer(container);
 
+  const backendUrl = window.BACKEND_URL || 'http://localhost:3000';
+
   try {
     const res = await fetch(
-      `${BACKEND_URL}/view/allProjects`, // fetch all; pagination is client-side
+      `${backendUrl}/view/allProjects`, // fetch all; pagination is client-side
       { credentials: 'include' }
     );
 

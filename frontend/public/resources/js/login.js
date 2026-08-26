@@ -1,5 +1,3 @@
-import {BACKEND_URL} from './config.js';
-
 document.getElementById('login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
 
@@ -21,8 +19,10 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   submitBtn.disabled = true;
   submitBtn.textContent = 'Logging in...';
 
+  const backendUrl = window.BACKEND_URL || 'http://localhost:3000';
+
   try {
-    const res = await fetch(`${BACKEND_URL}/auth/login`, {
+    const res = await fetch(`${backendUrl}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include', // required so the httpOnly session cookie is stored/sent cross-origin

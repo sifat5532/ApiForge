@@ -111,7 +111,18 @@ function initAccountMenu() {
   if (signOutLink) {
     signOutLink.addEventListener('click', async (e) => {
       e.preventDefault();
-      await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
+      const backendUrl = window.BACKEND_URL || 'http://localhost:3000';
+      try {
+        const res = await fetch(`${backendUrl}/auth/logout`, {
+          method: 'POST',
+          credentials: 'include'
+        });
+        if (!res.ok) {
+          console.error('Logout request was not successful:', res.status);
+        }
+      } catch (err) {
+        console.error('Logout error:', err);
+      }
       window.location.href = '/login';
     });
   }

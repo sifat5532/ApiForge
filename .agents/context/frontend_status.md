@@ -44,6 +44,7 @@ frontend/
 | Notifications | `pages/notifications.html` | `js/dashboard.js`, `js/notifications.js` | ✅ Complete |
 | Templates | `pages/templates.html` | `js/dashboard.js`, `js/templates.js` | ✅ Complete |
 | Leaderboard | `pages/leaderboard.html` | `js/dashboard.js`, `js/leaderboard.js` | ✅ Complete |
+| Logout route | N/A (`/logout`) | Backend `/auth/logout` bridge | ✅ Complete |
 
 ---
 
@@ -236,8 +237,8 @@ Sections in order (each preceded by a `/* --- */` comment header):
 - **Breadcrumb is hardcoded** in `pages/dashboard.html` (`task-app / tasks`) — needs dynamic rendering when project pages are built
 - **Stat cards are hardcoded** (`2/2 projects`, `14 tables`, `0 APIs`, `0 requests`) — need real data from API
 - **Plan badge is hardcoded** (`Free plan / 6/10 tables`) in the dashboard nav — needs real data
-- **Avatar initial (`S`) is hardcoded** in account menu — needs to reflect the logged-in user
-- **Account dropdown links** (`Profile`, `Settings`, `Sign out`) point to `#` — `Sign out` needs a real logout call
+- **Account dropdown links**: ✅ Fixed — `Sign out` links across all dashboard pages now point to `/logout` and client JS calls backend `${BACKEND_URL}/auth/logout` with session validation and clean redirect to `/login`.
+- **Environment and Backend URL Configuration**: ✅ Added `.env` and `.env.example` defining `PORT` and `BACKEND_URL`. Express dynamically serves `/js/config.js` to provide `window.BACKEND_URL` to all pages without requiring ES modules or `type="module"`.
 - **`redirectIfLoggedIn()` path**: ✅ Fixed — now redirects to `/dashboard` via clean URL route.
 - **No API yet**: backend routes (`/auth/login`, `/auth/register`, `/auth/me`) are referenced in `app.js` but the backend is not implemented yet. Forms currently fail gracefully with a network error.
 - **Notifications mock data**: `notifications.js` uses `MOCK_NOTIFICATIONS` array — needs to be wired to a real `/notifications` API endpoint when backend is ready.
