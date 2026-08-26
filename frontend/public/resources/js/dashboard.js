@@ -106,6 +106,15 @@ function initAccountMenu() {
     dropdown.classList.remove('is-open');
     trigger.setAttribute('aria-expanded', 'false');
   }
+
+  const signOutLink = document.querySelector('.account-menu__dropdown a.is-danger');
+  if (signOutLink) {
+    signOutLink.addEventListener('click', async (e) => {
+      e.preventDefault();
+      await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
+      window.location.href = '/login';
+    });
+  }
 }
 
 /* ------------------------- getting-started checklist -------------------------

@@ -3,227 +3,9 @@
    Handles interactive Tab navigation, Search & Filtering,
    Skeleton shimmer loading states, Dynamic card rendering, and Pagination
    for projects.html.
+   Fetches real data from GET /view/allProjects (requires auth cookie).
+   Redirects to /login on 401.
    =================================================================== */
-
-// Mock Dataset for ApiForge Projects
-const MOCK_MY_PROJECTS = [
-  {
-    id: 'p1',
-    name: 'task-app',
-    description: 'Task & workspace management backend with real-time WebSocket notifications and role-based ACL.',
-    route: '/api/v1/tasks',
-    tablesCount: 6,
-    apisCount: 4,
-    updatedAt: '2 hours ago',
-    updatedTimestamp: 1785963550056,
-    createdTimestamp: 1783371550056,
-    createdAt: 'Jul 7, 2026',
-    updatedBy: 'Sifat',
-    authEnabled: true
-  },
-  {
-    id: 'p2',
-    name: 'blog-cms',
-    description: 'Headless CMS REST API with markdown parsing, asset uploads, and category tagging.',
-    route: '/api/v1/cms',
-    tablesCount: 8,
-    apisCount: 6,
-    updatedAt: 'Yesterday',
-    updatedTimestamp: 1785884350056,
-    createdTimestamp: 1783292350056,
-    createdAt: 'Jul 6, 2026',
-    updatedBy: 'Sifat',
-    authEnabled: true
-  },
-  {
-    id: 'p3',
-    name: 'e-commerce-inventory',
-    description: 'Product catalog, SKU tracking, warehouse stock level alerts, and variant management.',
-    route: '/api/v2/inventory',
-    tablesCount: 12,
-    apisCount: 8,
-    updatedAt: '3 days ago',
-    updatedTimestamp: 1785711550056,
-    createdTimestamp: 1783119550056,
-    createdAt: 'Jul 4, 2026',
-    updatedBy: 'Alex',
-    authEnabled: false
-  },
-  {
-    id: 'p4',
-    name: 'user-auth-service',
-    description: 'OAuth2 / OIDC identity provider proxy, JWT token issuer, and session refresh handler.',
-    route: '/api/v1/auth',
-    tablesCount: 4,
-    apisCount: 5,
-    updatedAt: '4 days ago',
-    updatedTimestamp: 1785625150056,
-    createdTimestamp: 1783033150056,
-    createdAt: 'Jul 3, 2026',
-    updatedBy: 'Sifat',
-    authEnabled: true
-  },
-  {
-    id: 'p5',
-    name: 'payment-gateway-stub',
-    description: 'Stripe & PayPal webhooks testing stub with idempotent event replay simulation.',
-    route: '/api/v1/payments',
-    tablesCount: 5,
-    apisCount: 3,
-    updatedAt: '5 days ago',
-    updatedTimestamp: 1785538750056,
-    createdTimestamp: 1782946750056,
-    createdAt: 'Jul 2, 2026',
-    updatedBy: 'Dave',
-    authEnabled: true
-  },
-  {
-    id: 'p6',
-    name: 'analytics-engine',
-    description: 'Clickstream log collector, user event aggregator, and automated CSV export pipeline.',
-    route: '/api/v1/analytics',
-    tablesCount: 15,
-    apisCount: 2,
-    updatedAt: '1 week ago',
-    updatedTimestamp: 1785365950056,
-    createdTimestamp: 1782773950056,
-    createdAt: 'Jun 30, 2026',
-    updatedBy: 'Sifat',
-    authEnabled: false
-  },
-  {
-    id: 'p7',
-    name: 'notification-hub',
-    description: 'Omnichannel message router supporting FCM push notifications, Twilio SMS, and SendGrid mailers.',
-    route: '/api/v1/notify',
-    tablesCount: 7,
-    apisCount: 4,
-    updatedAt: '1 week ago',
-    updatedTimestamp: 1785365950056,
-    createdTimestamp: 1782773950056,
-    createdAt: 'Jun 30, 2026',
-    updatedBy: 'Julian',
-    authEnabled: true
-  },
-  {
-    id: 'p8',
-    name: 'ai-prompt-store',
-    description: 'Vector database wrapper storing prompt templates, embeddings cache, and token usage logs.',
-    route: '/api/v1/prompts',
-    tablesCount: 9,
-    apisCount: 7,
-    updatedAt: '2 weeks ago',
-    updatedTimestamp: 1784761150056,
-    createdTimestamp: 1782169150056,
-    createdAt: 'Jun 23, 2026',
-    updatedBy: 'Sifat',
-    authEnabled: true
-  },
-  {
-    id: 'p9',
-    name: 'crm-contacts-api',
-    description: 'Customer relations pipeline, lead scoring matrix, and interaction history logger.',
-    route: '/api/v1/crm',
-    tablesCount: 11,
-    apisCount: 9,
-    updatedAt: '2 weeks ago',
-    updatedTimestamp: 1784761150056,
-    createdTimestamp: 1782169150056,
-    createdAt: 'Jun 23, 2026',
-    updatedBy: 'Laura',
-    authEnabled: false
-  },
-  {
-    id: 'p10',
-    name: 'shipment-tracker',
-    description: 'Logistics tracking API with carrier status normalization (FedEx, UPS, DHL).',
-    route: '/api/v1/logistics',
-    tablesCount: 6,
-    apisCount: 3,
-    updatedAt: '3 weeks ago',
-    updatedTimestamp: 1784156350056,
-    createdTimestamp: 1781564350056,
-    createdAt: 'Jun 16, 2026',
-    updatedBy: 'Sifat',
-    authEnabled: true
-  },
-  {
-    id: 'p11',
-    name: 'support-ticket-sys',
-    description: 'Helpdesk ticketing system with automated SLA escalation rules and agent assignment.',
-    route: '/api/v1/support',
-    tablesCount: 8,
-    apisCount: 5,
-    updatedAt: '1 month ago',
-    updatedTimestamp: 1783378750056,
-    createdTimestamp: 1780786750056,
-    createdAt: 'Jun 7, 2026',
-    updatedBy: 'Ryan',
-    authEnabled: true
-  },
-  {
-    id: 'p12',
-    name: 'order-fulfillment',
-    description: 'Warehouse picking & packing status pipeline with barcode validation API.',
-    route: '/api/v1/fulfillment',
-    tablesCount: 10,
-    apisCount: 6,
-    updatedAt: '1 month ago',
-    updatedTimestamp: 1783378750056,
-    createdTimestamp: 1780786750056,
-    createdAt: 'Jun 7, 2026',
-    updatedBy: 'Sifat',
-    authEnabled: false
-  }
-];
-
-const MOCK_SHARED_PROJECTS = [
-  {
-    id: 'sp1',
-    name: 'team-metrics-dashboard',
-    description: 'Engineering velocity, sprint burndown, and PR code review latency metrics API.',
-    route: '/api/v1/team-metrics',
-    tablesCount: 9,
-    apisCount: 4,
-    updatedAt: '3 hours ago',
-    updatedTimestamp: 1785963550056,
-    createdTimestamp: 1783371550056,
-    createdAt: 'Jul 7, 2026',
-    updatedBy: 'Alex',
-    authEnabled: true,
-    owner: 'alex@company.com'
-  },
-  {
-    id: 'sp2',
-    name: 'partner-webhook-gateway',
-    description: 'B2B integration hub verifying HMAC signatures and dispatching webhook events.',
-    route: '/api/v2/webhooks',
-    tablesCount: 5,
-    apisCount: 3,
-    updatedAt: 'Yesterday',
-    updatedTimestamp: 1785884350056,
-    createdTimestamp: 1783292350056,
-    createdAt: 'Jul 6, 2026',
-    updatedBy: 'Sarah',
-    authEnabled: true,
-    owner: 'sarah@partner.io'
-  },
-  {
-    id: 'sp3',
-    name: 'legacy-data-bridge',
-    description: 'ETL wrapper syncing SQL Server legacy tables to ApiForge schema definitions.',
-    route: '/api/v1/bridge',
-    tablesCount: 18,
-    apisCount: 2,
-    updatedAt: '4 days ago',
-    updatedTimestamp: 1785625150056,
-    createdTimestamp: 1783033150056,
-    createdAt: 'Jul 3, 2026',
-    updatedBy: 'DevOps',
-    authEnabled: false,
-    owner: 'devops@company.com'
-  }
-];
 
 // App State
 const state = {
@@ -235,22 +17,86 @@ const state = {
   currentPage: 1,
   pageSize: 10,
   isLoading: false,
-  myProjectsData: [...MOCK_MY_PROJECTS],
-  sharedProjectsData: [...MOCK_SHARED_PROJECTS]
+  myProjectsData: [],
+  sharedProjectsData: [],
 };
 
 document.addEventListener('DOMContentLoaded', () => {
   initProjectsPage();
 });
 
-function initProjectsPage() {
+async function initProjectsPage() {
   const container = document.getElementById('projects-container');
   if (!container) return; // Guard for non-projects pages
 
-  updateTabBadges();
   bindEvents();
-  renderWithShimmer();
+  await fetchAndRenderProjects();
 }
+
+/* -----------------------------------------------------------------------
+   Data fetching
+----------------------------------------------------------------------- */
+
+async function fetchAndRenderProjects() {
+  const container = document.getElementById('projects-container');
+  if (!container) return;
+
+  renderShimmer(container);
+
+  try {
+    const res = await fetch(
+      `/view/allProjects?page=1&limit=500`, // fetch all; pagination is client-side
+      { credentials: 'include' }
+    );
+
+    if (res.status === 401) {
+      window.location.href = '/login';
+      return;
+    }
+
+    if (!res.ok) {
+      renderFetchError(container, 'Failed to load projects. Please try again.');
+      return;
+    }
+
+    const data = await res.json();
+    state.myProjectsData = (data.projects || []).map(mapProject);
+
+  } catch (err) {
+    renderFetchError(container, 'Network error. Is the backend reachable?');
+    return;
+  }
+
+  updateTabBadges();
+  state.isLoading = false;
+  renderProjects();
+}
+
+/**
+ * Normalises a backend project row into the shape expected by the card renderer.
+ */
+function mapProject(p) {
+  const updatedAt = p.last_updated_at || p.created_at;
+  return {
+    id: p.id,
+    name: p.name,
+    description: p.description || '',
+    route: `/api/${p.name}`,
+    tablesCount: parseInt(p.total_tables, 10) || 0,
+    apisCount: parseInt(p.total_apis, 10) || 0,
+    authEnabled: p.auth_enabled,
+    subscriptionStatus: p.subscription_status || 'active', // 'active' | 'locked'
+    createdAt: formatDate(p.created_at),
+    createdTimestamp: new Date(p.created_at).getTime(),
+    updatedAt: formatRelativeTime(updatedAt),
+    updatedTimestamp: new Date(updatedAt).getTime(),
+    updatedBy: p.last_updater_name || '',
+  };
+}
+
+/* -----------------------------------------------------------------------
+   Tab badges
+----------------------------------------------------------------------- */
 
 function updateTabBadges() {
   const myCountEl = document.getElementById('count-my-projects');
@@ -258,6 +104,10 @@ function updateTabBadges() {
   if (myCountEl) myCountEl.textContent = state.myProjectsData.length;
   if (sharedCountEl) sharedCountEl.textContent = state.sharedProjectsData.length;
 }
+
+/* -----------------------------------------------------------------------
+   Event bindings
+----------------------------------------------------------------------- */
 
 function bindEvents() {
   // Tab buttons
@@ -275,7 +125,7 @@ function bindEvents() {
         tabShared.classList.remove('is-active');
         tabShared.setAttribute('aria-selected', 'false');
       }
-      renderWithShimmer();
+      renderProjects();
     });
   }
 
@@ -290,7 +140,7 @@ function bindEvents() {
         tabMy.classList.remove('is-active');
         tabMy.setAttribute('aria-selected', 'false');
       }
-      renderWithShimmer();
+      renderProjects();
     });
   }
 
@@ -378,6 +228,10 @@ function bindEvents() {
   }
 }
 
+/* -----------------------------------------------------------------------
+   Filtering & sorting
+----------------------------------------------------------------------- */
+
 function getActiveSourceData() {
   return state.activeTab === 'my-projects' ? state.myProjectsData : state.sharedProjectsData;
 }
@@ -420,13 +274,12 @@ function getFilteredProjects() {
   return filtered;
 }
 
-function renderWithShimmer() {
-  const container = document.getElementById('projects-container');
-  if (!container) return;
+/* -----------------------------------------------------------------------
+   Rendering
+----------------------------------------------------------------------- */
 
+function renderShimmer(container) {
   state.isLoading = true;
-
-  // Render 6 skeleton cards
   let shimmerHtml = '';
   for (let i = 0; i < 6; i++) {
     shimmerHtml += `
@@ -440,12 +293,24 @@ function renderWithShimmer() {
     `;
   }
   container.innerHTML = shimmerHtml;
+}
 
-  // Simulate network delay for realistic visual feed
-  setTimeout(() => {
-    state.isLoading = false;
-    renderProjects();
-  }, 400);
+function renderFetchError(container, message) {
+  state.isLoading = false;
+  container.innerHTML = `
+    <div class="projects-empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="projects-empty__icon">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+      <h3 class="projects-empty__title">Could not load projects</h3>
+      <p class="projects-empty__text">${escapeHtml(message)}</p>
+      <button class="btn btn--ghost btn--sm" id="btn-retry" type="button">Retry</button>
+    </div>
+  `;
+  const retryBtn = document.getElementById('btn-retry');
+  if (retryBtn) retryBtn.addEventListener('click', () => fetchAndRenderProjects());
 }
 
 function renderProjects() {
@@ -477,7 +342,7 @@ function renderProjects() {
             ? 'No projects matched your search criteria or auth filter.'
             : state.activeTab === 'shared-projects'
               ? 'No projects have been shared with your account yet.'
-              : 'You have not created any projects yet. Click "+ New project" in top navigation to get started.'}
+              : 'You have not created any projects yet. Click &quot;+ New project&quot; in top navigation to get started.'}
         </p>
         ${state.searchQuery || state.authFilter !== 'all' ? `
           <button class="btn btn--ghost btn--sm" id="btn-reset-filters" type="button">Reset filters</button>
@@ -508,6 +373,7 @@ function renderProjects() {
 
 function createProjectCardHtml(p) {
   const isSharedTab = state.activeTab === 'shared-projects';
+  const isLocked = p.subscriptionStatus === 'locked';
 
   const authBadgeHtml = p.authEnabled
     ? `<span class="project-badge project-badge--auth">
@@ -519,15 +385,26 @@ function createProjectCardHtml(p) {
        </span>`
     : `<span class="project-badge project-badge--no-auth">Public</span>`;
 
+  const lockBadgeHtml = isLocked
+    ? `<span class="project-badge project-badge--locked">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+        Locked
+       </span>`
+    : '';
+
   const sharedBadgeHtml = isSharedTab
-    ? `<span class="project-badge project-badge--shared">Shared by ${p.owner ? p.owner.split('@')[0] : 'Team'}</span>`
+    ? `<span class="project-badge project-badge--shared">Shared by ${p.owner ? escapeHtml(p.owner.split('@')[0]) : 'Team'}</span>`
     : '';
 
   return `
-    <article class="project-card" id="card-${p.id}">
+    <article class="project-card${isLocked ? ' project-card--locked' : ''}" id="card-${p.id}">
       <div class="project-card__top">
         <div class="project-card__badges">
           ${authBadgeHtml}
+          ${lockBadgeHtml}
           ${sharedBadgeHtml}
         </div>
       </div>
@@ -558,13 +435,13 @@ function createProjectCardHtml(p) {
           <span>${p.apisCount} APIs</span>
         </div>
         <div style="color: var(--text-faint);">
-          <span>updated ${p.updatedAt}${p.updatedBy ? ` by ${escapeHtml(p.updatedBy)}` : ''}</span>
+          <span>updated ${escapeHtml(p.updatedAt)}${p.updatedBy ? ` by ${escapeHtml(p.updatedBy)}` : ''}</span>
         </div>
       </div>
 
       <div class="project-card__footer" style="justify-content: space-between;">
-        <span style="font-family: var(--font-mono); font-size: 0.76rem; color: var(--text-faint);">created on ${p.createdAt}</span>
-        <a href="/dashboard" class="btn btn--ghost btn--sm">Open →</a>
+        <span style="font-family: var(--font-mono); font-size: 0.76rem; color: var(--text-faint);">created on ${escapeHtml(p.createdAt)}</span>
+        <a href="/dashboard" class="btn btn--ghost btn--sm">Open &rarr;</a>
       </div>
     </article>
   `;
@@ -597,9 +474,9 @@ function updatePaginationUI(startIndex, endIndex, totalCount, totalPages) {
 
   if (infoEl) {
     if (totalCount === 0) {
-      infoEl.textContent = 'Showing 0–0 of 0 projects';
+      infoEl.textContent = 'Showing 0\u20130 of 0 projects';
     } else {
-      infoEl.textContent = `Showing ${startIndex + 1}–${endIndex} of ${totalCount} projects`;
+      infoEl.textContent = `Showing ${startIndex + 1}\u2013${endIndex} of ${totalCount} projects`;
     }
   }
 
@@ -636,9 +513,46 @@ function updatePaginationUI(startIndex, endIndex, totalCount, totalPages) {
   }
 }
 
+/* -----------------------------------------------------------------------
+   Utility helpers
+----------------------------------------------------------------------- */
+
+function formatDate(isoString) {
+  if (!isoString) return '';
+  try {
+    return new Date(isoString).toLocaleDateString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric'
+    });
+  } catch {
+    return isoString;
+  }
+}
+
+function formatRelativeTime(isoString) {
+  if (!isoString) return 'recently';
+  try {
+    const diff = Date.now() - new Date(isoString).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+    const days = Math.floor(hours / 24);
+    if (days === 1) return 'Yesterday';
+    if (days < 7) return `${days} days ago`;
+    const weeks = Math.floor(days / 7);
+    if (weeks === 1) return '1 week ago';
+    if (weeks < 5) return `${weeks} weeks ago`;
+    const months = Math.floor(days / 30);
+    return `${months} month${months > 1 ? 's' : ''} ago`;
+  } catch {
+    return 'recently';
+  }
+}
+
 function escapeHtml(str) {
   if (!str) return '';
-  return str
+  return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
