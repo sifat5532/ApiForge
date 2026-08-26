@@ -56,7 +56,7 @@ const validateName = (req, res, name, instanceType, id) => {
 };
 
 const requireProjectAuthor = async (req, res, next) => {
-    const { proj_id } = req.body;
+    const proj_id = req.body.proj_id ? req.body.proj_id : req.params.projectId;
     if (!proj_id) return res.status(400).json({ msg: "You should insert a project id with your request" });
 
     const result = await query('SELECT id FROM projects WHERE id=$1 AND author_id=$2', [proj_id, req.loggedInUser.id]);
@@ -513,7 +513,7 @@ router.post('/removeForeignKey', requireAuth, isProjectActive, async (req, res) 
 
 
 router.post('/createTemplate', requireAuth, async (req, res) => {
-    const { template_name,  proj_id } = req.body;
+    const { template_name, proj_id } = req.body;
     const author_id = req.loggedInUser.id;
     if (!template_name) {
         return res.status(400).json({ msg: 'Please fill in project name' });
@@ -521,7 +521,7 @@ router.post('/createTemplate', requireAuth, async (req, res) => {
     if (!/^[A-Za-z][a-zA-Z0-9_]{0,29}$/.test(template_name)) {
         return res.status(400).json({ msg: 'Please give tamplate name within 30 characters using a-z, 0-9 or _ only and first letter within a-z' });
     }
-    
+
     const result = await query('SELECT * FROM projects WHERE author_id = $1 AND name = $2', [author_id, template_name]);
     if (result.rows.length > 0) {
         return res.status(400).json({ msg: 'You already have a project in this name' });
@@ -533,10 +533,10 @@ router.post('/createTemplate', requireAuth, async (req, res) => {
             SELECT 
             description, auth_enabled 
             FROM projects 
-            WHERE id= $1 AND author_id = $2`,[ proj_id, author_id ]);
-        if( proj.rows.length<1 ){
-         await client.query( 'ROLLBACK ');
-         return res.status(404).json({msg: 'You are not allowed to create template of this project '});
+            WHERE id= $1 AND author_id = $2`, [proj_id, author_id]);
+        if (proj.rows.length < 1) {
+            await client.query('ROLLBACK ');
+            return res.status(404).json({ msg: 'You are not allowed to create template of this project ' });
         }
         await checkPlanLimit(client, author_id, 'project');
         const template = await client.query(`
@@ -546,15 +546,15 @@ router.post('/createTemplate', requireAuth, async (req, res) => {
             RETURNING id`,
             [author_id, template_name, proj.rows[0].description, (proj.rows[0].auth_enabled === true ? true : false), true, proj_id]
         );
-        const tags=await  client.query(`
+        const tags = await client.query(`
                         INSERT INTO project_tags 
                          (project_id, tag_id) 
                          SELECT $1, tag_id 
                          FROM project_tags 
                          WHERE project_id = $2 `,
-                         [template.rows[0].id, proj_id]);
+            [template.rows[0].id, proj_id]);
         await client.query('COMMIT');
-        res.status(201).json({ msg: 'Template created successfully'});
+        res.status(201).json({ msg: 'Template created successfully' });
     } catch (e) {
         await client.query('ROLLBACK');
         console.error(e);
@@ -565,7 +565,7 @@ router.post('/createTemplate', requireAuth, async (req, res) => {
 });
 
 router.post('/cloneTemplate', requireAuth, async (req, res) => {
-    const { clone_name, auth_enabled, cloned_from_id} = req.body;
+    const { clone_name, auth_enabled, cloned_from_id } = req.body;
     const author_id = req.loggedInUser.id;
     if (!clone_name) {
         return res.status(400).json({ msg: 'Please fill in clone name' });
@@ -573,11 +573,11 @@ router.post('/cloneTemplate', requireAuth, async (req, res) => {
     if (!/^[A-Za-z][a-zA-Z0-9_]{0,29}$/.test(clone_name)) {
         return res.status(400).json({ msg: 'Please give clone name within 30 characters using a-z, 0-9 or _ only and first letter within a-z' });
     }
-    
+
     const result = await query(`SELECT * 
                                 FROM projects 
-                                WHERE author_id = $1 AND name = $2`, 
-                                [author_id, clone_name]);
+                                WHERE author_id = $1 AND name = $2`,
+        [author_id, clone_name]);
     if (result.rows.length > 0) {
         return res.status(400).json({ msg: 'You already have a project in this name' });
     }
@@ -588,10 +588,10 @@ router.post('/cloneTemplate', requireAuth, async (req, res) => {
             SELECT 
             description
             FROM projects 
-            WHERE id = $1 AND is_template = $2`,[ cloned_from_id, true]);
-        if( template.rows.length<1 ){
-         await client.query( 'ROLLBACK');
-         return res.status(404).json({msg: 'You are not allowed to clone the template '});
+            WHERE id = $1 AND is_template = $2`, [cloned_from_id, true]);
+        if (template.rows.length < 1) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ msg: 'You are not allowed to clone the template ' });
         }
         await checkPlanLimit(client, author_id, 'project');
         const clone = await client.query(`
@@ -601,15 +601,15 @@ router.post('/cloneTemplate', requireAuth, async (req, res) => {
             RETURNING id`,
             [author_id, clone_name, template.rows[0].description, (auth_enabled === true ? true : false), true, cloned_from_id]
         );
-        const tags=await  client.query(`
+        const tags = await client.query(`
                         INSERT INTO project_tags 
                          (project_id, tag_id) 
                          SELECT $1, tag_id 
                          FROM project_tags 
                          WHERE project_id = $2 `,
-                         [clone.rows[0].id, cloned_from_id]);
+            [clone.rows[0].id, cloned_from_id]);
         await client.query('COMMIT');
-        res.status(201).json({ msg: 'Template cloned successfully'});
+        res.status(201).json({ msg: 'Template cloned successfully' });
     } catch (e) {
         await client.query('ROLLBACK');
         console.error(e);
@@ -619,5 +619,81 @@ router.post('/cloneTemplate', requireAuth, async (req, res) => {
     }
 })
 
+router.put('/updateProject/:projectId', requireAuth, requireProjectAuthor, async (req, res) => {
+    const { proj_name, description, enable_auth, tags } = req.body;
+    const author_id = req.loggedInUser.id;
+    if (!proj_name && !description && enable_auth == null && !tags) {
+        return res.status(400).json({ msg: 'Please provide the value you want to change' });
+    }
+    if (proj_name != null && !/^[A-Za-z][a-zA-Z0-9_]{0,29}$/.test(proj_name)) {
+        return res.status(400).json({ msg: 'Please give project name within 30 characters using a-z, 0-9 or _ only and first letter within a-z' });
+    }
 
+    if (description != null && description.length > 500) {
+        return res.status(400).json({ msg: 'Please give project description within 500 characters' });
+    }
+    if (tags != null) {
+        const tag_count = await query(`
+                                    SELECT 
+                                    COUNT(*) AS total
+                                    FROM project_tags 
+                                    WHERE project_id = $1 `, [req.params.projectId]);
+        const total_tags = parseInt(tag_count.rows[0].total);
+        if (tags.length + total_tags > 10) {
+            return res.status(400).json({ msg: 'Adding more than 10 tags is not allowed!' });
+        }
+        for (let i = 0; i < tags.length; i++) {
+            const t = tags[i].trim().toLowerCase();
+            if (t.length < 2 || t.length > 20) return res.status(400).json({ msg: 'Tag length must be between 2 to 20 characters' });
+            if (!(t[0] >= 'a' && t[0] <= 'z')) return res.status(400).json({ msg: 'Tag name must start with an alphabet(a-z or A-Z)' });
+        }
+    }
+    if (proj_name != null) {
+        const result = await query('SELECT * FROM projects WHERE author_id = $1 AND name = $2', [author_id, proj_name]);
+        if (result.rows.length > 0) {
+            return res.status(400).json({ msg: 'You already have a project in this name' });
+        }
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await checkPlanLimit(client, author_id, 'project');
+
+        await client.query(`
+            UPDATE projects
+            SET 
+            name = COALESCE($1 , name) , description = COALESCE($2 , description)  , auth_enabled = COALESCE($3 , auth_enabled)`,
+            [proj_name, description, enable_auth]
+        );
+        if (tags != null) {
+            for (let i = 0; i < tags.length; i++) {
+                const t1 = tags[i].trim().toLowerCase();
+                const tag_result = await client.query('SELECT id FROM tags WHERE name=$1', [t1]);
+                let tag_id = -1;
+                if (tag_result.rows.length === 0) {
+                    const proj_tag = await client.query('INSERT INTO tags(name) VALUES($1) RETURNING id', [t1]);
+                    tag_id = proj_tag.rows[0].id;
+                }
+                else tag_id = tag_result.rows[0].id;
+
+                await client.query('INSERT INTO project_tags(project_id , tag_id) VALUES ($1,$2)', [req.params.projectId, tag_id]);
+            }
+        }
+        await client.query('COMMIT');
+        res.status(200).json({ msg: 'Project updated successfull' });
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error(e);
+
+        res.status(e.status || 500).json({ msg: e.status ? e.message : 'There was a server side error, please try again later' });
+    } finally {
+        client.release();
+    }
+});
+router.delete('/deleteProject/:projectId', requireAuth,  async (req, res) => {
+    const result = await query('DELETE FROM projects WHERE id = $1 AND author_id = $2', [req.params.projectId, req.loggedInUser.id]);
+    if(result.rowCount === 1)  return res.status(400).json({msg : "You don't have access to delete the project"});
+    return res.status(200).json({msg : "Project was deleted successfully"});
+});
 module.exports = router;
