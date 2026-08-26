@@ -19,13 +19,13 @@ function initBreadcrumbFlow() {
 
   if (fromParam) {
     origin = fromParam.toLowerCase();
-  } else if (referrer.includes('projects.html')) {
+  } else if (referrer.includes('/projects')) {
     origin = 'projects';
-  } else if (referrer.includes('templates.html')) {
+  } else if (referrer.includes('/templates')) {
     origin = 'templates';
-  } else if (referrer.includes('liked.html')) {
+  } else if (referrer.includes('/liked')) {
     origin = 'liked';
-  } else if (referrer.includes('dashboard.html') || referrer.includes('index.html')) {
+  } else if (referrer.includes('/dashboard') || referrer === '') {
     origin = 'dashboard';
   }
 
@@ -33,15 +33,15 @@ function initBreadcrumbFlow() {
 
   if (origin === 'dashboard' || origin === 'home') {
     html = `
-      <a href="dashboard.html" class="breadcrumb__item">Home</a>
+      <a href="/dashboard" class="breadcrumb__item">Home</a>
       <span class="breadcrumb__sep" aria-hidden="true">/</span>
       <span class="breadcrumb__item breadcrumb__item--current" aria-current="page">New Project</span>
     `;
   } else if (origin === 'projects') {
     html = `
-      <a href="dashboard.html" class="breadcrumb__item">Home</a>
+      <a href="/dashboard" class="breadcrumb__item">Home</a>
       <span class="breadcrumb__sep" aria-hidden="true">/</span>
-      <a href="projects.html" class="breadcrumb__item">Projects</a>
+      <a href="/projects" class="breadcrumb__item">Projects</a>
       <span class="breadcrumb__sep" aria-hidden="true">/</span>
       <span class="breadcrumb__item breadcrumb__item--current" aria-current="page">New Project</span>
     `;
@@ -49,9 +49,9 @@ function initBreadcrumbFlow() {
     // Capitalize generic origin
     const originLabel = origin.charAt(0).toUpperCase() + origin.slice(1);
     html = `
-      <a href="dashboard.html" class="breadcrumb__item">Home</a>
+      <a href="/dashboard" class="breadcrumb__item">Home</a>
       <span class="breadcrumb__sep" aria-hidden="true">/</span>
-      <a href="${escapeHtml(origin)}.html" class="breadcrumb__item">${escapeHtml(originLabel)}</a>
+      <a href="/${escapeHtml(origin)}" class="breadcrumb__item">${escapeHtml(originLabel)}</a>
       <span class="breadcrumb__sep" aria-hidden="true">/</span>
       <span class="breadcrumb__item breadcrumb__item--current" aria-current="page">New Project</span>
     `;
@@ -326,7 +326,7 @@ function initProjectForm() {
     // Simulate API project creation delay
     setTimeout(() => {
       // Redirect to projects listing page
-      window.location.href = 'projects.html';
+      window.location.href = '/projects';
     }, 800);
   });
 }

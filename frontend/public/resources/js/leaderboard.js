@@ -161,7 +161,7 @@ function buildCard(tpl, badge) {
       </div>
 
       <div class="liked-card__title">
-        <a href="templates.html#${tpl.id}" class="liked-card__title-link">${tpl.title}</a>
+        <a href="/templates#${tpl.id}" class="liked-card__title-link">${tpl.title}</a>
       </div>
 
       <p class="liked-card__desc">${tpl.description}</p>

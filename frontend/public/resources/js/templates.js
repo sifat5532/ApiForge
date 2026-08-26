@@ -453,7 +453,7 @@ function createTemplateCardHtml(t) {
         authBadgeHtml +
       '</div>' +
       '<h2 class="tmpl-card__title">' +
-        '<a href="view-project.html?id=' + escapeHtml(t.id) + '" class="tmpl-card__title-link">' + escapeHtml(t.name) + '</a>' +
+        '<a href="/view-project?id=' + escapeHtml(t.id) + '" class="tmpl-card__title-link">' + escapeHtml(t.name) + '</a>' +
       '</h2>' +
       '<p class="tmpl-card__desc">' + escapeHtml(t.description) + '</p>' +
       '<div class="liked-card__tags tmpl-card__tags">' + tagsHtml + '</div>' +

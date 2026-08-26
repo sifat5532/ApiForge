@@ -9,10 +9,63 @@ When working on the ApiForge project, you MUST adhere to the following rules.
 
 ---
 
+## 0. Project Structure & Server Routing
+
+The frontend server (`frontend/app.js`) uses this architecture:
+
+- **`frontend/public/resources/`** is the **Express static root**.
+  All CSS, JS, and image assets live here and are served from the domain root.
+  Example: `public/resources/css/style.css` → accessible at `domain.com/css/style.css`.
+
+- **`frontend/public/pages/`** is where **all HTML files** live.
+  HTML is **NOT** inside the static root — it is served via `res.sendFile()` from
+  explicit Express route handlers. This enables clean URLs like `domain.com/projects`
+  instead of `domain.com/projects.html`.
+
+- Asset `href`/`src` paths inside HTML always use root-relative paths
+  (e.g., `href="css/style.css"`, `src="js/app.js"`) because the browser resolves
+  them against the domain root, which maps to `public/resources/`.
+
+### Directory layout
+
+```
+frontend/
+├── app.js                  ← Express server entry point
+├── routes/
+│   └── pages.router.js     ← Clean URL page routes (one route per HTML page)
+└── public/
+    ├── pages/              ← All HTML files (served via res.sendFile)
+    └── resources/          ← Express static root (assets served from domain root)
+        ├── css/
+        │   ├── style.css
+        │   └── responsive.css
+        └── js/
+            ├── app.js
+            ├── dashboard.js
+            └── [page-specific].js
+```
+
+### Adding a new page — required steps
+
+1. Create the HTML file at `frontend/public/pages/<pagename>.html`
+2. Add a route in `frontend/routes/pages.router.js`:
+   ```js
+   router.get('/pagename', (req, res) => res.sendFile(path.join(pages, 'pagename.html')));
+   ```
+3. Asset paths inside the HTML stay unchanged: `css/style.css`, `js/dashboard.js`, etc.
+4. All inter-page links use **clean URLs** (e.g., `href="/dashboard"`). Never use `.html` extensions in links.
+5. **Unbuilt / stub pages**: use `href="#" data-stub="pagename"` — do **NOT** add a route for them.
+
+---
+
 ## 1. Scope of Work
 
-- You are ONLY allowed to work inside the `frontend/public` directory.
-- DO NOT modify, delete, or create files in the backend folder or anywhere outside `frontend/public` unless explicitly requested.
+- You are ONLY allowed to work inside the `frontend/public` directory:
+  - New HTML pages → `frontend/public/pages/`
+  - New CSS assets → `frontend/public/resources/css/`
+  - New JS assets  → `frontend/public/resources/js/`
+- When adding a new page, also add its route to `frontend/routes/pages.router.js`.
+- DO NOT modify, delete, or create files in the backend folder or anywhere outside `frontend/public` (and `frontend/routes/` for route additions) unless explicitly requested.
 
 ---
 
@@ -54,6 +107,7 @@ Every HTML page must follow this structure exactly.
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
 
+  <!-- Paths resolve against domain root → public/resources/css/ -->
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/responsive.css">
 </head>
@@ -87,6 +141,7 @@ Dashboard pages require an extra inline `<script>` in `<head>` (pre-paint state 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
 
+  <!-- Paths resolve against domain root → public/resources/css/ -->
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/responsive.css">
 
@@ -162,11 +217,11 @@ New features that need persistence must use a unique key prefixed with `apiforge
 
 ## 7. Stub Link Policy
 
-Several sidebar links in `dashboard.html` point to pages that do not yet exist.
+Several sidebar links point to pages that do not yet exist.
 See `.agents/context/frontend_status.md` → **Stub Link Registry** for the full list.
 
 - **Do NOT build those pages** unless explicitly instructed.
-- If you must reference one of those pages in new markup, use `href="#"` and add a `data-stub="[filename]"` attribute so it's clearly marked as a placeholder.
+- If you must reference one of those pages in new markup, use `href="#"` and add a `data-stub="[pagename]"` attribute (no `.html` extension in the value — e.g., `data-stub="billing"`, not `data-stub="billing.html"`).
 - **Do NOT invent content or structure for a stub page** — leave it for a dedicated task.
 
 ---

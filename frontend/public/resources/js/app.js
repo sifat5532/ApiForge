@@ -33,7 +33,7 @@ function redirectIfLoggedIn() {
     .then((r) => (r.ok ? r.json() : null))
     .then((data) => {
       if (data && data.user && !document.body.dataset.skipRedirect) {
-        window.location.href = '/pages/dashboard.html';
+        window.location.href = '/dashboard';
       }
     })
     .catch(() => {
@@ -160,7 +160,7 @@ function initLoginForm() {
         return;
       }
 
-      window.location.href = '/pages/dashboard.html';
+      window.location.href = '/dashboard';
     } catch (err) {
       showError(errEl, 'Network error. Is the API reachable?');
       setLoading(submitBtn, false, 'Login');
@@ -224,7 +224,7 @@ function initSignupForm() {
         return;
       }
 
-      window.location.href = '/pages/dashboard.html';
+      window.location.href = '/dashboard';
     } catch (err) {
       showError(errEl, 'Network error. Is the API reachable?');
       setLoading(submitBtn, false, 'Create account');

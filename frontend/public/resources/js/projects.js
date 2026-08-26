@@ -534,7 +534,7 @@ function createProjectCardHtml(p) {
 
       <div>
         <h3 class="project-card__title">
-          <a href="dashboard.html">${escapeHtml(p.name)}</a>
+          <a href="/dashboard">${escapeHtml(p.name)}</a>
         </h3>
       </div>
 
@@ -564,7 +564,7 @@ function createProjectCardHtml(p) {
 
       <div class="project-card__footer" style="justify-content: space-between;">
         <span style="font-family: var(--font-mono); font-size: 0.76rem; color: var(--text-faint);">created on ${p.createdAt}</span>
-        <a href="dashboard.html" class="btn btn--ghost btn--sm">Open →</a>
+        <a href="/dashboard" class="btn btn--ghost btn--sm">Open →</a>
       </div>
     </article>
   `;

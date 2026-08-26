@@ -308,7 +308,7 @@ function buildAvatarHtml(n) {
     return `<div class="${modCls}" aria-hidden="true">${systemIconSvg(n.type, n.subtype)}</div>`;
   }
   return `
-    <a href="#" class="notif-avatar notif-avatar--user" title="View ${esc(n.actor.name)}'s profile" data-stub="profile.html">
+    <a href="#" class="notif-avatar notif-avatar--user" title="View ${esc(n.actor.name)}'s profile" data-stub="profile">
       <span class="notif-avatar__initials">${esc(n.actor.initials)}</span>
     </a>`;
 }
@@ -351,13 +351,13 @@ function buildBodyHtml(n) {
 
       return `
         <div class="notif-meta">
-          <a href="#" class="notif-actor" data-stub="profile.html">${esc(n.actor.name)}</a>
+          <a href="#" class="notif-actor" data-stub="profile">${esc(n.actor.name)}</a>
           <span class="notif-username">@${esc(n.actor.username)}</span>
           ${time}
         </div>
         <p class="notif-text">
           Invited you to join
-          <a href="${esc(p.projectHref)}" class="notif-link" data-stub="view-project.html">${esc(p.projectName)}</a>
+          <a href="${esc(p.projectHref)}" class="notif-link" data-stub="view-project">${esc(p.projectName)}</a>
           as <span class="notif-role-badge">${esc(p.role)}</span>
         </p>
         ${outcome}
@@ -377,14 +377,14 @@ function buildBodyHtml(n) {
         : `<span class="notif-collab-status notif-collab-status--declined">${statusIcon} Declined</span>`;
       return `
         <div class="notif-meta">
-          <a href="#" class="notif-actor" data-stub="profile.html">${esc(n.actor.name)}</a>
+          <a href="#" class="notif-actor" data-stub="profile">${esc(n.actor.name)}</a>
           <span class="notif-username">@${esc(n.actor.username)}</span>
           ${time}
         </div>
         <p class="notif-text">
           ${statusLabel}
           your invitation to
-          <a href="${esc(p.projectHref)}" class="notif-link" data-stub="view-project.html">${esc(p.projectName)}</a>
+          <a href="${esc(p.projectHref)}" class="notif-link" data-stub="view-project">${esc(p.projectName)}</a>
           as <span class="notif-role-badge ${roleCls}">${esc(p.role)}</span>
         </p>`;
     }
@@ -394,7 +394,7 @@ function buildBodyHtml(n) {
       const p = n.payload;
       const actorLine = `
         <div class="notif-meta">
-          <a href="#" class="notif-actor" data-stub="profile.html">${esc(n.actor.username)}</a>
+          <a href="#" class="notif-actor" data-stub="profile">${esc(n.actor.username)}</a>
           <span class="notif-username">@${esc(n.actor.username)}</span>
           ${time}
         </div>`;
@@ -403,7 +403,7 @@ function buildBodyHtml(n) {
         return actorLine + `
           <p class="notif-text">
             Liked your template
-            <a href="${esc(p.templateHref)}" class="notif-link" data-stub="view-project.html">${esc(p.templateName)}</a>
+            <a href="${esc(p.templateHref)}" class="notif-link" data-stub="view-project">${esc(p.templateName)}</a>
           </p>`;
       }
 
@@ -414,7 +414,7 @@ function buildBodyHtml(n) {
         return actorLine + `
           <p class="notif-text">
             Rated
-            <a href="${esc(p.templateHref)}" class="notif-link" data-stub="view-project.html">${esc(p.templateName)}</a>
+            <a href="${esc(p.templateHref)}" class="notif-link" data-stub="view-project">${esc(p.templateName)}</a>
             ${stars}
           </p>
           ${review}`;
@@ -424,7 +424,7 @@ function buildBodyHtml(n) {
         return actorLine + `
           <p class="notif-text">
             Left feedback on
-            <a href="${esc(p.templateHref)}" class="notif-link" data-stub="view-project.html">${esc(p.templateName)}</a>
+            <a href="${esc(p.templateHref)}" class="notif-link" data-stub="view-project">${esc(p.templateName)}</a>
           </p>
           <blockquote class="notif-review">"${esc(p.message)}"</blockquote>`;
       }
@@ -433,7 +433,7 @@ function buildBodyHtml(n) {
         return actorLine + `
           <p class="notif-text">
             Cloned your template
-            <a href="${esc(p.templateHref)}" class="notif-link" data-stub="view-project.html">${esc(p.templateName)}</a>
+            <a href="${esc(p.templateHref)}" class="notif-link" data-stub="view-project">${esc(p.templateName)}</a>
           </p>`;
       }
 
@@ -479,7 +479,7 @@ function buildBodyHtml(n) {
             <strong class="notif-strong">${esc(p.amount)}</strong> for ${esc(p.period)} was processed.
           </p>
           <div class="notif-actions">
-            <a href="${esc(p.invoiceHref)}" class="notif-btn-ghost" data-stub="billing.html">View invoice</a>
+            <a href="${esc(p.invoiceHref)}" class="notif-btn-ghost" data-stub="billing">View invoice</a>
           </div>`;
       }
 
@@ -495,7 +495,7 @@ function buildBodyHtml(n) {
             <span class="notif-limit-val">(${esc(String(p.used))} / ${esc(String(p.max))})</span>.
           </p>
           <div class="notif-actions">
-            <a href="${esc(p.upgradeHref)}" class="notif-btn-upgrade" data-stub="billing.html">
+            <a href="${esc(p.upgradeHref)}" class="notif-btn-upgrade" data-stub="billing">
               Upgrade plan
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
             </a>
