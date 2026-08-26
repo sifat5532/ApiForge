@@ -5,16 +5,7 @@ const { requireAuth } = require('./auth');
 const router = express.Router();
 
 router.get('/allProjects', requireAuth, async (req, res)=>{
-    let pageNum = req.query.page;
-    let limit = req.query.limit;
-    if(!pageNum){
-        pageNum = 1;
-    }
-    if(!limit){
-        limit = 10;
-    }
-    limit = parseInt(limit);
-    pageNum = parseInt(pageNum);
+
     const result = await query(`
                                 WITH proj_logs AS (
                                     SELECT DISTINCT ON (pl.project_id)
@@ -42,9 +33,8 @@ router.get('/allProjects', requireAuth, async (req, res)=>{
                                 WHERE
                                     p.is_template != TRUE
                                     AND p.author_id = $1
-                                ORDER BY p.id DESC
-                                LIMIT $2 OFFSET $3;`,
-                                [req.loggedInUser.id, limit, (pageNum-1) * limit]);
+                                ORDER BY p.id DESC`,
+                                [req.loggedInUser.id]);
                                 
     res.status(200).json({projects: result.rows});
 });
