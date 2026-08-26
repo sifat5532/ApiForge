@@ -30,6 +30,7 @@ router.get('/allProjects', requireAuth, async (req, res)=>{
                                     p.auth_enabled,
                                     p.is_clone,
                                     p.created_at,
+                                    p.subscription_status,
                                     (SELECT COUNT(st.id) FROM schema_tables st WHERE st.project_id = P.id) AS total_tables,
                                     (SELECT COUNT(ad.id) FROM api_definitions ad WHERE ad.project_id = P.id) AS total_apis,
                                     COALESCE(plogs.last_updater_name, u.name) AS last_updater_name,

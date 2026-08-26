@@ -122,6 +122,10 @@ router.post('/login', requireGuest, async (req, res) => {
     res.status(200).json({ msg: 'Login successful' });
 });
 
+router.get('/me', requireAuth, (req, res) => {
+    res.status(200).json({ user: req.loggedInUser });
+});
+
 router.post('/logout', requireAuth, async (req, res) => {
     res.clearCookie('session_token');
     res.status(200).json({ msg: 'Logout successful' });
