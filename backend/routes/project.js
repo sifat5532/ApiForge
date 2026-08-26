@@ -295,7 +295,7 @@ router.post('/createTable', requireAuth, requireProjectAccess, isProjectActive, 
         }
 
         if (cols[i][1] === 'VARCHAR' || cols[i][1] === 'NUMERIC') {
-            if (cols[i][3] < 1)  return res.status(400).json({ msg: 'Give valid length of the column', id: cols[i][8] });
+            if (cols[i][3] < 1) return res.status(400).json({ msg: 'Give valid length of the column', id: cols[i][8] });
         }
 
         if (cols[i][5] === true && (cols[i][1] != 'INTEGER' || (cols[i][4] != true && cols[i][7] != true))) {

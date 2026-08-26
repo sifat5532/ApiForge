@@ -4,7 +4,7 @@ const pool = require('./../db/connection');
 const { requireAuth } = require('./auth');
 const router = express.Router();
 
-router.get('/allProjects', requireAuth, async (req, res)=>{
+router.get('/allProjects', requireAuth, async (req, res) => {
 
     const result = await query(`
                                 WITH proj_logs AS (
@@ -34,9 +34,9 @@ router.get('/allProjects', requireAuth, async (req, res)=>{
                                     p.is_template != TRUE
                                     AND p.author_id = $1
                                 ORDER BY p.id DESC`,
-                                [req.loggedInUser.id]);
-                                
-    res.status(200).json({projects: result.rows});
+        [req.loggedInUser.id]);
+
+    res.status(200).json({ projects: result.rows });
 });
 
 module.exports = router;

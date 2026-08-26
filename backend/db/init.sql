@@ -180,7 +180,10 @@ CREATE TABLE IF NOT EXISTS schema_columns (
       NOT is_auto_increment
       OR (
          col_type = 'INTEGER'
-         AND ( is_unique  OR is_primary_key )
+         AND (
+            is_unique
+            OR is_primary_key
+         )
       )
    )
 );
@@ -366,13 +369,11 @@ CREATE TABLE IF NOT EXISTS subscription_log (
 
 CREATE INDEX IF NOT EXISTS idx_subscriptions_log_subscription_id ON subscriptions (subscription_id);
 
-
 /*##################################################################################
 
 Need to think about writing generic functions to insert rows into any log table
 
 ##################################################################################*/
-
 ----------------------- NOTIFICATION TRIGGERS STARTS HERE -----------------------
 -- types of notifications
 /*
@@ -584,8 +585,8 @@ EXECUTE FUNCTION tgfunc_create_schema ();
 DROP TRIGGER IF EXISTS tg_insert_project_clone ON projects;
 
 CREATE TRIGGER tg_insert_project_clone
-AFTER INSERT ON projects FOR EACH ROW WHEN ( NEW.is_clone = TRUE)
-EXECUTE FUNCTION tgfunc_clone_template();
+AFTER INSERT ON projects FOR EACH ROW WHEN (NEW.is_clone = TRUE)
+EXECUTE FUNCTION tgfunc_clone_template ();
 
 CREATE OR REPLACE FUNCTION tgfunc_create_schema_table () RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE
@@ -608,8 +609,9 @@ DROP TRIGGER IF EXISTS tg_insert_schema_table ON schema_tables;
 
 CREATE TRIGGER tg_insert_schema_table
 AFTER INSERT ON schema_tables FOR EACH ROW
-EXECUTE FUNCTION tgfunc_create_schema_table (); -- we need to insert a row into the project_logs table that a new table has been inserted, it will be implemented later
+EXECUTE FUNCTION tgfunc_create_schema_table ();
 
+-- we need to insert a row into the project_logs table that a new table has been inserted, it will be implemented later
 CREATE OR REPLACE FUNCTION tgfunc_add_columns () RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE
     rec   RECORD;
@@ -707,12 +709,14 @@ BEGIN
     RETURN NEW;
 END;
 $$;
+
 DROP TRIGGER IF EXISTS tg_insert_schema_column ON schema_columns;
 
 CREATE TRIGGER tg_insert_schema_column
 AFTER INSERT ON schema_columns FOR EACH ROW
-EXECUTE FUNCTION tgfunc_add_columns (); -- we need to insert a row into the project_logs table that a new column has been inserted, it will be implemented later. But it should be ensured that only when an actual alter table is called (adding col to existing tabel), it will insert into logs
+EXECUTE FUNCTION tgfunc_add_columns ();
 
+-- we need to insert a row into the project_logs table that a new column has been inserted, it will be implemented later. But it should be ensured that only when an actual alter table is called (adding col to existing tabel), it will insert into logs
 -- CREATE OR REPLACE FUNCTION tgfunc_create_cloned_proj () RETURNS TRIGGER plpgsql AS $$ 
 -- DECLARE 
 -- BEGIN 
@@ -741,11 +745,11 @@ DROP TRIGGER IF EXISTS tg_insert_schema_fks ON schema_foreign_keys;
 
 CREATE TRIGGER tg_insert_schema_fks
 AFTER INSERT ON schema_foreign_keys FOR EACH ROW
-EXECUTE FUNCTION tgfunc_add_fks (); -- we need to insert a row into the project_logs table that a new table has been inserted, it will be implemented later
+EXECUTE FUNCTION tgfunc_add_fks ();
 
+-- we need to insert a row into the project_logs table that a new table has been inserted, it will be implemented later
 --------------------------------Clone Template------------------------------------
-
-CREATE OR REPLACE FUNCTION tgfunc_clone_template() RETURNS TRIGGER LANGUAGE plpgsql AS $$ 
+CREATE OR REPLACE FUNCTION tgfunc_clone_template () RETURNS TRIGGER LANGUAGE plpgsql AS $$ 
 DECLARE 
     rec RECORD ;
     col_def RECORD;

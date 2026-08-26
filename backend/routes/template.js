@@ -4,9 +4,9 @@ const router = express.Router();
 const { requireAuth } = require('./auth');
 const { pool } = require('./../db/connection');
 
-const templateExistence = async (req, res, next) =>{
-    if(!req.body.template_id){
-        return res.status(400).json({ msg: "You need to input a template id"})
+const templateExistence = async (req, res, next) => {
+    if (!req.body.template_id) {
+        return res.status(400).json({ msg: "You need to input a template id" })
     }
     const isExist = await query('SELECT * FROM projects WHERE id=$1 AND is_template=$2', [req.body.template_id, true]);
     if (isExist.rows.length === 0) {
@@ -22,8 +22,8 @@ const templateExistence = async (req, res, next) =>{
 router.post('/like', requireAuth, templateExistence, async (req, res) => {
     const { template_id } = req.body;
 
-    if(!template_id){
-        return res.status(400).json({ msg: "You should input a template_id"});
+    if (!template_id) {
+        return res.status(400).json({ msg: "You should input a template_id" });
     }
 
     const likeExist = await query('SELECT * FROM template_likes WHERE template_id=$1 AND user_id=$2', [template_id, req.loggedInUser.id]);
@@ -39,8 +39,8 @@ router.post('/like', requireAuth, templateExistence, async (req, res) => {
 router.post('/rate', requireAuth, templateExistence, async (req, res) => {
     const { template_id, rating, review } = req.body;
 
-    if(!template_id || !rating || !review){
-        return res.status(400).json({ msg: "You should input template_id, rating and review"})
+    if (!template_id || !rating || !review) {
+        return res.status(400).json({ msg: "You should input template_id, rating and review" })
     }
 
     const isExist = await query('SELECT * FROM template_clones WHERE user_id=$1 AND template_id=$2', [req.loggedInUser.id, template_id]);
@@ -73,8 +73,8 @@ router.post('/rate', requireAuth, templateExistence, async (req, res) => {
 router.post('/feedback', requireAuth, templateExistence, async (req, res) => {
     const { template_id, message } = req.body;
 
-    if(!template_id || !message)
-        return res.status(400).json({ msg: "You should input template_id and message"});
+    if (!template_id || !message)
+        return res.status(400).json({ msg: "You should input template_id and message" });
 
     if (message.trim().length == 0)
         return res.status(400).json({ msg: "You can not send empty feedback" });
