@@ -39,4 +39,49 @@ router.get('/allProjects', requireAuth, async (req, res) => {
     res.status(200).json({ projects: result.rows });
 });
 
+router.get('/allTables/:projectId', requireAuth, async(req, res)=>{
+    const result = await query(`SELECT 
+                                   t.id,
+                                   t.project_id,
+                                   p.name,
+                                   t.table_name,
+                                   t.created_at,
+                                   (SELECT COUNT(c.id) FROM schema_columns c WHERE c.schema_table_id = t.id ) AS TOTAL_COLUMNS
+                                    FROM  projects p
+                                    LEFT JOIN schema_tables t ON t.project_id = p.id
+                                    WHERE p.id = $1 AND ( EXISTS (
+                                    SELECT 1 
+                                    FROM project_collaborators pc 
+                                    WHERE pc.project_id = p.id AND pc.user_id = $2 AND pc.status = $3 ) OR p.author_id = $2 )
+                                    ORDER BY t.table_name
+                               `, [req.params.projectId, req.loggedInUser.id, 'accepted'] );
+    //  result.rows.length = 0 if user is not the author/collaborator of the project       
+    //if has no table table_name will be null                
+    if(result.rows.length <1) return res.status(403).json({msg:"You don't have access to the project"});
+    res.status(200).json({tables : result.rows});
+});
+
+router.get('/viewTableStructure/:tableId',requireAuth,async(req,res)=>{
+    const result = await query(`SELECT 
+                                c.* , t.table_name, 
+                                fk.child_col_id ,
+                                fk.parent_col_id ,
+                                fk.fk_name ,
+                                fk.on_delete ,
+                                fk.on_update ,
+                                fk.created_at AS fk_created_at
+                                FROM schema_tables t
+                                JOIN schema_columns c ON c.schema_table_id = t.id
+                                JOIN projects p ON p.id = t.project_id
+                                LEFT JOIN schema_foreign_keys fk ON fk.child_col_id = c.id
+                                WHERE t.id = $1 AND (p.author_id = $2 OR EXISTS (
+                                SELECT 1 
+                                FROM project_collaborators pc 
+                                WHERE pc.project_id = p.id AND pc.user_id = $2 AND pc.status = $3))
+                                ORDER BY c.is_primary_key DESC , c.id ASC
+                                `,[req.params.tableId , req.loggedInUser.id, 'active']);
+    if(result.rows.length <1) return res.status(403).json({msg:"You don't have access to the table"});
+    res.status(200).json({coloumns : result.rows});
+});
+
 module.exports = router;
