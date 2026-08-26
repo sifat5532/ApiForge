@@ -39,6 +39,42 @@ router.get('/allProjects', requireAuth, async (req, res) => {
     res.status(200).json({ projects: result.rows });
 });
 
+router.get('/allContributingProjects', requireAuth, async (req, res) => {
+
+    const result = await query(`
+                                WITH proj_logs AS (
+                                    SELECT DISTINCT ON (pl.project_id)
+                                        pl.project_id, u.name AS last_updater_name, pl.created_at AS last_updated_at
+                                    FROM project_logs pl
+                                    JOIN users u ON u.id = pl.changed_by
+                                    ORDER BY pl.project_id, pl.created_at DESC
+                                )
+                                SELECT
+                                    p.id,
+                                    p.name,
+                                    p.description,
+                                    p.auth_enabled,
+                                    p.is_clone,
+                                    p.created_at,
+                                    p.subscription_status,
+                                    (SELECT COUNT(st.id) FROM schema_tables st WHERE st.project_id = P.id) AS total_tables,
+                                    (SELECT COUNT(ad.id) FROM api_definitions ad WHERE ad.project_id = P.id) AS total_apis,
+                                    COALESCE(plogs.last_updater_name, u.name) AS last_updater_name,
+                                    COALESCE(plogs.last_updated_at, p.created_at) AS last_updated_at
+                                FROM
+                                    projects p
+                                    LEFT JOIN proj_logs plogs ON plogs.project_id = p.id
+                                    LEFT JOIN users u ON u.id = p.author_id
+                                    LEFT JOIN project_collaborators pc ON pc.project_id = p.id
+                                WHERE
+                                    p.is_template != TRUE
+                                    AND pc.user_id = $1 AND pc.status = $2
+                                ORDER BY p.id DESC`,
+        [req.loggedInUser.id, 'accepted']);
+
+    res.status(200).json({ projects: result.rows });
+});
+
 router.get('/allTables/:projectId', requireAuth, async(req, res)=>{
     const result = await query(`SELECT 
                                    t.id,
