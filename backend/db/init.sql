@@ -88,7 +88,7 @@ CREATE INDEX IF NOT EXISTS idx_project_author_id_name ON projects (author_id, na
 
 CREATE TABLE IF NOT EXISTS project_cors_origin (
    project_id INTEGER NOT NULL,
-   origin VARCHAR(50) NOT NULL,
+   origin VARCHAR(100) NOT NULL,
    created_at TIMESTAMP(0) DEFAULT now(),
    CONSTRAINT fk_cors_project FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
    PRIMARY KEY (project_id, origin)
@@ -209,11 +209,8 @@ CREATE TABLE IF NOT EXISTS api_definitions (
    project_id INTEGER NOT NULL,
    method VARCHAR(15) NOT NULL CONSTRAINT chk_api_definition_method CHECK (UPPER(method) IN ('GET', 'POST', 'PUT', 'DELETE')),
    query_definition JSONB NOT NULL,
-   generated_sql TEXT NOT NULL,
-   parameters TEXT,
    is_active BOOLEAN DEFAULT TRUE,
    rate_limit_per_day INTEGER NOT NULL CONSTRAINT chk_api_definition_rate_limit CHECK (rate_limit_per_day > 0),
-   updating_parameters TEXT,
    created_at TIMESTAMP(0) NOT NULL DEFAULT now(),
    CONSTRAINT fk_api_definitions_project_id FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
    CONSTRAINT unique_api_definitions_project_id_name UNIQUE (project_id, name)
@@ -238,10 +235,8 @@ CREATE TABLE IF NOT EXISTS api_table_dependencies (
    schema_table_id INTEGER NOT NULL,
    usage_context VARCHAR(30), -- check constraint should be added later
    created_at TIMESTAMP(0) NOT NULL DEFAULT now(),
-   PRIMARY KEY (api_definition_id, schema_table_id),
    CONSTRAINT fk_api_table_dependencies_api_definition_id FOREIGN KEY (api_definition_id) REFERENCES api_definitions (id) ON DELETE CASCADE,
-   CONSTRAINT fk_api_table_dependencies_api_schema_table_id FOREIGN KEY (schema_table_id) REFERENCES schema_tables (id) ON DELETE RESTRICT
-   DEFERRABLE INITIALLY DEFERRED
+   CONSTRAINT fk_api_table_dependencies_api_schema_table_id FOREIGN KEY (schema_table_id) REFERENCES schema_tables (id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED
 );
 
 CREATE TABLE IF NOT EXISTS api_column_dependencies (
@@ -249,10 +244,8 @@ CREATE TABLE IF NOT EXISTS api_column_dependencies (
    schema_col_id INTEGER NOT NULL,
    usage_context VARCHAR(30),
    created_at TIMESTAMP(0) NOT NULL DEFAULT now(),
-   PRIMARY KEY (api_definition_id, schema_col_id),
    CONSTRAINT fk_api_column_dependencies_api_definition_id FOREIGN KEY (api_definition_id) REFERENCES api_definitions (id) ON DELETE CASCADE,
-   CONSTRAINT fk_api_column_dependencies_schema_col_id FOREIGN KEY (schema_col_id) REFERENCES schema_columns (id) ON DELETE RESTRICT
-   DEFERRABLE INITIALLY DEFERRED
+   CONSTRAINT fk_api_column_dependencies_schema_col_id FOREIGN KEY (schema_col_id) REFERENCES schema_columns (id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED
 );
 
 CREATE TABLE IF NOT EXISTS template_clones (

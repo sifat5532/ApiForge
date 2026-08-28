@@ -25,7 +25,7 @@ const PG_RESERVED_WORDS = new Set([
 ]);
 
 // ######################################################
-// all the routes are complete in this file
+//
 // ######################################################
 
 async function validateColumnDefault(pool, pgType, defaultValue) {
@@ -626,7 +626,7 @@ router.put('/updateProject/:projectId', requireAuth, requireProjectAuthor, async
         return res.status(400).json({ msg: 'Please provide the value you want to change' });
     }
     if (proj_name != null && !/^[A-Za-z][a-zA-Z0-9_]{0,29}$/.test(proj_name)) {
-        return res.status(400).json({ msg: 'Please give project name within 30 characters using a-z, 0-9 or _ only and first letter within a-z' });
+        return res.status(400).json({ msg: 'Please give project name within 30 characters using a-z, 0-9 or _ only and first letter within A-Z or a-z' });
     }
 
     if (description != null && description.length > 500) {
@@ -642,7 +642,7 @@ router.put('/updateProject/:projectId', requireAuth, requireProjectAuthor, async
         if (tags.length + total_tags > 10) {
             return res.status(400).json({ msg: 'Adding more than 10 tags is not allowed!' });
         }
-        for (let i = 0; i < tags.length; i++) {
+        for (let i = 0; i < tags.length; i++) { // Try to complete all types of input validation before executing any query if its not query dependent;
             const t = tags[i].trim().toLowerCase();
             if (t.length < 2 || t.length > 20) return res.status(400).json({ msg: 'Tag length must be between 2 to 20 characters' });
             if (!(t[0] >= 'a' && t[0] <= 'z')) return res.status(400).json({ msg: 'Tag name must start with an alphabet(a-z or A-Z)' });
@@ -658,7 +658,7 @@ router.put('/updateProject/:projectId', requireAuth, requireProjectAuthor, async
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        await checkPlanLimit(client, author_id, 'project');
+        await checkPlanLimit(client, author_id, 'project'); // No need to check planLimit when updating a project, See the function to understand why its not necessary here
 
         await client.query(`
             UPDATE projects
@@ -681,19 +681,19 @@ router.put('/updateProject/:projectId', requireAuth, requireProjectAuthor, async
             }
         }
         await client.query('COMMIT');
-        res.status(200).json({ msg: 'Project updated successfull' });
+        res.status(200).json({ msg: 'Project updated successfully' });
     } catch (e) {
         await client.query('ROLLBACK');
         console.error(e);
-
         res.status(e.status || 500).json({ msg: e.status ? e.message : 'There was a server side error, please try again later' });
     } finally {
         client.release();
     }
 });
+
 router.delete('/deleteProject/:projectId', requireAuth,  async (req, res) => {
     const result = await query('DELETE FROM projects WHERE id = $1 AND author_id = $2', [req.params.projectId, req.loggedInUser.id]);
-    if(result.rowCount === 1)  return res.status(400).json({msg : "You don't have access to delete the project"});
+    if(result.rowCount === 0)  return res.status(400).json({msg : "You don't have access to delete the project or the project doesn't exist."});
     return res.status(200).json({msg : "Project was deleted successfully"});
 });
 module.exports = router;
