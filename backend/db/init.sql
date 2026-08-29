@@ -592,7 +592,9 @@ BEGIN
   WHERE
     P.id = NEW.project_ID;
   IF NOT rec.is_template THEN
-    EXECUTE FORMAT ('CREATE TABLE %I.%I ()', 'PROJ'||'_'||NEW.project_id||'_'||rec.author_id, NEW.TABLE_NAME);
+   IF TG_OP ='INSERT' THEN EXECUTE FORMAT ('CREATE TABLE %I.%I ()', 'PROJ'||'_'||NEW.project_id||'_'||rec.author_id, NEW.TABLE_NAME);
+   ELSIF TG_OP ='UPDATE' THEN  EXECUTE FORMAT ('ALTER TABLE %I.%I RENAME TO %I ', 'PROJ'||'_'||NEW.project_id||'_'||rec.author_id, OLD.TABLE_NAME,NEW.TABLE_NAME);
+  END IF;
   END IF;
   RETURN NEW;
 END;
@@ -601,112 +603,197 @@ $$;
 DROP TRIGGER IF EXISTS tg_insert_schema_table ON schema_tables;
 
 CREATE TRIGGER tg_insert_schema_table
-AFTER INSERT ON schema_tables FOR EACH ROW
+AFTER INSERT OR UPDATE ON schema_tables FOR EACH ROW
 EXECUTE FUNCTION tgfunc_create_schema_table ();
 
 -- we need to insert a row into the project_logs table that a new table has been inserted, it will be implemented later
 CREATE OR REPLACE FUNCTION tgfunc_add_columns () RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE
-    rec   RECORD;
+    rec       RECORD;
     v_col_def TEXT;
     v_pk_cols TEXT;
+    v_actions TEXT;
+    v_schema  TEXT;
 BEGIN
-    SELECT P.is_template, P.id, P.author_id, S.TABLE_NAME
+    SELECT P.is_template, P.id, P.author_id, S.id AS table_id, S.TABLE_NAME
     INTO rec
     FROM schema_tables S
     JOIN projects P ON P.id = S.project_id
     WHERE S.id = NEW.schema_table_id;
 
-    v_col_def := NEW.col_type;
-
-    IF NEW.col_type = 'NUMERIC' THEN
-        v_col_def := v_col_def || ' (' || NEW.col_length || ',6) ';
-    ELSIF NEW.col_type = 'VARCHAR' THEN
-        v_col_def := v_col_def || ' (' || NEW.col_length || ') ';
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'schema_table % not found', NEW.schema_table_id;
     END IF;
 
-    IF NEW.is_auto_increment THEN
-        v_col_def := v_col_def || ' GENERATED ALWAYS AS IDENTITY ';
-    END IF;
+    v_schema := 'PROJ' || '_' || rec.id || '_' || rec.author_id;
 
-    IF NEW.is_unique THEN
-        v_col_def := v_col_def || ' UNIQUE ';
-    END IF;
+    IF TG_OP = 'INSERT' THEN
+        v_col_def := NEW.col_type;
 
-    IF NOT NEW.is_nullable THEN
-        v_col_def := v_col_def || ' NOT NULL';
-    END IF;
+        IF NEW.col_type = 'NUMERIC' THEN
+            v_col_def := v_col_def || ' (' || NEW.col_length || ',6) ';
+        ELSIF NEW.col_type = 'VARCHAR' THEN
+            v_col_def := v_col_def || ' (' || NEW.col_length || ') ';
+        END IF;
 
-    IF NEW.default_value IS NOT NULL AND NOT NEW.is_auto_increment THEN
-        IF NEW.col_type IN ('INTEGER', 'NUMERIC') THEN
-            IF NEW.default_value !~ '^-?[0-9]+(\.[0-9]+)?$' THEN
-                RAISE EXCEPTION 'Invalid numeric default value: %', NEW.default_value;
-            END IF;
-            v_col_def := v_col_def || FORMAT(' DEFAULT %s', NEW.default_value);
+        IF NEW.is_auto_increment = TRUE THEN
+            v_col_def := v_col_def || ' GENERATED ALWAYS AS IDENTITY ';
+        END IF;
 
-        ELSIF NEW.col_type IN ('TEXT', 'VARCHAR') THEN
-            v_col_def := v_col_def || FORMAT(' DEFAULT %L', NEW.default_value);
+        IF NEW.is_unique = TRUE THEN
+            v_col_def := v_col_def || FORMAT(' CONSTRAINT %I UNIQUE ', 'uq_' || NEW.id);
+        END IF;
 
-        ELSIF NEW.col_type IN ('DATE', 'TIMESTAMP') THEN
-            IF UPPER(NEW.default_value) IN ('NOW()', 'CURRENT_TIMESTAMP', 'CURRENT_DATE') THEN
+        IF NOT NEW.is_nullable THEN
+            v_col_def := v_col_def || ' NOT NULL';
+        END IF;
+
+        IF NEW.default_value IS NOT NULL AND NOT NEW.is_auto_increment THEN
+            IF NEW.col_type IN ('INTEGER', 'NUMERIC') THEN
+                IF NEW.default_value !~ '^-?[0-9]+(\.[0-9]+)?$' THEN
+                    RAISE EXCEPTION 'Invalid numeric default value: %', NEW.default_value;
+                END IF;
                 v_col_def := v_col_def || FORMAT(' DEFAULT %s', NEW.default_value);
-            ELSE
+            ELSIF NEW.col_type IN ('TEXT', 'VARCHAR') THEN
                 v_col_def := v_col_def || FORMAT(' DEFAULT %L', NEW.default_value);
-            END IF;
-
-        ELSIF NEW.col_type = 'BOOLEAN' THEN
-            IF LOWER(NEW.default_value) IN ('true', 'false') THEN
-                v_col_def := v_col_def || FORMAT(' DEFAULT %s', LOWER(NEW.default_value));
+            ELSIF NEW.col_type IN ('DATE', 'TIMESTAMP') THEN
+                IF UPPER(NEW.default_value) IN ('NOW()', 'CURRENT_TIMESTAMP', 'CURRENT_DATE') THEN
+                    v_col_def := v_col_def || FORMAT(' DEFAULT %s', NEW.default_value);
+                ELSE
+                    v_col_def := v_col_def || FORMAT(' DEFAULT %L', NEW.default_value);
+                END IF;
+            ELSIF NEW.col_type = 'BOOLEAN' THEN
+                IF LOWER(NEW.default_value) IN ('true', 'false') THEN
+                    v_col_def := v_col_def || FORMAT(' DEFAULT %s', LOWER(NEW.default_value));
+                ELSE
+                    RAISE EXCEPTION 'Invalid BOOLEAN default value: %', NEW.default_value;
+                END IF;
             ELSE
-                RAISE EXCEPTION 'Invalid BOOLEAN default value: %', NEW.default_value;
+                RAISE EXCEPTION 'Invalid data type: %', NEW.col_type;
             END IF;
+        END IF;
 
-        ELSE
-            RAISE EXCEPTION 'Invalid data type: %', NEW.col_type;
+        IF NOT rec.is_template THEN
+            EXECUTE FORMAT(
+                'ALTER TABLE %I.%I ADD COLUMN %I %s',
+                v_schema, rec.TABLE_NAME, NEW.col_name, v_col_def
+            );
+        END IF;
+
+    ELSIF TG_OP = 'UPDATE' THEN
+        v_actions := NULL;
+
+        IF NEW.col_name <> OLD.col_name AND NOT rec.is_template THEN
+            EXECUTE FORMAT(
+                'ALTER TABLE %I.%I RENAME COLUMN %I TO %I',
+                v_schema, rec.TABLE_NAME, OLD.col_name, NEW.col_name
+            );
+        END IF;
+
+        IF NEW.col_type <> OLD.col_type THEN
+            IF NEW.col_type = 'NUMERIC' THEN
+                v_actions := concat_ws(',', v_actions,
+                    FORMAT(' ALTER COLUMN %I TYPE NUMERIC(%s,6) USING %I::NUMERIC', NEW.col_name, NEW.col_length, NEW.col_name));
+            ELSIF NEW.col_type = 'VARCHAR' THEN
+                v_actions := concat_ws(',', v_actions,
+                    FORMAT(' ALTER COLUMN %I TYPE VARCHAR(%s) USING %I::VARCHAR(%s)', NEW.col_name, NEW.col_length, NEW.col_name, NEW.col_length));
+            ELSE
+                v_actions := concat_ws(',', v_actions,
+                    FORMAT(' ALTER COLUMN %I TYPE %s USING %I::%s', NEW.col_name, NEW.col_type, NEW.col_name, NEW.col_type));
+            END IF;
+        END IF;
+
+        IF NEW.is_auto_increment = TRUE AND OLD.is_auto_increment = FALSE THEN
+            v_actions := concat_ws(',', v_actions, FORMAT(' ALTER COLUMN %I ADD GENERATED ALWAYS AS IDENTITY ', NEW.col_name));
+        ELSIF NEW.is_auto_increment = FALSE AND OLD.is_auto_increment = TRUE THEN
+            v_actions := concat_ws(',', v_actions, FORMAT(' ALTER COLUMN %I DROP IDENTITY ', NEW.col_name));
+        END IF;
+
+        IF NEW.is_unique = TRUE AND OLD.is_unique = FALSE AND NOT rec.is_template THEN
+            EXECUTE FORMAT('ALTER TABLE %I.%I ADD CONSTRAINT %I UNIQUE(%I)',
+                v_schema, rec.TABLE_NAME, 'uq_' || NEW.id, NEW.col_name);
+        ELSIF NEW.is_unique = FALSE AND OLD.is_unique = TRUE AND NOT rec.is_template THEN
+            EXECUTE FORMAT('ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I',
+                v_schema, rec.TABLE_NAME, 'uq_' || NEW.id);
+        END IF;
+
+        IF NEW.is_nullable = FALSE AND OLD.is_nullable = TRUE THEN
+            v_actions := concat_ws(',', v_actions, FORMAT(' ALTER COLUMN %I SET NOT NULL ', NEW.col_name));
+        ELSIF NEW.is_nullable = TRUE AND OLD.is_nullable = FALSE THEN
+            v_actions := concat_ws(',', v_actions, FORMAT(' ALTER COLUMN %I DROP NOT NULL ', NEW.col_name));
+        END IF;
+
+        IF NEW.default_value IS NOT NULL AND NOT NEW.is_auto_increment THEN
+            IF NEW.col_type IN ('INTEGER', 'NUMERIC') THEN
+                IF NEW.default_value !~ '^-?[0-9]+(\.[0-9]+)?$' THEN
+                    RAISE EXCEPTION 'Invalid numeric default value: %', NEW.default_value;
+                END IF;
+                v_actions := concat_ws(',', v_actions, FORMAT('ALTER COLUMN %I SET DEFAULT %s', NEW.col_name, NEW.default_value));
+            ELSIF NEW.col_type IN ('TEXT', 'VARCHAR') THEN
+                v_actions := concat_ws(',', v_actions, FORMAT('ALTER COLUMN %I SET DEFAULT %L', NEW.col_name, NEW.default_value));
+            ELSIF NEW.col_type IN ('DATE', 'TIMESTAMP') THEN
+                IF UPPER(NEW.default_value) IN ('NOW()', 'CURRENT_TIMESTAMP', 'CURRENT_DATE') THEN
+                    v_actions := concat_ws(',', v_actions, FORMAT('ALTER COLUMN %I SET DEFAULT %s', NEW.col_name, NEW.default_value));
+                ELSE
+                    v_actions := concat_ws(',', v_actions, FORMAT('ALTER COLUMN %I SET DEFAULT %L', NEW.col_name, NEW.default_value));
+                END IF;
+            ELSIF NEW.col_type = 'BOOLEAN' THEN
+                IF LOWER(NEW.default_value) IN ('true', 'false') THEN
+                    v_actions := concat_ws(',', v_actions, FORMAT('ALTER COLUMN %I SET DEFAULT %s', NEW.col_name, LOWER(NEW.default_value)));
+                ELSE
+                    RAISE EXCEPTION 'Invalid BOOLEAN default value: %', NEW.default_value;
+                END IF;
+            ELSE
+                RAISE EXCEPTION 'Invalid data type: %', NEW.col_type;
+            END IF;
+        ELSIF NEW.default_value IS NULL AND OLD.default_value IS NOT NULL THEN
+            v_actions := concat_ws(',', v_actions, FORMAT('ALTER COLUMN %I DROP DEFAULT', NEW.col_name));
+        END IF;
+
+        IF NOT rec.is_template AND v_actions IS NOT NULL THEN
+            EXECUTE FORMAT('ALTER TABLE %I.%I %s', v_schema, rec.TABLE_NAME, v_actions);
         END IF;
     END IF;
 
-    IF NOT rec.is_template THEN
-        EXECUTE FORMAT(
-            'ALTER TABLE %I.%I ADD COLUMN %I %s',
-            'PROJ' || '_' || rec.id || '_' || rec.author_id,
-            rec.TABLE_NAME,
-            NEW.col_name,
-            v_col_def
-        );
+    IF rec.is_template = FALSE AND (
+        (TG_OP = 'INSERT' AND NEW.is_primary_key)
+        OR (TG_OP = 'UPDATE' AND NEW.is_primary_key = TRUE AND OLD.is_primary_key = FALSE)
+    ) THEN
+        SELECT string_agg(FORMAT('%I', col_name), ',' ORDER BY col_name)
+        INTO v_pk_cols
+        FROM schema_columns
+        WHERE schema_table_id = NEW.schema_table_id AND is_primary_key = true;
 
-        IF NEW.is_primary_key THEN
-            SELECT string_agg(FORMAT('%I', col_name), ',' ORDER BY col_name)
-            INTO v_pk_cols
-            FROM schema_columns
-            WHERE schema_table_id = NEW.schema_table_id
-              AND is_primary_key = true;
+        EXECUTE FORMAT('ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I',
+            v_schema, rec.TABLE_NAME, 'pk_' || rec.table_id);
 
-            EXECUTE FORMAT(
-                'ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I',
-                'PROJ' || '_' || rec.id || '_' || rec.author_id,
-                rec.TABLE_NAME,
-                rec.TABLE_NAME || '_pk'
-            );
+        IF v_pk_cols IS NOT NULL THEN
+            EXECUTE FORMAT('ALTER TABLE %I.%I ADD CONSTRAINT %I PRIMARY KEY(%s)',
+                v_schema, rec.TABLE_NAME, 'pk_' || rec.table_id, v_pk_cols);
+        END IF;
 
-            EXECUTE FORMAT(
-                'ALTER TABLE %I.%I ADD CONSTRAINT %I PRIMARY KEY(%s)',
-                'PROJ' || '_' || rec.id || '_' || rec.author_id,
-                rec.TABLE_NAME,
-                rec.TABLE_NAME || '_pk',
-                v_pk_cols
-            );
+    ELSIF rec.is_template = FALSE AND (TG_OP = 'UPDATE' AND NEW.is_primary_key = FALSE AND OLD.is_primary_key = TRUE) THEN
+        EXECUTE FORMAT('ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I',
+            v_schema, rec.TABLE_NAME, 'pk_' || rec.table_id);
+
+        SELECT string_agg(FORMAT('%I', col_name), ',' ORDER BY col_name)
+        INTO v_pk_cols
+        FROM schema_columns
+        WHERE schema_table_id = NEW.schema_table_id AND is_primary_key = true;
+
+        IF v_pk_cols IS NOT NULL THEN
+            EXECUTE FORMAT('ALTER TABLE %I.%I ADD CONSTRAINT %I PRIMARY KEY(%s)',
+                v_schema, rec.TABLE_NAME, 'pk_' || rec.table_id, v_pk_cols);
         END IF;
     END IF;
 
     RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS tg_insert_schema_column ON schema_columns;
 
 CREATE TRIGGER tg_insert_schema_column
-AFTER INSERT ON schema_columns FOR EACH ROW
+AFTER INSERT OR UPDATE ON schema_columns FOR EACH ROW
 EXECUTE FUNCTION tgfunc_add_columns ();
 
 -- we need to insert a row into the project_logs table that a new column has been inserted, it will be implemented later. But it should be ensured that only when an actual alter table is called (adding col to existing tabel), it will insert into logs

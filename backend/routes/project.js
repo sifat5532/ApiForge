@@ -633,6 +633,11 @@ router.put('/updateProject/:projectId', requireAuth, requireProjectAuthor, async
         return res.status(400).json({ msg: 'Please give project description within 500 characters' });
     }
     if (tags != null) {
+         for (let i = 0; i < tags.length; i++) { // Try to complete all types of input validation before executing any query if its not query dependent;
+            const t = tags[i].trim().toLowerCase();
+            if (t.length < 2 || t.length > 20) return res.status(400).json({ msg: 'Tag length must be between 2 to 20 characters' });
+            if (!(t[0] >= 'a' && t[0] <= 'z')) return res.status(400).json({ msg: 'Tag name must start with an alphabet(a-z or A-Z)' });
+        }
         const tag_count = await query(`
                                     SELECT 
                                     COUNT(*) AS total
@@ -641,11 +646,6 @@ router.put('/updateProject/:projectId', requireAuth, requireProjectAuthor, async
         const total_tags = parseInt(tag_count.rows[0].total);
         if (tags.length + total_tags > 10) {
             return res.status(400).json({ msg: 'Adding more than 10 tags is not allowed!' });
-        }
-        for (let i = 0; i < tags.length; i++) { // Try to complete all types of input validation before executing any query if its not query dependent;
-            const t = tags[i].trim().toLowerCase();
-            if (t.length < 2 || t.length > 20) return res.status(400).json({ msg: 'Tag length must be between 2 to 20 characters' });
-            if (!(t[0] >= 'a' && t[0] <= 'z')) return res.status(400).json({ msg: 'Tag name must start with an alphabet(a-z or A-Z)' });
         }
     }
     if (proj_name != null) {
@@ -658,7 +658,6 @@ router.put('/updateProject/:projectId', requireAuth, requireProjectAuthor, async
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        await checkPlanLimit(client, author_id, 'project'); // No need to check planLimit when updating a project, See the function to understand why its not necessary here
 
         await client.query(`
             UPDATE projects
