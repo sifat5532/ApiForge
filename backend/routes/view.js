@@ -111,7 +111,7 @@ router.get('/viewTableStructure/:tableId',requireAuth,async(req,res)=>{
     res.status(200).json({coloumns : result.rows});
 });
 router.get('/viewTableData/:tableId/:limit/:offset',requireAuth,async(req,res)=>{
-    const  { tableId , limit , offset} = req.params;
+    const  { tableId , limit , offset} = req.params;    
 
     const table = await query(`SELECT
                                     UPPER('PROJ_'||P.id||'_'||P.author_id) AS schema_name , S.table_name AS table_name
