@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS user_sessions (
    CONSTRAINT uq_session_token_hashed UNIQUE (session_token_hashed)
 );
 
-CREATE INDEX IF NOT EXISTS user_session_user_id ON user_sessions (user_id);
+CREATE INDEX IF NOT EXISTS user_session_token ON user_sessions (session_token_hashed , expires_at , revoked_at);
 
 CREATE TABLE IF NOT EXISTS notifications (
    id serial PRIMARY KEY,
@@ -40,9 +40,9 @@ CREATE TABLE IF NOT EXISTS notifications (
    CONSTRAINT fk_notification_receiver_user FOREIGN KEY (receiver_id) REFERENCES users (id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_notifications_receiver_created ON notifications (receiver_id, created_at DESC);
+-- CREATE INDEX IF NOT EXISTS idx_notifications_receiver_created ON notifications (receiver_id, created_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_notifications_entity_sorting ON notifications (related_entity_name, related_entity_id, type);
+-- CREATE INDEX IF NOT EXISTS idx_notifications_entity_sorting ON notifications (related_entity_name, related_entity_id, type);
 
 CREATE TABLE IF NOT EXISTS projects (
    id serial PRIMARY KEY,
@@ -84,7 +84,6 @@ CREATE TABLE IF NOT EXISTS projects (
    )
 );
 
-CREATE INDEX IF NOT EXISTS idx_project_author_id_name ON projects (author_id, name);
 
 CREATE TABLE IF NOT EXISTS project_cors_origin (
    project_id INTEGER NOT NULL,
@@ -108,8 +107,6 @@ CREATE TABLE IF NOT EXISTS project_tags (
    PRIMARY KEY (project_id, tag_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_project_tags_tag_id ON project_tags (tag_id);
-
 CREATE TABLE IF NOT EXISTS project_logs (
    id serial PRIMARY KEY,
    project_id INTEGER NOT NULL,
@@ -124,9 +121,9 @@ CREATE TABLE IF NOT EXISTS project_logs (
    CONSTRAINT fk_project_logs_changed_by FOREIGN KEY (changed_by) REFERENCES users (id) ON DELETE SET NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_project_logs_project_id_created_at ON project_logs (project_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_project_logs_project_id_created_at ON project_logs (project_id, created_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_project_logs_entity_type_entity_id ON project_logs (entity_type, entity_id, created_at DESC);
+-- CREATE INDEX IF NOT EXISTS idx_project_logs_entity_type_entity_id ON project_logs (entity_type, entity_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS project_collaborators (
    project_id INTEGER NOT NULL,
@@ -141,7 +138,7 @@ CREATE TABLE IF NOT EXISTS project_collaborators (
    PRIMARY KEY (project_id, user_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_collaborators_user_id ON project_collaborators (user_id);
+CREATE INDEX IF NOT EXISTS idx_collaborators_user_id ON project_collaborators (user_id , status , project_id);
 
 CREATE TABLE IF NOT EXISTS schema_tables (
    id serial PRIMARY KEY,
@@ -202,6 +199,7 @@ CREATE TABLE IF NOT EXISTS schema_foreign_keys (
    CONSTRAINT fk_schema_fks_child FOREIGN KEY (child_col_id) REFERENCES schema_columns (id) ON DELETE CASCADE,
    CONSTRAINT fk_schema_fks_parent FOREIGN KEY (parent_col_id) REFERENCES schema_columns (id) ON DELETE CASCADE
 );
+CREATE INDEX IF NOT EXISTS idx_schema_foreign_keys_parent_col_id ON  schema_foreign_keys( parent_col_id );
 
 CREATE TABLE IF NOT EXISTS api_definitions (
    id serial PRIMARY KEY,
@@ -216,8 +214,6 @@ CREATE TABLE IF NOT EXISTS api_definitions (
    CONSTRAINT unique_api_definitions_project_id_name UNIQUE (project_id, name)
 );
 
-CREATE INDEX IF NOT EXISTS idx_api_definitions ON api_definitions (project_id, name);
-
 CREATE TABLE IF NOT EXISTS api_logs (
    id serial PRIMARY KEY,
    api_definition_id INTEGER NOT NULL,
@@ -228,7 +224,7 @@ CREATE TABLE IF NOT EXISTS api_logs (
    CONSTRAINT fk_api_logs_api_definitions FOREIGN KEY (api_definition_id) REFERENCES api_definitions (id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_api_logs_api_definition_id ON api_logs (api_definition_id);
+-- CREATE INDEX IF NOT EXISTS idx_api_logs_api_definition_id ON api_logs (api_definition_id);
 
 CREATE TABLE IF NOT EXISTS api_table_dependencies (
    api_definition_id INTEGER NOT NULL,
@@ -332,11 +328,11 @@ CREATE TABLE IF NOT EXISTS subscriptions (
    CONSTRAINT chk_subscription_duration CHECK (end_date > start_date)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS one_active_subscription_per_user ON subscriptions (user_id)
-WHERE
-   status = 'active';
+-- CREATE UNIQUE INDEX IF NOT EXISTS one_active_subscription_per_user ON subscriptions (user_id)
+-- WHERE
+--    status = 'active';
 
-CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions (user_id);
+-- CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions (user_id);
 
 CREATE TABLE IF NOT EXISTS subscription_log (
    log_id serial PRIMARY KEY,
@@ -360,7 +356,7 @@ CREATE TABLE IF NOT EXISTS subscription_log (
    )
 );
 
-CREATE INDEX IF NOT EXISTS idx_subscriptions_log_subscription_id ON subscriptions (subscription_id);
+-- CREATE INDEX IF NOT EXISTS idx_subscriptions_log_subscription_id ON subscriptions (subscription_id);
 
 /*##################################################################################
 

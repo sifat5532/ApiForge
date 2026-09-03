@@ -86,7 +86,7 @@ router.get('/allTables/:projectId', requireAuth, async(req, res)=>{
                                     WHERE p.id = $1 AND ( EXISTS (
                                     SELECT 1 
                                     FROM project_collaborators pc 
-                                    WHERE pc.project_id = p.id AND pc.user_id = $2 AND pc.status = $3 ) OR p.author_id = $2 )
+                                    WHERE pc.user_id = $2 AND pc.status = $3 AND pc.project_id = p.id ) OR p.author_id = $2 )
                                     ORDER BY t.table_name
                                `, [req.params.projectId, req.loggedInUser.id, 'accepted'] );
     //  result.rows.length = 0 if user is not the author/collaborator of the project       
@@ -104,8 +104,8 @@ router.get('/viewTableStructure/:tableId',requireAuth,async(req,res)=>{
                                 WHERE t.id = $1 AND (p.author_id = $2 OR EXISTS (
                                 SELECT 1 
                                 FROM project_collaborators pc 
-                                WHERE pc.project_id = p.id AND pc.user_id = $2 AND pc.status = $3))
-                                ORDER BY c.is_primary_key DESC , c.is_unique DESC , c.id ASC
+                                WHERE  pc.user_id = $2 AND pc.status = $3 AND pc.project_id = p.id ))
+                                ORDER BY c.is_primary_key DESC , c.id ASC
                                 `,[req.params.tableId , req.loggedInUser.id, 'accepted']);
     if(result.rows.length <1) return res.status(403).json({msg:"You don't have access to the table"});
     res.status(200).json({coloumns : result.rows});
@@ -120,7 +120,7 @@ router.get('/viewTableData/:tableId/:limit/:offset',requireAuth,async(req,res)=>
                                      WHERE S.id = $1  AND P.is_template = $2 AND ( p.author_id = $3 OR
                                       EXISTS (SELECT 1 
                                               FROM project_collaborators pc 
-                                              WHERE pc.project_id = P.id AND pc.user_id = $3 AND pc.status = $4 ))
+                                              WHERE  pc.user_id = $3 AND pc.status = $4 AND pc.project_id = p.id))
                                           `,[tableId , false , req.loggedInUser.id , 'accepted']);
     if(table.rows.length < 1) return res.status(404).json({msg : "Table not found"});
 
@@ -228,7 +228,7 @@ router.get('/viewAllForeignkeys/:projectId',requireAuth,async(req,res)=>{
                             EXISTS (
                             SELECT 1 
                             FROM project_collaborators cb
-                            WHERE cb.user_id = $2 AND cb.project_id = $1 AND cb.status = $3 )
+                            WHERE cb.user_id = $2 AND  cb.status = $3  AND cb.project_id = $1 )
                              )` ,
                            [projectId , req.loggedInUser.id , 'accepted']);
     if( projAccess.rows.length === 0 )   return res.status(403).json({msg : "Project not found"}) ;

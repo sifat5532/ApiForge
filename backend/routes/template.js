@@ -42,17 +42,19 @@ router.post('/rate', requireAuth, templateExistence, async (req, res) => {
     if (!template_id || !rating || !review) {
         return res.status(400).json({ msg: "You should input template_id, rating and review" })
     }
-
-    const isExist = await query('SELECT * FROM template_clones WHERE user_id=$1 AND template_id=$2', [req.loggedInUser.id, template_id]);
-    if (isExist.rows.length === 0) {
-        return res.status(400).json({ msg: "You have to clone the template first to rate it" });
-    }
     if (!(rating >= 1 && rating <= 5)) {
         return res.status(400).json({ msg: "Rating should be integer between 1 to 5" });
     }
     if (review != null && review.length > 500) {
         return res.status(400).json({ msg: "Please give review within 500 characters" });
     }
+
+    const isExist = await query('SELECT * FROM template_clones WHERE user_id=$1 AND template_id=$2', [req.loggedInUser.id, template_id]);
+    if (isExist.rows.length === 0) {
+        return res.status(400).json({ msg: "You have to clone the template first to rate it" });
+    }
+ 
+  
     const ratingExist = await query('SELECT * FROM template_ratings WHERE template_id=$1 AND user_id=$2', [template_id, req.loggedInUser.id]);
     if (ratingExist.rows.length > 0) {
         if (rating) await query(`

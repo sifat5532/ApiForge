@@ -74,7 +74,12 @@ const requireProjectAccess = async (req, res, next) => {
 
     const result = await query('SELECT id FROM projects WHERE id=$1 AND author_id=$2  AND is_template=$3', [proj_id, req.loggedInUser.id, false]);
 
-    const isCollab = await query('SELECT pc.project_id, p.author_id FROM project_collaborators pc join projects p ON p.id = pc.project_id WHERE pc.project_id=$1 AND pc.user_id=$2 AND pc.role=$3 AND pc.status=$4 GROUP BY pc.project_id, p.author_id', [proj_id, req.loggedInUser.id, 'editor', 'accepted']);
+    const isCollab = await query(`SELECT pc.project_id, p.author_id 
+                                  FROM project_collaborators pc join projects p ON p.id = pc.project_id 
+                                  WHERE pc.user_id=$2 AND pc.status=$4 AND 
+                                  pc.project_id=$1 AND pc.role=$3 
+                                  GROUP BY pc.project_id, p.author_id`,
+                                   [proj_id, req.loggedInUser.id, 'editor', 'accepted']);
     if (isCollab.rows.length === 0 && result.rows.length === 0) {
         return res.status(403).json({ msg: "You don't have access to make any change to this project" });
     }
@@ -194,7 +199,7 @@ router.post('/collabInvitation', requireAuth, requireProjectAuthor, isProjectAct
         return res.status(200).json({ msg: 'You are trying to add an invalid user' });
     }
 
-    const isExist = await query('SELECT * FROM project_collaborators WHERE project_id = $1 AND user_id = $2;', [proj_id, user_id]);
+    const isExist = await query('SELECT * FROM project_collaborators WHERE user_id = $1 AND project_id = $2;', [ user_id , proj_id]);
     if (isExist.rows.length > 0) {
         if (isExist.rows[0].status == 'pending') {
             return res.status(400).json({ msg: 'Already invited to this project' });
@@ -209,7 +214,7 @@ router.post('/collabInvitation', requireAuth, requireProjectAuthor, isProjectAct
 
 router.post('/proceedCollabInvitation', requireAuth, async (req, res) => {
     const { proj_id, acceptInvitation } = req.body;
-    const isExist = await query('SELECT * FROM project_collaborators WHERE project_id = $1 AND user_id = $2;', [proj_id, req.loggedInUser.id]);
+    const isExist = await query('SELECT * FROM project_collaborators WHERE user_id = $1 AND project_id = $2 ;', [ req.loggedInUser.id , proj_id]);
     if (isExist.rows.length === 0) {
         return res.status(404).json({ msg: 'Invitation not found' });
     }
@@ -360,10 +365,6 @@ router.post('/addCorsOrigin', requireAuth, requireProjectAuthor, isProjectActive
     const { proj_id, origin } = req.body;
 
     if (origin.trim().length < 1) { return res.status(400).json({ msg: "Cors origin can not be blank" }); }
-    const isOriginExist = await query('SELECT * FROM project_cors_origin WHERE project_id = $1 AND origin = $2', [proj_id, origin]);
-    if (isOriginExist.rows.length > 0) {
-        return res.status(400).json({ msg: "The project already have this cors origin" });
-    }
     await query(`
         INSERT INTO project_cors_origin
         (project_id, origin)
@@ -504,10 +505,11 @@ router.post('/removeForeignKey', requireAuth, isProjectActive, async (req, res) 
                                             FROM
                                                 project_collaborators PC
                                             WHERE
-                                                PC.project_id = P.id
-                                                AND PC.user_id = $4
-                                                AND PC.role = 'editor'
-                                                AND PC.status = 'accepted'
+                                            PC.user_id = $4
+                                            AND PC.status = 'accepted'
+                                            AND PC.project_id = P.id
+                                            AND PC.role = 'editor'
+                                            
                                         )
                                     )`,
         [child_col_id, schema_table_id, proj_id, req.loggedInUser.id]);
@@ -682,7 +684,9 @@ router.put('/updateProject/:projectId', requireAuth, requireProjectAuthor, async
                 }
                 else tag_id = tag_result.rows[0].id;
 
-                await client.query('INSERT INTO project_tags(project_id , tag_id) VALUES ($1,$2)', [req.params.projectId, tag_id]);
+                await client.query(`INSERT INTO project_tags(project_id , tag_id)
+                                    VALUES ($1,$2) ON CONFLICT (project_id , tag_id)
+                                    DO NOTHING;`, [req.params.projectId, tag_id]);
             }
         }
         await client.query('COMMIT');
