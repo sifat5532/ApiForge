@@ -24,7 +24,7 @@ router.get('/allProjects', requireAuth, async (req, res) => {
                                     p.subscription_status,
                                     (SELECT COUNT(st.id) FROM schema_tables st WHERE st.project_id = P.id) AS total_tables,
                                     (SELECT COUNT(ad.id) FROM api_definitions ad WHERE ad.project_id = P.id) AS total_apis,
-                                    COALESCE(plogs.last_updater_name, "Deleted User") AS last_updater_name,
+                                    COALESCE(plogs.last_updater_name, 'Deleted User') AS last_updater_name,
                                     COALESCE(plogs.last_updated_at, p.created_at) AS last_updated_at
                                 FROM
                                     projects p
@@ -58,7 +58,7 @@ router.get('/allContributingProjects', requireAuth, async (req, res) => {
                                     p.subscription_status,
                                     (SELECT COUNT(st.id) FROM schema_tables st WHERE st.project_id = P.id) AS total_tables,
                                     (SELECT COUNT(ad.id) FROM api_definitions ad WHERE ad.project_id = P.id) AS total_apis,
-                                    COALESCE(plogs.last_updater_name, "Deleted User") AS last_updater_name,
+                                    COALESCE(plogs.last_updater_name, 'Deleted User') AS last_updater_name,
                                     COALESCE(plogs.last_updated_at, p.created_at) AS last_updated_at
                                 FROM
                                     projects p
@@ -306,4 +306,14 @@ router.get('/viewAllForeignkeys/:projectId', requireAuth, async (req, res) => {
     res.status(200).json({ msg: "Successfully fetched foreign keys", data: result.rows })
 
 });
+router.post('/getUsername', async(req , res)=>{
+    const {username} = req.body;
+    const result = await query(`SELECT
+                                 u.id , u.name , u.username
+                                 FROM users u
+                                 WHERE u.username LIKE $1
+                                ` , [`%${username}%`]);
+   return res.status(200).json(result.rows);
+
+})
 module.exports = router;
