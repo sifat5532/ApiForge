@@ -87,20 +87,7 @@ router.get('/viewProject/:projectId', requireAuth, async (req, res) => {
                                   JOIN tags t ON t.id = pt.tag_id
                                    WHERE pt.project_id = p.id
                                  ) , '[]' :: json
-                                 ) AS project_tags ,
-                                 COALESCE(
-                                 ( SELECT json_agg(
-                                  json_build_object (
-                                  'id' , pc.project_id , 'user_id' , pc.user_id ,
-                                  'created_at' , pc.created_at ,
-                                  'username' , u.username , 'name' , u.name
-                                  ) ORDER BY pc.created_at
-                                  ) AS collaborators
-                                  FROM project_collaborators pc
-                                  JOIN users u ON u.id = pc.user_id
-                                   WHERE pc.project_id = p.id
-                                 ) , '[]' :: json
-                                 ) AS project_collaborators
+                                 ) AS project_tags 
                                 FROM projects p
                                 WHERE p.id = $1 AND (p.author_id = $2 OR EXISTS (
                                 SELECT 1 
@@ -110,6 +97,20 @@ router.get('/viewProject/:projectId', requireAuth, async (req, res) => {
                     if(result.rows.length < 1)   return res.status(404).json({msg : "Project not found"});
                     return res.status(200).json({msg : "Successfully show project" , project : result.rows[0]});
                                
+});
+router.get('/collaborators/:projectId', requireAuth , async(req , res)=>{
+   const result = await query(`SELECT 
+                                cp.* ,  u.username , u.name
+                                FROM project_collaborators cp
+                                JOIN users u ON u.id = cp.user_id
+                                JOIN  projects p ON p.id = cp.project_id
+                                WHERE p.id = $1 AND (p.author_id = $2 OR EXISTS (
+                                SELECT 1 
+                                FROM project_collaborators pc 
+                                WHERE  pc.user_id = $2 AND pc.status = $3 AND pc.project_id = $1 )) AND
+                                (cp.status = 'pending' OR cp.status = 'accepted')
+                                `, [req.params.projectId, req.loggedInUser.id, 'accepted']);
+        return res.status(200).json({collaborators : result.rows});
 });
 router.get('/corsOrigin/:projectId' , requireAuth ,async(req , res)=>{
    const result = await query(`SELECT
