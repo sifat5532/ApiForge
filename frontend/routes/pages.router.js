@@ -14,6 +14,7 @@ router.get('/liked',         (req, res) => res.sendFile(path.join(pages, 'liked.
 router.get('/notifications', (req, res) => res.sendFile(path.join(pages, 'notifications.html')));
 router.get('/templates',     (req, res) => res.sendFile(path.join(pages, 'templates.html')));
 router.get('/leaderboard',   (req, res) => res.sendFile(path.join(pages, 'leaderboard.html')));
+router.get('/project/:projectId', (req, res) => res.sendFile(path.join(pages, 'view-project.html')));
 router.get('/logout',        async (req, res) => {
   try {
     const backendUrl = process.env.BACKEND_URL || 'http://localhost:3000';

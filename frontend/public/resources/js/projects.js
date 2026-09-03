@@ -46,23 +46,21 @@ async function fetchAndRenderProjects() {
   const backendUrl = window.BACKEND_URL || 'http://localhost:3000';
 
   try {
-    const res = await fetch(
-      `${backendUrl}/view/allProjects`, // fetch all; pagination is client-side
-      { credentials: 'include' }
-    );
+    const [myRes, sharedRes] = await Promise.all([
+      fetch(`${backendUrl}/view/allProjects`, { credentials: 'include' }),
+      fetch(`${backendUrl}/view/allContributingProjects`, { credentials: 'include' }),
+    ]);
 
-    if (res.status === 401) {
+    if (myRes.status === 401 || sharedRes.status === 401) {
       window.location.href = '/login';
       return;
     }
 
-    if (!res.ok) {
-      renderFetchError(container, 'Failed to load projects. Please try again.');
-      return;
-    }
+    const myData = myRes.ok ? await myRes.json() : { projects: [] };
+    const sharedData = sharedRes.ok ? await sharedRes.json() : { projects: [] };
 
-    const data = await res.json();
-    state.myProjectsData = (data.projects || []).map(mapProject);
+    state.myProjectsData = (myData.projects || []).map(mapProject);
+    state.sharedProjectsData = (sharedData.projects || []).map(mapProject);
 
   } catch (err) {
     renderFetchError(container, 'Network error. Is the backend reachable?');
@@ -413,7 +411,7 @@ function createProjectCardHtml(p) {
 
       <div>
         <h3 class="project-card__title">
-          <a href="/dashboard">${escapeHtml(p.name)}</a>
+          <a href="/project/${p.id}">${escapeHtml(p.name)}</a>
         </h3>
       </div>
 
@@ -443,7 +441,7 @@ function createProjectCardHtml(p) {
 
       <div class="project-card__footer" style="justify-content: space-between;">
         <span style="font-family: var(--font-mono); font-size: 0.76rem; color: var(--text-faint);">created on ${escapeHtml(p.createdAt)}</span>
-        <a href="/dashboard" class="btn btn--ghost btn--sm">Open &rarr;</a>
+        <a href="/project/${p.id}" class="btn btn--ghost btn--sm">Open &rarr;</a>
       </div>
     </article>
   `;

@@ -39,6 +39,7 @@ frontend/
 | Sign up | `pages/signup.html` | `js/app.js` | ✅ Complete |
 | Dashboard | `pages/dashboard.html` | `js/dashboard.js` | ✅ Complete |
 | Projects | `pages/projects.html` | `js/dashboard.js`, `js/projects.js` | ✅ Complete |
+| Project view | `pages/view-project.html` | `js/dashboard.js`, `js/view-project.js` | ✅ Complete |
 | New Project | `pages/new-project.html` | `js/dashboard.js`, `js/new-project.js` | ✅ Complete |
 | Liked Templates | `pages/liked.html` | `js/dashboard.js`, `js/liked.js` | ✅ Complete |
 | Notifications | `pages/notifications.html` | `js/dashboard.js`, `js/notifications.js` | ✅ Complete |
@@ -100,6 +101,7 @@ Sections in order (each preceded by a `/* --- */` comment header):
 | Liked — page components | `.liked-header`, `.liked-header__count`, `.liked-toolbar`, `.liked-grid`, `.liked-card`, `.liked-card__author`, `.liked-card__avatar`, `.liked-card__author-info`, `.liked-card__author-name`, `.liked-card__author-handle`, `.liked-card__unlike-btn`, `.liked-card__title`, `.liked-card__desc`, `.liked-card__tags`, `.liked-tag`, `.liked-card__footer`, `.liked-card__date`, `.liked-card__stars`, `.liked-card__open-btn` |
 | Templates — page components | `.tmpl-toolbar`, `.tmpl-filter-row`, `.tmpl-chip-group`, `.tmpl-chip`, `.tmpl-chip--tag`, `.tmpl-grid`, `.tmpl-card`, `.tmpl-card--shimmer`, `.tmpl-card__author-row`, `.tmpl-card__author-name`, `.tmpl-card__title`, `.tmpl-card__title-link`, `.tmpl-card__desc`, `.tmpl-card__tags`, `.tmpl-card__footer`, `.tmpl-card__rating`, `.tmpl-card__rating-val`, `.tmpl-card__rating-count`, `.tmpl-card__meta`, `.tmpl-card__uses`, `.tmpl-card__date`, `.tmpl-auth-badge`, `.tmpl-auth-badge--jwt`, `.tmpl-auth-badge--oauth`, `.tmpl-auth-badge--apikey`, `.tmpl-auth-badge--none`, `.tmpl-shimmer-line`, `.tmpl-shimmer-tag`, `.tmpl-shimmer-tags`, `.tmpl-shimmer-footer`, `@keyframes tmpl-shimmer`, `.tmpl-empty` |
 | Notifications — page components | `.notif-page-header`, `.notif-page-header__left`, `.notif-page-header__actions`, `.notif-unread-badge`, `.notif-tabs`, `.notif-tab`, `.notif-tab__count`, `.notif-list`, `.notif-item`, `.notif-item--unread`, `.notif-item--removing`, `.notif-item--shimmer`, `.notif-avatar-col`, `.notif-avatar`, `.notif-avatar--shimmer`, `.notif-avatar--user`, `.notif-avatar__initials`, `.notif-avatar--system`, `.notif-avatar--system-session`, `.notif-avatar--system-warn`, `.notif-avatar--system-billing`, `.notif-avatar--system-activity`, `.notif-unread-dot`, `.notif-body`, `.notif-meta`, `.notif-actor`, `.notif-actor--warn`, `.notif-username`, `.notif-time`, `.notif-text`, `.notif-link`, `.notif-role-badge`, `.notif-role-badge--muted`, `.notif-outcome-badge`, `.notif-outcome-badge--accepted`, `.notif-outcome-badge--declined`, `.notif-collab-status`, `.notif-collab-status--accepted`, `.notif-collab-status--declined`, `.notif-stars`, `.notif-star--filled`, `.notif-star--empty`, `.notif-review`, `.notif-device`, `.notif-session-meta`, `.notif-session-chip`, `.notif-actions`, `.notif-btn-accept`, `.notif-btn-decline`, `.notif-btn-ghost`, `.notif-btn-upgrade`, `.notif-plan-badge`, `.notif-plan-badge--free`, `.notif-plan-badge--lite`, `.notif-plan-badge--pro`, `.notif-strong`, `.notif-limit-val`, `.notif-chips`, `.notif-chip`, `.notif-chip--mono`, `.notif-controls`, `.notif-ctrl-btn`, `.notif-empty`, `.notif-shimmer-line`, `@keyframes notif-shimmer` |
+| View Project — page components | `.vp-header`, `.vp-header__title-row`, `.vp-project-title`, `.vp-clone-badge`, `.vp-meta-grid`, `.vp-meta-chip`, `.vp-meta-chip__label`, `.vp-meta-chip__value`, `.vp-tags`, `.vp-tabs`, `.vp-tab`, `.vp-panel`, `.vp-action-bar`, `.vp-table`, `.vp-table th`, `.vp-table td`, `.vp-table__link`, `.vp-empty`, `.vp-empty__icon`, `.vp-empty__title`, `.vp-empty__text`, `.vp-shimmer`, `.vp-shimmer-row`, `@keyframes vp-shimmer`, `.vp-modal-overlay`, `.vp-modal`, `.vp-modal__head`, `.vp-modal__title`, `.vp-modal__close`, `.vp-modal__body`, `.vp-modal__grid`, `.vp-modal__foot`, `.vp-collab-list`, `.vp-collab-row`, `.vp-collab-row__avatar`, `.vp-collab-row__info`, `.vp-collab-row__name`, `.vp-collab-row__handle`, `.vp-collab-row__date`, `.vp-origin-list`, `.vp-origin-row`, `.vp-origin-row__url`, `.vp-origin-notice`, `.vp-toast-host`, `.vp-toast`, `.vp-toast--success`, `.vp-toast--error`, `.vp-settings-form`, `.vp-settings-banner`, `.vp-settings-actions`, `.vp-danger-zone`, `.vp-danger-zone__title`, `.vp-danger-zone__hint`, `.vp-struct-panel`, `.vp-struct-panel__title`, `.vp-struct-panel__shimmer`, `.tag__remove` |
 
 ### `css/responsive.css` (330 lines)
 
@@ -224,6 +226,37 @@ Self-executing script that checks session status (`/auth/me`). Redirects to `/lo
 | `relativeTime(ts)` | Returns human-readable relative time string (e.g. "5m ago", "3d ago") |
 | `esc(str)` | XSS helper — escapes `&`, `<`, `>`, `"` |
 
+### `js/view-project.js` — project view page only
+
+| Function | What it does |
+|---|---|
+| `initViewProject()` | Main entrypoint — extracts `projectId` from URL, fetches current user (`/auth/me`), inits tabs/modal/actions, loads header |
+| `extractProjectId()` | Parses `projectId` from `window.location.pathname` |
+| `loadProjectHeader()` | `GET /view/viewProject/:id` → renders title, clone badge, meta chips, tags; stores `authorId`; computes `isAuthor` |
+| `locateCollaboratorsInHeader(p)` | Caches `project_collaborators` from the header payload (no `/view/collaborators` route exists) |
+| `initTabs()` | Binds tab strip; toggles panels; lazy-loads per-tab data once |
+| `loadTables()` | `GET /view/allTables/:id` → renders table rows; name click expands inline structure via `toggleTableStructure` |
+| `toggleTableStructure(tableId)` | `GET /view/viewTableStructure/:id` → inline column panel below the table |
+| `loadForeignKeys()` | `GET /view/viewAllForeignkeys/:id` → renders FK rows with Remove action |
+| `removeFk(childColId, schemaTableId)` | `POST /project/removeForeignKey` |
+| `openAddFkModal()` | Loads tables, builds Add FK modal (child/parent table + column selects, name, on delete/update) |
+| `loadColumns(tableId, selectEl)` | `GET /view/viewTableStructure/:id` → populates a column `<select>` |
+| `submitAddFk()` | `POST /project/addForeignKey` |
+| `loadCorsOrigins()` | `GET /view/corsOrigin/:id` → renders origins; hides author-only controls if not author |
+| `addCorsOrigin(origin)` | `POST /project/addCorsOrigin` (author only) |
+| `removeCorsOrigin(origin)` | `POST /project/removeCorsOrigin` (author only) |
+| `loadCollaborators()` | Renders collaborators from cached header payload; hides Remove unless author/self |
+| `inviteCollaborator()` | Modal → `POST /project/collabInvitation` (author only) |
+| `removeCollaborator(userId, isSelf)` | `POST /project/removeCollaboration` |
+| `initSettingsForm()` | Populates settings form; disables + hides author-only controls when not author |
+| `renderSettingsTags()` / `addSettingsTag()` | Tag pill management for settings |
+| `submitSettings(e)` | `PUT /project/updateProject/:id` → reloads header; success toast |
+| `deleteProject()` | `DELETE /project/deleteProject/:id` → redirect to `/projects` (author only) |
+| `bindGlobalActions()` | Wires Add FK / Add CORS / Invite / Delete buttons |
+| `initModal()` / `showModal()` / `setModalBody()` / `setModalFoot()` / `closeModal()` | Modal helpers |
+| `renderShimmer()` / `emptyState()` / `showToast()` / `setLoading()` / `formatDate()` / `escHtml()` | Rendering + utility helpers |
+| `apiFetch(url, opts)` | Thin wrapper — prepends `BACKEND_URL`, sets `credentials: 'include'` |
+
 ---
 
 ## UI State & Structural Decisions
@@ -251,4 +284,5 @@ Self-executing script that checks session status (`/auth/me`). Redirects to `/lo
 - **Invite project links**: all `projectHref` / `templateHref` values in mock data are `#` — need to point to real project/view pages when built.
 - **Notifications page fully regenerated (2026-08-07)**: HTML rebuilt with correct Billing filter tab, sidebar active state, breadcrumb. JS rewritten with SVG icons (no emoji), fixed `notif-outcome-badge` class, added Billing tab count. CSS extended with all missing classes (`.notif-avatar--user`, `.notif-btn-accept/decline/ghost/upgrade`, `.notif-plan-badge--*`, `.notif-collab-status`, `.notif-actor--warn`, `.notif-star--*`, `.notif-strong`, `.notif-limit-val`, `.notif-chip*`).
 - **Templates page filter refactor (2026-08-07)**: Removed auth-type dropdown filter and sort-order dropdown. Added Auth On / Auth Off toggle chips (styled to match `project-badge--auth` / `project-badge--no-auth` from projects.html). Replaced single-tag selection with multi-tag selection across top 5 tags (REST, auth, AI, e-commerce, real-time). `authType` field replaced by boolean `authEnabled` in mock data. Sort is now driven solely by the Popular/Recent chip. New CSS classes `.tmpl-chip--auth-on.is-active` and `.tmpl-chip--auth-off.is-active` added at the bottom of `style.css`.
-- **Leaderboard rank badge fix (2026-08-07)**: `renderSection()` now receives the section's `metric` parameter and pre-computes each template's rank in the default (by-metric) sort order. Rank badges (#1, #2, #3) are therefore **always stable** and reflect the true category standing regardless of the active sort option (Default or By Created Date). `renderAll()` updated to pass metric to all three `renderSection()` calls.
+- **Leaderboard rank badge fix (2026-08-07)**: `renderSection()` now receives the section's `metric` parameter and pre-computes each template's rank in the default (by-metric) sort order. Rank badges (#1, #2, #3) are therefore **always stable** and reflect the true category standing regardless of the active sort option (Default or By Created Date).
+- **View Project page built (2026-09-03)**: New `pages/view-project.html` + `js/view-project.js` + route `GET /project/:projectId`. Implements Tables (with inline structure expand), Foreign Keys (add/remove modal), CORS Origins, Collaborators, and Settings tabs. Decisions: (1) The plan referenced `GET /view/collaborators/:projectId`, which **does not exist** in the backend — collaborators are rendered from the `project_collaborators` array embedded in the `GET /view/viewProject` response instead. (2) APIs and Project Logs tabs are intentional stub placeholders ("Coming soon") per the plan. (3) `removeForeignKey` is called with `{ proj_id, schema_table_id, child_col_id }` matching the actual backend signature. (4) `addForeignKey` sends `on_dlt`/`on_upd` per the backend contract. `renderAll()` updated to pass metric to all three `renderSection()` calls.

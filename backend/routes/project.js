@@ -365,6 +365,11 @@ router.post('/addCorsOrigin', requireAuth, requireProjectAuthor, isProjectActive
     const { proj_id, origin } = req.body;
 
     if (origin.trim().length < 1) { return res.status(400).json({ msg: "Cors origin can not be blank" }); }
+    const corsRegex = /^https?:\/\/(localhost(:\d+)?|(\*\.)?[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}(:\d+)?)$/;
+
+    if (!corsRegex.test(origin.trim())) {
+        return res.status(400).json({ msg: "Invalid CORS origin format" });
+    }
     await query(`
         INSERT INTO project_cors_origin
         (project_id, origin)
@@ -657,7 +662,7 @@ router.put('/updateProject/:projectId', requireAuth, requireProjectAuthor, async
         }
     }
     if (proj_name != null) {
-        const result = await query('SELECT * FROM projects WHERE author_id = $1 AND name = $2', [author_id, proj_name]);
+        const result = await query('SELECT * FROM projects WHERE author_id = $1 AND name = $2 AND id != $3', [author_id, proj_name, req.params.projectId]);
         if (result.rows.length > 0) {
             return res.status(400).json({ msg: 'You already have a project in this name' });
         }
@@ -670,8 +675,8 @@ router.put('/updateProject/:projectId', requireAuth, requireProjectAuthor, async
         await client.query(`
             UPDATE projects
             SET 
-            name = COALESCE($1 , name) , description = COALESCE($2 , description)  , auth_enabled = COALESCE($3 , auth_enabled)`,
-            [proj_name, description, enable_auth]
+            name = COALESCE($1 , name) , description = COALESCE($2 , description)  , auth_enabled = COALESCE($3 , auth_enabled) WHERE id = $4`,
+            [proj_name, description, enable_auth, req.params.projectId]
         );
         if (tags != null) {
             for (let i = 0; i < tags.length; i++) {

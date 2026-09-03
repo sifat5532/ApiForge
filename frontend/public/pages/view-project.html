@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Project — ApiForge</title>
+
+  <!-- Nested route (/project/:id): force all relative asset URLs to resolve from the domain root -->
+  <base href="/">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/responsive.css">
+
+  <!-- Pre-paint: restore persisted UI state before first frame -->
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem('apiforge-sidebar-collapsed') === 'true') {
+          document.documentElement.classList.add('sidebar-collapsed');
+        }
+        if (localStorage.getItem('apiforge-onboarding-dismissed') === 'true') {
+          document.documentElement.classList.add('onboarding-dismissed');
+        }
+      } catch (e) { /* localStorage unavailable — default to expanded/visible */ }
+    })();
+  </script>
+</head>
+<body class="dashboard-body" data-skip-redirect="true">
+
+  <!-- TOP NAVBAR -->
+  <header class="dash-nav">
+    <div class="dash-nav__inner">
+      <div class="dash-nav__left">
+        <button
+          class="sidebar-toggle"
+          id="sidebar-toggle"
+          type="button"
+          aria-label="Toggle sidebar"
+          aria-expanded="true"
+          aria-controls="sidebar"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+            <path d="M9 4v16"></path>
+          </svg>
+        </button>
+
+        <a href="/dashboard" class="brand">Api<span>Forge</span></a>
+
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+          <a href="/dashboard" class="breadcrumb__item">Home</a>
+          <span class="breadcrumb__sep" aria-hidden="true">/</span>
+          <a href="/projects" class="breadcrumb__item">Projects</a>
+          <span class="breadcrumb__sep" aria-hidden="true">/</span>
+          <span class="breadcrumb__item breadcrumb__item--current" id="breadcrumb-project-name" aria-current="page">Project</span>
+        </nav>
+      </div>
+
+      <div class="dash-nav__right">
+        <div class="plan-badge">
+          <span class="plan-badge__tier">Free plan</span>
+          <span class="plan-badge__usage">6/10 tables</span>
+        </div>
+
+        <a href="/new-project?from=projects" class="btn btn--primary btn--sm">+ New project</a>
+
+        <div class="account-menu">
+          <button
+            class="account-menu__trigger"
+            id="account-menu-trigger"
+            type="button"
+            aria-haspopup="true"
+            aria-expanded="false"
+            aria-controls="account-dropdown"
+          >
+            <span class="avatar" aria-hidden="true">S</span>
+            <span class="sr-only">Account menu</span>
+          </button>
+
+          <div class="account-menu__dropdown" id="account-dropdown" role="menu" aria-label="Account">
+            <a href="#" role="menuitem">Profile</a>
+            <a href="#" role="menuitem">Settings</a>
+            <a href="/logout" role="menuitem" class="is-danger">Sign out</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="dash-shell">
+
+    <!-- LEFT SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+      <nav class="sidebar__nav" aria-label="Primary">
+        <div>
+          <div class="sidebar__group">
+            <span class="sidebar__group-label">Workspace</span>
+            <ul>
+              <li>
+                <a href="/dashboard" class="sidebar__link" data-tooltip="Dashboard">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="7" rx="1.3"></rect>
+                    <rect x="14" y="3" width="7" height="7" rx="1.3"></rect>
+                    <rect x="3" y="14" width="7" height="7" rx="1.3"></rect>
+                    <rect x="14" y="14" width="7" height="7" rx="1.3"></rect>
+                  </svg>
+                  <span>Dashboard</span>
+                </a>
+              </li>
+              <li>
+                <a href="/projects" class="sidebar__link is-active" data-tooltip="Projects" aria-current="page">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"></path>
+                  </svg>
+                  <span>Projects</span>
+                </a>
+              </li>
+              <li>
+                <a href="/liked" class="sidebar__link" data-tooltip="Liked">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l8.78-8.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                  </svg>
+                  <span>Liked</span>
+                </a>
+              </li>
+              <li>
+                <a href="/templates" class="sidebar__link" data-tooltip="Templates">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2 3 7l9 5 9-5-9-5z"></path>
+                    <path d="M3 12l9 5 9-5"></path>
+                    <path d="M3 17l9 5 9-5"></path>
+                  </svg>
+                  <span>Templates</span>
+                </a>
+              </li>
+              <li>
+                <a href="/leaderboard" class="sidebar__link" data-tooltip="Leaderboard">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="13" width="4" height="7" rx="1"></rect>
+                    <rect x="10" y="9" width="4" height="11" rx="1"></rect>
+                    <rect x="16" y="5" width="4" height="15" rx="1"></rect>
+                  </svg>
+                  <span>Leaderboard</span>
+                </a>
+              </li>
+              <li>
+                <a href="/notifications" class="sidebar__link" data-tooltip="Notifications">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 8a6 6 0 1 0-12 0c0 3-1.5 4.5-1.5 6.5h15C18 12.5 18 11 18 8z"></path>
+                    <path d="M9.5 17a2.5 2.5 0 0 0 5 0"></path>
+                  </svg>
+                  <span>Notifications</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+
+          <div class="sidebar__group">
+            <span class="sidebar__group-label">Account</span>
+            <ul>
+              <li>
+                <a href="#" data-stub="billing" class="sidebar__link" data-tooltip="Usage &amp; Billing">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+                    <path d="M2 10h20"></path>
+                  </svg>
+                  <span>Usage &amp; Billing</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <ul class="sidebar__nav--secondary">
+          <li>
+            <a href="#" data-stub="profile" class="sidebar__link" data-tooltip="Profile">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="8" r="3.5"></circle>
+                <path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"></path>
+              </svg>
+              <span>Profile</span>
+            </a>
+          </li>
+          <li>
+            <a href="#" data-stub="settings" class="sidebar__link" data-tooltip="Settings">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"></path>
+              </svg>
+              <span>Settings</span>
+            </a>
+          </li>
+        </ul>
+      </nav>
+    </aside>
+
+    <!-- Backdrop for mobile sidebar drawer -->
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+    <!-- MAIN CONTENT -->
+    <main class="dash-main">
+
+      <!-- PROJECT HEADER -->
+      <header class="vp-header" id="vp-header">
+        <div class="vp-header__title-row">
+          <h1 class="vp-project-title" id="vp-project-title">Loading project…</h1>
+          <span class="vp-clone-badge" id="vp-clone-badge" hidden>Cloned</span>
+          <button class="btn btn--ghost btn--sm" id="vp-leave-project" type="button" hidden style="color: var(--error); border-color: var(--error); margin-left: auto;">Leave project</button>
+        </div>
+        <div class="vp-meta-grid" id="vp-meta-grid" aria-live="polite">
+          <!-- meta chips injected by JS -->
+        </div>
+        <div class="vp-tags" id="vp-tags">
+          <!-- tag pills injected by JS -->
+        </div>
+      </header>
+
+      <!-- TAB STRIP -->
+      <nav class="vp-tabs" role="tablist" aria-label="Project sections">
+        <button class="vp-tab is-active" id="tab-tables"   type="button" role="tab" aria-selected="true"  aria-controls="panel-tables">Tables</button>
+        <button class="vp-tab"           id="tab-fk"       type="button" role="tab" aria-selected="false" aria-controls="panel-fk">Foreign Keys</button>
+        <button class="vp-tab"           id="tab-apis"     type="button" role="tab" aria-selected="false" aria-controls="panel-apis">APIs</button>
+        <button class="vp-tab"           id="tab-cors"     type="button" role="tab" aria-selected="false" aria-controls="panel-cors">CORS Origins</button>
+        <button class="vp-tab"           id="tab-logs"     type="button" role="tab" aria-selected="false" aria-controls="panel-logs">Project Logs</button>
+        <button class="vp-tab"           id="tab-collab"   type="button" role="tab" aria-selected="false" aria-controls="panel-collab">Collaborators</button>
+        <button class="vp-tab"           id="tab-settings" type="button" role="tab" aria-selected="false" aria-controls="panel-settings">Settings</button>
+      </nav>
+
+      <!-- TAB PANELS -->
+      <section class="vp-tab-panels">
+
+        <!-- TABLES PANEL -->
+        <div class="vp-panel is-active" id="panel-tables" role="tabpanel" aria-labelledby="tab-tables">
+          <div class="vp-action-bar">
+            <h2 class="panel__title">Tables</h2>
+            <a href="#" data-stub="create-table" class="btn btn--primary btn--sm" id="btn-create-table">+ Create Table</a>
+          </div>
+          <div id="vp-tables-body" class="vp-table-wrap" aria-live="polite"></div>
+        </div>
+
+        <!-- FOREIGN KEYS PANEL -->
+        <div class="vp-panel" id="panel-fk" role="tabpanel" aria-labelledby="tab-fk" hidden>
+          <div class="vp-action-bar">
+            <h2 class="panel__title">Foreign Keys</h2>
+            <button class="btn btn--primary btn--sm" id="btn-add-fk" type="button">+ Add FK</button>
+          </div>
+          <div id="vp-fk-body" class="vp-table-wrap" aria-live="polite"></div>
+        </div>
+
+        <!-- APIs PANEL (stub) -->
+        <div class="vp-panel" id="panel-apis" role="tabpanel" aria-labelledby="tab-apis" hidden>
+          <div class="vp-empty">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="vp-empty__icon">
+              <path d="M4 17l6-6-6-6M12 19h8"></path>
+            </svg>
+            <h3 class="vp-empty__title">Coming soon</h3>
+            <p class="vp-empty__text">API management view will be available here shortly.</p>
+          </div>
+        </div>
+
+        <!-- CORS ORIGINS PANEL -->
+        <div class="vp-panel" id="panel-cors" role="tabpanel" aria-labelledby="tab-cors" hidden>
+          <div class="vp-action-bar">
+            <h2 class="panel__title">CORS Origins</h2>
+            <button class="btn btn--primary btn--sm" id="btn-add-cors" type="button">+ Add Origin</button>
+          </div>
+          <div id="vp-cors-body" class="vp-origin-list" aria-live="polite"></div>
+        </div>
+
+        <!-- PROJECT LOGS PANEL (stub) -->
+        <div class="vp-panel" id="panel-logs" role="tabpanel" aria-labelledby="tab-logs" hidden>
+          <div class="vp-empty">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="vp-empty__icon">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"></path>
+            </svg>
+            <h3 class="vp-empty__title">Coming soon</h3>
+            <p class="vp-empty__text">Project logs will be available here shortly.</p>
+          </div>
+        </div>
+
+        <!-- COLLABORATORS PANEL -->
+        <div class="vp-panel" id="panel-collab" role="tabpanel" aria-labelledby="tab-collab" hidden>
+          <div class="vp-action-bar">
+            <h2 class="panel__title">Collaborators</h2>
+            <button class="btn btn--primary btn--sm" id="btn-invite-collab" type="button">+ Invite</button>
+          </div>
+          <div id="vp-collab-body" class="vp-collab-list" aria-live="polite"></div>
+        </div>
+
+        <!-- SETTINGS PANEL -->
+        <div class="vp-panel" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
+          <h2 class="panel__title">Settings</h2>
+          <div id="vp-settings-readonly-banner" class="vp-settings-banner" hidden>
+            Read-only — only the project author can edit settings.
+          </div>
+          <form class="vp-settings-form" id="vp-settings-form">
+            <div class="field">
+              <label for="vp-settings-name">Project name</label>
+              <input type="text" id="vp-settings-name" name="proj_name" maxlength="30" />
+            </div>
+            <div class="field">
+              <label for="vp-settings-desc">Description</label>
+              <textarea id="vp-settings-desc" name="description" class="form-textarea" maxlength="500" rows="4"></textarea>
+            </div>
+            <div class="field toggle-field">
+              <label for="vp-settings-auth">Auth enabled</label>
+              <label class="switch">
+                <input type="checkbox" id="vp-settings-auth" name="enable_auth" />
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+            <div class="field">
+              <label for="vp-settings-tag-input">Tags</label>
+              <div class="selected-tags-container" id="vp-settings-tags"></div>
+              <div class="tag-input-group">
+                <input type="text" id="vp-settings-tag-input" placeholder="Add a tag (a–z, 2–20 chars)…" maxlength="20" />
+                <button class="btn btn--ghost btn--sm" id="btn-add-tag" type="button">Add</button>
+              </div>
+              <span class="field__hint">Tags must start with a–z and be 2–20 characters. Max 10 tags total.</span>
+            </div>
+            <div class="vp-settings-actions">
+              <button class="btn btn--primary" id="btn-save-settings" type="submit">Save changes</button>
+            </div>
+          </form>
+
+          <div class="vp-danger-zone" id="vp-danger-zone">
+            <h3 class="vp-danger-zone__title">Danger zone</h3>
+            <p class="vp-danger-zone__hint">Deleting a project is permanent and cannot be undone.</p>
+            <button class="btn btn--ghost" id="btn-delete-project" type="button" style="color: var(--error); border-color: var(--error);">Delete Project</button>
+          </div>
+        </div>
+
+      </section>
+    </main>
+  </div>
+
+  <!-- MODALS -->
+  <div class="vp-modal-overlay" id="vp-modal-overlay" hidden>
+    <div class="vp-modal" role="dialog" aria-modal="true" aria-labelledby="vp-modal-title">
+      <div class="vp-modal__head">
+        <h3 class="vp-modal__title" id="vp-modal-title">Modal</h3>
+        <button class="vp-modal__close" id="vp-modal-close" type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="vp-modal__body" id="vp-modal-body"></div>
+      <div class="vp-modal__foot" id="vp-modal-foot"></div>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/auth-guard.js"></script>
+  <script src="js/dashboard.js"></script>
+  <script src="js/view-project.js"></script>
+</body>
+</html>
