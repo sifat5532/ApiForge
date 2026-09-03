@@ -72,8 +72,46 @@ router.get('/allContributingProjects', requireAuth, async (req, res) => {
 
     res.status(200).json({ projects: result.rows });
 });
-
-router.get('/allTables/:projectId', requireAuth, async(req, res)=>{
+router.get('/viewProject/:projectId', requireAuth, async (req, res) => {
+    const result = await query(`SELECT
+                                 p.* ,
+                                 COALESCE(
+                                 ( SELECT json_agg(
+                                  json_build_object (
+                                  'id' , pt.project_id , 'tag_id' , pt.tag_id ,
+                                  'created_at' , pt.created_at ,
+                                  'name' , t.name
+                                  ) ORDER BY t.name
+                                  ) AS tag
+                                  FROM project_tags pt
+                                  JOIN tags t ON t.id = pt.tag_id
+                                   WHERE pt.project_id = p.id
+                                 ) , '[]' :: json
+                                 ) AS project_tags ,
+                                 COALESCE(
+                                 ( SELECT json_agg(
+                                  json_build_object (
+                                  'id' , pc.project_id , 'user_id' , pc.user_id ,
+                                  'created_at' , pc.created_at ,
+                                  'username' , u.username , 'name' , u.name
+                                  ) ORDER BY pc.created_at
+                                  ) AS collaborators
+                                  FROM project_collaborators pc
+                                  JOIN users u ON u.id = pc.user_id
+                                   WHERE pc.project_id = p.id
+                                 ) , '[]' :: json
+                                 ) AS project_collaborators
+                                FROM projects p
+                                WHERE p.id = $1 AND (p.author_id = $2 OR EXISTS (
+                                SELECT 1 
+                                FROM project_collaborators pc 
+                                WHERE  pc.user_id = $2 AND pc.status = $3 AND pc.project_id = $1 ))
+                                `, [req.params.projectId, req.loggedInUser.id, 'accepted']);
+                    if(result.rows.length < 1)   return res.status(404).json({msg : "Project not found"});
+                    return res.status(200).json({msg : "Successfully show project" , project : result.rows[0]});
+                               
+});
+router.get('/allTables/:projectId', requireAuth, async (req, res) => {
     const result = await query(`SELECT 
                                    t.id,
                                    t.project_id,
@@ -88,14 +126,14 @@ router.get('/allTables/:projectId', requireAuth, async(req, res)=>{
                                     FROM project_collaborators pc 
                                     WHERE pc.user_id = $2 AND pc.status = $3 AND pc.project_id = p.id ) OR p.author_id = $2 )
                                     ORDER BY t.table_name
-                               `, [req.params.projectId, req.loggedInUser.id, 'accepted'] );
+                               `, [req.params.projectId, req.loggedInUser.id, 'accepted']);
     //  result.rows.length = 0 if user is not the author/collaborator of the project       
     //if has no table table_name will be null                
-    if(result.rows.length <1) return res.status(403).json({msg:"You don't have access to the project"});
-    res.status(200).json({tables : result.rows});
+    if (result.rows.length < 1) return res.status(403).json({ msg: "You don't have access to the project" });
+    res.status(200).json({ tables: result.rows });
 });
 
-router.get('/viewTableStructure/:tableId',requireAuth,async(req,res)=>{
+router.get('/viewTableStructure/:tableId', requireAuth, async (req, res) => {
     const result = await query(`SELECT 
                                 c.* , t.table_name
                                 FROM schema_tables t
@@ -106,12 +144,12 @@ router.get('/viewTableStructure/:tableId',requireAuth,async(req,res)=>{
                                 FROM project_collaborators pc 
                                 WHERE  pc.user_id = $2 AND pc.status = $3 AND pc.project_id = p.id ))
                                 ORDER BY c.is_primary_key DESC , c.id ASC
-                                `,[req.params.tableId , req.loggedInUser.id, 'accepted']);
-    if(result.rows.length <1) return res.status(403).json({msg:"You don't have access to the table"});
-    res.status(200).json({coloumns : result.rows});
+                                `, [req.params.tableId, req.loggedInUser.id, 'accepted']);
+    if (result.rows.length < 1) return res.status(403).json({ msg: "You don't have access to the table" });
+    res.status(200).json({ coloumns: result.rows });
 });
-router.get('/viewTableData/:tableId/:limit/:offset',requireAuth,async(req,res)=>{
-    const  { tableId , limit , offset} = req.params;    
+router.get('/viewTableData/:tableId/:limit/:offset', requireAuth, async (req, res) => {
+    const { tableId, limit, offset } = req.params;
 
     const table = await query(`SELECT
                                     UPPER('PROJ_'||P.id||'_'||P.author_id) AS schema_name , S.table_name AS table_name
@@ -121,19 +159,19 @@ router.get('/viewTableData/:tableId/:limit/:offset',requireAuth,async(req,res)=>
                                       EXISTS (SELECT 1 
                                               FROM project_collaborators pc 
                                               WHERE  pc.user_id = $3 AND pc.status = $4 AND pc.project_id = p.id))
-                                          `,[tableId , false , req.loggedInUser.id , 'accepted']);
-    if(table.rows.length < 1) return res.status(404).json({msg : "Table not found"});
+                                          `, [tableId, false, req.loggedInUser.id, 'accepted']);
+    if (table.rows.length < 1) return res.status(404).json({ msg: "Table not found" });
 
-    const schema = table.rows[0].schema_name ;
-    const table_name = table.rows[0].table_name ;
+    const schema = table.rows[0].schema_name;
+    const table_name = table.rows[0].table_name;
     const result = await query(`SELECT *
                            FROM "${schema}".${table_name}
-                           LIMIT $1 OFFSET $2 `,[ Number(limit)||10 , Number(offset)||0]);
-    res.status(200).json({msg : "Successfully show the data of the table ",data: result.rows});
+                           LIMIT $1 OFFSET $2 `, [Number(limit) || 10, Number(offset) || 0]);
+    res.status(200).json({ msg: "Successfully show the data of the table ", data: result.rows });
 });
-router.get('/viewUserSessions',requireAuth,async(req,res)=>{
+router.get('/viewUserSessions', requireAuth, async (req, res) => {
 
-        const result = await query(`
+    const result = await query(`
                             SELECT 
                             id ,
                             user_id , 
@@ -146,12 +184,12 @@ router.get('/viewUserSessions',requireAuth,async(req,res)=>{
                             FROM user_sessions 
                             WHERE user_id = $1 AND created_at > CURRENT_DATE - INTERVAL '1 month'
                             ORDER BY last_active_at DESC 
-                            `,[req.loggedInUser.id]
-                        );
-    res.status(200).json({msg:"Successfully show user sessions",data : result.rows});
-  });
-  router.get('/viewTemplate/:templateId',async(req,res)=>{
-    const {templateId} = req.params;// ** I think ids  are not required to send to backend . Confirm me .
+                            `, [req.loggedInUser.id]
+    );
+    res.status(200).json({ msg: "Successfully show user sessions", data: result.rows });
+});
+router.get('/viewTemplate/:templateId', async (req, res) => {
+    const { templateId } = req.params;// ** I think ids  are not required to send to backend . Confirm me .
     const result = await query(`
                      SELECT 
                     P.id , P.name , P.created_at , P.description ,P.auth_enabled , P.author_id , U.username , U.name ,
@@ -213,13 +251,13 @@ router.get('/viewUserSessions',requireAuth,async(req,res)=>{
                     FROM projects P 
                     JOIN users U ON U.id = P.author_id
                     WHERE P.id = $1 AND P.is_template = $2
-                      `, [templateId , true]);
-        if(result.rows.length === 0) return res.status(404).json({msg : "Template not found"});
-        res.status(200).json({msg: "Successfully show template details ", data: result.rows[0]})
-   
-  });
-router.get('/viewAllForeignkeys/:projectId',requireAuth,async(req,res)=>{
-    const { projectId } = req.params ;
+                      `, [templateId, true]);
+    if (result.rows.length === 0) return res.status(404).json({ msg: "Template not found" });
+    res.status(200).json({ msg: "Successfully show template details ", data: result.rows[0] })
+
+});
+router.get('/viewAllForeignkeys/:projectId', requireAuth, async (req, res) => {
+    const { projectId } = req.params;
     const projAccess = await query(`
                             SELECT 1
                             FROM projects P
@@ -230,9 +268,9 @@ router.get('/viewAllForeignkeys/:projectId',requireAuth,async(req,res)=>{
                             FROM project_collaborators cb
                             WHERE cb.user_id = $2 AND  cb.status = $3  AND cb.project_id = $1 )
                              )` ,
-                           [projectId , req.loggedInUser.id , 'accepted']);
-    if( projAccess.rows.length === 0 )   return res.status(403).json({msg : "Project not found"}) ;
-    const result = await query (`
+        [projectId, req.loggedInUser.id, 'accepted']);
+    if (projAccess.rows.length === 0) return res.status(403).json({ msg: "Project not found" });
+    const result = await query(`
                             SELECT
                              fk.child_col_id , cc.col_name AS child_col_name ,
                              ct.id AS child_table_id , ct.table_name AS child_table_name ,
@@ -249,9 +287,9 @@ router.get('/viewAllForeignkeys/:projectId',requireAuth,async(req,res)=>{
                              JOIN schema_tables pt ON pt.id = pc.schema_table_id  
                              JOIN projects P ON P.id = ct.project_id 
                              WHERE p.id = $1 
-                             `,[ projectId ]);
-    
-    res.status(200).json({msg: "Successfully fetched foreign keys" , data : result.rows })
+                             `, [projectId]);
+
+    res.status(200).json({ msg: "Successfully fetched foreign keys", data: result.rows })
 
 });
 module.exports = router;
