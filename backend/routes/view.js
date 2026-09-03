@@ -111,6 +111,20 @@ router.get('/viewProject/:projectId', requireAuth, async (req, res) => {
                     return res.status(200).json({msg : "Successfully show project" , project : result.rows[0]});
                                
 });
+router.get('/corsOrigin/:projectId' , requireAuth ,async(req , res)=>{
+   const result = await query(`SELECT
+                               o.*
+                               FROM project_cors_origin o
+                               JOIN projects p ON p.id = o.project_id
+                                WHERE o.project_id = $1 AND (p.author_id = $2 OR EXISTS (
+                                SELECT 1 
+                                FROM project_collaborators pc 
+                                WHERE  pc.user_id = $2 AND pc.status = $3 AND pc.project_id = $1 ))
+                                ORDER BY o.created_at DESC 
+                                `, [req.params.projectId, req.loggedInUser.id, 'accepted']);
+        if(result.rows.length === 0) return res.status(400).json({msg : "No cors origin has been added yet"});
+        return res.status(200).json({cors_origins : result.rows});
+});
 router.get('/allTables/:projectId', requireAuth, async (req, res) => {
     const result = await query(`SELECT 
                                    t.id,

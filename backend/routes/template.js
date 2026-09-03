@@ -93,12 +93,4 @@ router.post('/feedback', requireAuth, templateExistence, async (req, res) => {
     res.status(200).json({ msg: "Successfully sent feedback to the template" });
 });
 
-
-
-
-
-
-
-
-
 module.exports = router;
