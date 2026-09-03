@@ -47,8 +47,6 @@ function isValidOperator(op) {
   return typeof op === 'string' && VALID_WHERE_OPERATORS.has(op.trim());
 }
 
-// fix #2: any string that will be interpolated as a SQL identifier (alias) must be whitelisted —
-// identifiers can't be parameterized like values can, so this is the only line of defense
 const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/;
 function isSafeIdentifier(str) {
   return typeof str === 'string' && SAFE_IDENTIFIER.test(str);
@@ -353,7 +351,18 @@ function validateSelectPayload(payload, catalog) {
 }
 
 router.post('/create', requireAuth, requireProjectAccess, isProjectActive, async (req, res) => {
-  const proj_id = req.body.proj_id ? req.body.proj_id : (req.params.projectId ? req.params.projectId : req.query.projectId);
+  const proj_id = (req.params.projectId ? req.params.projectId : req.query.projectId);
+  const api_name = (req.params.api_name ? req.params.api_name : req.query.api_name);
+  const method = (req.params.method ? req.params.method : req.query.method);
+  if(!api_name || !method){
+    return res.status(400).json({ msg: "You should insert api_name and method with your request"});
+  }
+  if (!/^[a-z][a-z0-9_]{0,29}$/.test(api_name)) {
+    return res.status(400).json({ msg: `Please give a valid name using only a-z, A-Z, 0-9 and _`});
+  }
+  if (!["POST", "GET", "PUT", "DELETE"].includes(_.toUpper(method.trim()))) {
+      return res.status(400).json({ msg: `Invalid method name`});
+  }
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -365,8 +374,13 @@ router.post('/create', requireAuth, requireProjectAccess, isProjectActive, async
       await client.query('ROLLBACK');
       return res.status(422).json({ valid: false, errors });
     }
+    await client.query(`
+      INSERT INTO api_definitions
+          (name, project_id, method, query_definition, rate_limit_per_day)
+      VALUES
+          ($1, $2, $3, $4, $5);`, [api_name, proj_id, method, req.body, 1000])
     await client.query('COMMIT');
-    return res.status(200).json({ valid: true });
+    return res.status(200).json({ valid: true, msg: "Api definition added successfully"});
   } catch (e) {
     await client.query('ROLLBACK');
     console.error(e);
