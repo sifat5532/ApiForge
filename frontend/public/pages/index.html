@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ApiForge — Build backends without code</title>
+  <meta name="description" content="Design tables and endpoints in a visual form, get a real REST API, and share templates with the community. No servers, no config." />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+
+  <!-- NAV -->
+  <header class="nav">
+    <div class="nav__inner">
+      <a href="/" class="brand">Api<span>Forge</span></a>
+
+      <nav class="nav__links" id="nav-links">
+        <a class="nav__link" href="#features">Features</a>
+        <a class="nav__link" href="#templates">Templates</a>
+        <a class="nav__link" href="#pricing">Pricing</a>
+        <div class="nav__cta">
+          <a href="/login" class="btn btn--ghost">Login</a>
+          <a href="/signup" class="btn btn--primary">Get started →</a>
+        </div>
+      </nav>
+
+      <button class="nav__toggle" aria-label="Toggle menu" aria-expanded="false">
+        <span></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- HERO -->
+  <main>
+    <section class="hero">
+      <div class="hero__inner">
+        <div>
+          <span class="eyebrow">v1.0 — CSE216 database project</span>
+          <h1>Your backend,<br /><span class="accent">forged in clicks.</span></h1>
+          <p class="lede">
+            Build your tables and endpoints through a simple dashboard form — no schema files,
+            no boilerplate. ApiForge turns what you design into a real REST API you can call
+            from any frontend with <code>fetch()</code>.
+          </p>
+          <div class="hero__actions">
+            <a href="/signup" class="btn btn--primary">Create your first project →</a>
+            <a href="/login" class="btn btn--ghost">I already have an account</a>
+          </div>
+          <div class="hero__meta">
+            <span><strong>3</strong> plans, from free</span>
+            <span><strong>Session +</strong> API-key auth</span>
+            <span><strong>Public</strong> template sharing</span>
+          </div>
+        </div>
+
+        <div>
+          <div class="terminal">
+            <div class="terminal__bar">
+              <span class="terminal__dot"></span>
+              <span class="terminal__dot"></span>
+              <span class="terminal__dot"></span>
+              <span class="terminal__title">index.html — your frontend</span>
+            </div>
+            <div class="terminal__body" id="terminal-output" aria-hidden="true"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW IT WORKS -->
+    <section class="steps" id="how-it-works">
+      <div class="section-head">
+        <span class="eyebrow">the flow</span>
+        <h2>From form to API in three steps</h2>
+        <p>No code required to get a working backend — you fill in the forms, ApiForge wires up the database and routes.</p>
+      </div>
+      <div class="steps__list">
+        <div class="step">
+          <div class="step__num">1</div>
+          <h3>Create a project</h3>
+          <p>Name your project and it gets its own isolated database schema behind the scenes.</p>
+        </div>
+        <div class="step">
+          <div class="step__num">2</div>
+          <h3>Design a table</h3>
+          <p>Add columns, pick types, set relationships — all through the dashboard UI, no SQL needed.</p>
+        </div>
+        <div class="step">
+          <div class="step__num">3</div>
+          <h3>Create an API for it</h3>
+          <p>Fill out a short form to turn a table into an endpoint — you choose the route and method, then call it at <code>/api/username/project/apiname</code>.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- FEATURES -->
+    <section class="features" id="features">
+      <div class="section-head" style="padding-top:64px;">
+        <span class="eyebrow">what you get</span>
+        <h2>Everything a small backend needs</h2>
+      </div>
+      <div class="features__inner">
+        <div class="feature">
+          <div class="feature__tag">// builder</div>
+          <h3>Visual table builder</h3>
+          <p>Define columns, types, and foreign keys through a form — ApiForge handles the schema behind it.</p>
+        </div>
+        <div class="feature">
+          <div class="feature__tag">// api</div>
+          <h3>Create APIs through a form</h3>
+          <p>Pick a table, set the route and method in a short form, and it's wired up as a REST endpoint you can call.</p>
+        </div>
+        <div class="feature">
+          <div class="feature__tag">// share</div>
+          <h3>Template sharing</h3>
+          <p>Publish a project as a template, or clone one from the community to skip the setup entirely.</p>
+        </div>
+        <div class="feature">
+          <div class="feature__tag">// auth</div>
+          <h3>Built-in authentication</h3>
+          <p>Session cookies for your dashboard, API keys for cross-origin apps, with allowed-origin registration.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- TEMPLATES -->
+    <section class="templates" id="templates">
+      <div class="section-head">
+        <span class="eyebrow">community</span>
+        <h2>Start from a shared template</h2>
+        <p>Browse projects other builders have published, star the ones you like, and clone them straight into your account.</p>
+      </div>
+      <div class="templates__grid">
+        <div class="template-card">
+          <div class="template-card__meta">
+            <span>by @rafiq</span>
+            <span class="template-card__stars">★ 112</span>
+          </div>
+          <h3>Inventory manager</h3>
+          <p>Products, stock levels, and suppliers — a ready-made schema for tracking goods.</p>
+          <div class="template-card__tags">
+            <span class="tag">6 tables</span>
+            <span class="tag">beginner</span>
+          </div>
+        </div>
+        <div class="template-card">
+          <div class="template-card__meta">
+            <span>by @nadia</span>
+            <span class="template-card__stars">★ 96</span>
+          </div>
+          <h3>Task tracker</h3>
+          <p>Boards, tasks, and assignees with status workflows, built for small team tools.</p>
+          <div class="template-card__tags">
+            <span class="tag">8 tables</span>
+            <span class="tag">intermediate</span>
+          </div>
+        </div>
+        <div class="template-card">
+          <div class="template-card__meta">
+            <span>by @sifat</span>
+            <span class="template-card__stars">★ 74</span>
+          </div>
+          <h3>Marketplace listings</h3>
+          <p>Products, sellers, orders, and reviews — a multi-table starting point for storefront apps.</p>
+          <div class="template-card__tags">
+            <span class="tag">11 tables</span>
+            <span class="tag">advanced</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRICING -->
+    <section class="pricing" id="pricing">
+      <div class="section-head">
+        <span class="eyebrow">plans</span>
+        <h2>Pick a plan that fits your project</h2>
+        <p>Start free. Upgrade when your project outgrows its limits.</p>
+      </div>
+      <div class="pricing__grid">
+        <div class="plan">
+          <div class="plan__name">Free</div>
+          <p class="plan__tagline">For trying ApiForge out.</p>
+          <ul class="plan__list">
+            <li>2 projects</li>
+            <li>Up to 10 tables per project</li>
+            <li>Up to 20 APIs per project</li>
+            <li>1,000 API calls per day</li>
+          </ul>
+          <a href="/signup" class="btn btn--ghost btn--block">Start free</a>
+        </div>
+        <div class="plan plan--highlight">
+          <span class="plan__badge">Most popular</span>
+          <div class="plan__name">Lite</div>
+          <p class="plan__tagline">For growing projects.</p>
+          <ul class="plan__list">
+            <li>5 projects</li>
+            <li>Unlimited tables per project</li>
+            <li>Up to 150 APIs per project</li>
+            <li>50,000 API calls per day</li>
+          </ul>
+          <a href="/signup" class="btn btn--primary btn--block">Get Lite</a>
+        </div>
+        <div class="plan">
+          <div class="plan__name">Pro</div>
+          <p class="plan__tagline">For everything else.</p>
+          <ul class="plan__list">
+            <li>Unlimited projects</li>
+            <li>Unlimited tables</li>
+            <li>Unlimited APIs</li>
+            <li>Unlimited API calls per day</li>
+          </ul>
+          <a href="/signup" class="btn btn--ghost btn--block">Get Pro</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- FINAL CTA -->
+    <section class="cta">
+      <h2>Ready to forge your backend?</h2>
+      <p>Create a free account and have a working API before you'd normally finish setting up a server.</p>
+      <div class="cta__actions">
+        <a href="/signup" class="btn btn--primary">Create your project →</a>
+        <a href="/login" class="btn btn--ghost">Login</a>
+      </div>
+    </section>
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer__inner">
+      <span>© 2026 ApiForge — CSE216 project</span>
+      <div class="footer__links">
+        <a href="/login">Login</a>
+        <a href="/signup">Sign up</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="js/config.js"></script>
+  <script src="js/auth-redirect.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
