@@ -56,32 +56,38 @@ const validateName = (req, res, name, instanceType, id) => {
 };
 
 const requireProjectAuthor = async (req, res, next) => {
-    const proj_id = req.body.proj_id ? req.body.proj_id : req.params.projectId;
+    const proj_id = req.body.proj_id ? req.body.proj_id : (req.params.projectId ? req.params.projectId : req.query.projectId);
     if (!proj_id) return res.status(400).json({ msg: "You should insert a project id with your request" });
 
-    const result = await query('SELECT id FROM projects WHERE id=$1 AND author_id=$2', [proj_id, req.loggedInUser.id]);
+    const result = await query('SELECT id FROM projects WHERE id=$1 AND author_id=$2 AND is_template=false', [proj_id, req.loggedInUser.id]);
     if (result.rows.length === 0) {
         return res.status(403).json({ msg: "You don't have access to make any change to this project" });
     }
+    req.projectAuthorId = req.loggedInUser.id;
     next();
 };
 
 //it also chk is if the proj is not a template 
 const requireProjectAccess = async (req, res, next) => {
-    const { proj_id } = req.body;
+    const proj_id = req.body.proj_id ? req.body.proj_id : (req.params.projectId ? req.params.projectId : req.query.projectId);
     if (!proj_id) return res.status(400).json({ msg: "You should insert a project id with your request" });
 
     const result = await query('SELECT id FROM projects WHERE id=$1 AND author_id=$2  AND is_template=$3', [proj_id, req.loggedInUser.id, false]);
 
-    const isCollab = await query('SELECT project_id FROM project_collaborators WHERE project_id=$1 AND user_id=$2 AND role=$3 AND status=$4', [proj_id, req.loggedInUser.id, 'editor', 'accepted']);
+    const isCollab = await query('SELECT pc.project_id, p.author_id FROM project_collaborators pc join projects p ON p.id = pc.project_id WHERE pc.project_id=$1 AND pc.user_id=$2 AND pc.role=$3 AND pc.status=$4 GROUP BY pc.project_id, p.author_id', [proj_id, req.loggedInUser.id, 'editor', 'accepted']);
     if (isCollab.rows.length === 0 && result.rows.length === 0) {
         return res.status(403).json({ msg: "You don't have access to make any change to this project" });
+    }
+    if(result.rows.length > 0){
+        req.projectAuthorId = req.loggedInUser.id;
+    }else{
+        req.projectAuthorId = isCollab.rows[0].author_id;
     }
     next();
 };
 
 const isProjectActive = async (req, res, next) => {
-    const { proj_id } = req.body;
+    const proj_id = req.body.proj_id ? req.body.proj_id : (req.params.projectId ? req.params.projectId : req.query.projectId);
     if (!proj_id) return res.status(400).json({ msg: "You should insert a project id with your request" });
 
     const result = await query('SELECT id FROM projects WHERE id = $1 AND subscription_status = $2', [proj_id, 'active']);
@@ -306,7 +312,7 @@ router.post('/createTable', requireAuth, requireProjectAccess, isProjectActive, 
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        await checkPlanLimit(client, req.loggedInUser.id, 'table', proj_id);
+        await checkPlanLimit(client, req.projectAuthorId, 'table', proj_id);
 
         const result = await client.query('INSERT INTO schema_tables(project_id,table_name) VALUES($1, $2) RETURNING id', [proj_id, table_name]);
         const table_id = result.rows[0].id;
@@ -538,7 +544,7 @@ router.post('/createTemplate', requireAuth, async (req, res) => {
             await client.query('ROLLBACK ');
             return res.status(404).json({ msg: 'You are not allowed to create template of this project ' });
         }
-        await checkPlanLimit(client, author_id, 'project');
+        // await checkPlanLimit(client, author_id, 'project');
         const template = await client.query(`
             INSERT INTO projects
             (author_id, name, description, auth_enabled, is_template, originates_from_id )
@@ -695,4 +701,8 @@ router.delete('/deleteProject/:projectId', requireAuth,  async (req, res) => {
     if(result.rowCount === 0)  return res.status(400).json({msg : "You don't have access to delete the project or the project doesn't exist."});
     return res.status(200).json({msg : "Project was deleted successfully"});
 });
+
 module.exports = router;
+module.exports.requireProjectAuthor = requireProjectAuthor;
+module.exports.requireProjectAccess = requireProjectAccess;
+module.exports.isProjectActive = isProjectActive;

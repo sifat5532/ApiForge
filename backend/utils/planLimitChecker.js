@@ -56,7 +56,7 @@ async function checkPlanLimit(client, actingUserId, type, projId = null) {
         );
         const currentCount = parseInt(countResult.rows[0].count, 10);
         if (currentCount >= plan.table_per_project) {
-            const e = new Error(`This plan allows a maximum of ${plan.table_per_project} tables per project`);
+            const e = new Error(`Subscription plan of project author allows a maximum of ${plan.table_per_project} tables per project`);
             e.status = 403;
             throw e;
         }
@@ -69,7 +69,7 @@ async function checkPlanLimit(client, actingUserId, type, projId = null) {
         );
         const currentCount = parseInt(countResult.rows[0].count, 10);
         if (currentCount >= plan.api_per_project) {
-            const e = new Error(`This plan allows a maximum of ${plan.api_per_project} APIs per project`);
+            const e = new Error(`Subscription plan of project author allows a maximum of ${plan.api_per_project} APIs per project`);
             e.status = 403;
             throw e;
         }
