@@ -131,7 +131,7 @@ router.get('/allTables/:projectId', requireAuth , requireProjectAccess , async (
                                     WHERE t.project_id = $1  
                                     ORDER BY t.id
                                `, [req.params.projectId]);          
-    if (result.rows.length === 0) return res.status(404).json({ msg: "No table has been added yet" });
+
     res.status(200).json({ tables: result.rows });
 });
 
@@ -150,7 +150,7 @@ router.get('/viewTableStructure/:tableId', requireAuth, async (req, res) => {
         [req.params.tableId, req.loggedInUser.id, 'accepted']);
     if (tableAccess.rows.length === 0) return res.status(404).json({ msg: "Table not found" });
     const result = await query(`SELECT 
-                                c.* , t.*
+                                c.* , t.table_name
                                 FROM schema_tables t
                                 JOIN schema_columns c ON c.schema_table_id = t.id
                                 WHERE t.id = $1
@@ -158,7 +158,7 @@ router.get('/viewTableStructure/:tableId', requireAuth, async (req, res) => {
                                 `, [req.params.tableId]);
     res.status(200).json({ coloumns: result.rows });
 });
-router.get('/viewTableData/:tableId', requireAuth, async (req, res) => {
+router.get('viewTableData/:tableId', requireAuth, async (req, res) => {
     const { tableId } = req.params;
     const limit = Number(req.query.limit)||10;
     const offset = Number(req.query.offset)||0;
