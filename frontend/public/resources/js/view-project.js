@@ -87,14 +87,12 @@ async function loadProjectHeader() {
 
     // Apply all author-only action button visibility immediately after role is known.
     // These buttons live in the panel action bars and should not wait for lazy tab load.
+    // Author-only: invite collaborators & manage CORS origins.
+    // Collaborators MAY create/edit tables and add FKs, so those stay visible.
     const inviteBtn    = document.getElementById('btn-invite-collab');
     const addCorsBtn   = document.getElementById('btn-add-cors');
-    const addFkBtn     = document.getElementById('btn-add-fk');
-    const createTblBtn = document.getElementById('btn-create-table');
     if (inviteBtn)    inviteBtn.hidden    = !vpState.isAuthor;
     if (addCorsBtn)   addCorsBtn.hidden   = !vpState.isAuthor;
-    if (addFkBtn)     addFkBtn.hidden     = !vpState.isAuthor;
-    if (createTblBtn) createTblBtn.hidden = !vpState.isAuthor;
 
     if (titleEl) titleEl.textContent = p.name || 'Untitled project';
     if (crumbEl) crumbEl.textContent = p.name || 'Project';
@@ -196,9 +194,7 @@ async function loadTables() {
   if (!body) return;
   renderShimmer(body, 4);
 
-  // Hide "Create Table" button for collaborators
-  const createTableBtn = document.getElementById('btn-create-table');
-  if (createTableBtn) createTableBtn.hidden = !vpState.isAuthor;
+  // Collaborators may create tables too — keep the button visible.
 
   try {
     const res = await apiFetch(`/view/allTables/${vpState.projectId}`);
@@ -313,9 +309,7 @@ async function loadForeignKeys() {
   if (!body) return;
   renderShimmer(body, 4);
 
-  // Collaborators can view FK list but cannot add/remove
-  const addFkBtn = document.getElementById('btn-add-fk');
-  if (addFkBtn) addFkBtn.hidden = !vpState.isAuthor;
+  // Collaborators may add FKs too — keep the button visible.
 
   try {
     const res = await apiFetch(`/view/viewAllForeignkeys/${vpState.projectId}`);
@@ -338,8 +332,8 @@ async function loadForeignKeys() {
         <td>${escHtml(fk.on_update)}</td>
         <td>${escHtml(formatDate(fk.created_at))}</td>
         <td>
-          ${vpState.isAuthor ? `<button class="btn btn--ghost btn--sm vp-fk-remove" type="button"
-            data-child-col-id="${fk.child_col_id}" data-schema-table-id="${fk.child_table_id}">Remove</button>` : ''}
+          <button class="btn btn--ghost btn--sm vp-fk-remove" type="button"
+            data-child-col-id="${fk.child_col_id}" data-schema-table-id="${fk.child_table_id}">Remove</button>
         </td>
       </tr>
     `).join('');
@@ -399,10 +393,6 @@ function removeFk(childColId, schemaTableId) {
 }
 
 async function openAddFkModal() {
-  if (!vpState.isAuthor) {
-    showToast('Only the project author can add foreign keys', 'error');
-    return;
-  }
   showModal('Add Foreign Key', '<p class="vp-empty__text">Loading tables…</p>', '');
 
   let tables;

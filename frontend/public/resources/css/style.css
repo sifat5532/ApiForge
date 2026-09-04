@@ -3,6 +3,11 @@
    Base (desktop-first) styles. Breakpoint overrides live in responsive.css
    =================================================================== */
 
+/* Ensure the HTML `hidden` attribute always wins, even when a component
+   sets display (e.g. .btn { display: inline-flex }). Used for role-based
+   gating (author-only / collaborator-only action buttons). */
+[hidden] { display: none !important; }
+
 :root {
   /* --- color tokens --- */
   --bg:            #0f0f0f;
