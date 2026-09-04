@@ -2,6 +2,8 @@ const express = require('express');
 const query = require('./../db/query');
 const pool = require('./../db/connection');
 const { requireAuth } = require('./auth');
+const { requireProjectAuthor }= require('./project');
+const { requireProjectAccess }= require('./project');
 const router = express.Router();
 
 router.get('/allProjects', requireAuth, async (req, res) => {
@@ -72,7 +74,7 @@ router.get('/allContributingProjects', requireAuth, async (req, res) => {
 
     res.status(200).json({ projects: result.rows });
 });
-router.get('/viewProject/:projectId', requireAuth, async (req, res) => {
+router.get('/viewProject/:projectId', requireAuth, requireProjectAccess , async (req, res) => {
     const result = await query(`SELECT
                                  p.* ,
                                  COALESCE(
@@ -89,82 +91,77 @@ router.get('/viewProject/:projectId', requireAuth, async (req, res) => {
                                  ) , '[]' :: json
                                  ) AS project_tags 
                                 FROM projects p
-                                WHERE p.id = $1 AND (p.author_id = $2 OR EXISTS (
-                                SELECT 1 
-                                FROM project_collaborators pc 
-                                WHERE  pc.user_id = $2 AND pc.status = $3 AND pc.project_id = $1 ))
-                                `, [req.params.projectId, req.loggedInUser.id, 'accepted']);
+                                WHERE p.id = $1
+                                `, [req.params.projectId]);
                     if(result.rows.length < 1)   return res.status(404).json({msg : "Project not found"});
                     return res.status(200).json({msg : "Successfully show project" , project : result.rows[0]});
                                
 });
-router.get('/collaborators/:projectId', requireAuth , async(req , res)=>{
+router.get('/collaborators/:projectId', requireAuth , requireProjectAccess , async(req , res)=>{
    const result = await query(`SELECT 
                                 cp.* ,  u.username , u.name
                                 FROM project_collaborators cp
                                 JOIN users u ON u.id = cp.user_id
-                                JOIN  projects p ON p.id = cp.project_id
-                                WHERE p.id = $1 AND (p.author_id = $2 OR EXISTS (
-                                SELECT 1 
-                                FROM project_collaborators pc 
-                                WHERE  pc.user_id = $2 AND pc.status = $3 AND pc.project_id = $1 )) AND
-                                (cp.status = 'pending' OR cp.status = 'accepted')
-                                `, [req.params.projectId, req.loggedInUser.id, 'accepted']);
+                                WHERE cp.project_id = $1 AND (
+                                cp.status = 'accepted' OR cp.status = 'pending')
+                                ORDER BY cp.created_at DESC
+                                `, [req.params.projectId]);
+        if(result.rows.length === 0)   return res.status(404).json({msg : "No collaborato has been added yet "});
         return res.status(200).json({collaborators : result.rows});
 });
-router.get('/corsOrigin/:projectId' , requireAuth ,async(req , res)=>{
+router.get('/corsOrigin/:projectId' , requireAuth , requireProjectAccess , async(req , res)=>{
    const result = await query(`SELECT
                                o.*
                                FROM project_cors_origin o
                                JOIN projects p ON p.id = o.project_id
-                                WHERE o.project_id = $1 AND (p.author_id = $2 OR EXISTS (
-                                SELECT 1 
-                                FROM project_collaborators pc 
-                                WHERE  pc.user_id = $2 AND pc.status = $3 AND pc.project_id = $1 ))
+                                WHERE o.project_id = $1
                                 ORDER BY o.created_at DESC 
-                                `, [req.params.projectId, req.loggedInUser.id, 'accepted']);
+                                `, [req.params.projectId]);
         if(result.rows.length === 0) return res.status(400).json({msg : "No cors origin has been added yet"});
         return res.status(200).json({cors_origins : result.rows});
 });
-router.get('/allTables/:projectId', requireAuth, async (req, res) => {
+router.get('/allTables/:projectId', requireAuth , requireProjectAccess , async (req, res) => {
     const result = await query(`SELECT 
                                    t.id,
                                    t.project_id,
-                                   p.name,
-                                   t.table_name,
-                                   t.created_at,
+                                   t.table_name ,
+                                   t.created_at ,
                                    (SELECT COUNT(c.id) FROM schema_columns c WHERE c.schema_table_id = t.id ) AS TOTAL_COLUMNS
-                                    FROM  projects p
-                                    LEFT JOIN schema_tables t ON t.project_id = p.id
-                                    WHERE p.id = $1 AND ( EXISTS (
-                                    SELECT 1 
-                                    FROM project_collaborators pc 
-                                    WHERE pc.user_id = $2 AND pc.status = $3 AND pc.project_id = p.id ) OR p.author_id = $2 )
-                                    ORDER BY t.table_name
-                               `, [req.params.projectId, req.loggedInUser.id, 'accepted']);
-    //  result.rows.length = 0 if user is not the author/collaborator of the project       
-    //if has no table table_name will be null                
-    if (result.rows.length < 1) return res.status(403).json({ msg: "You don't have access to the project" });
+                                    FROM schema_tables t
+                                    WHERE t.project_id = $1  
+                                    ORDER BY t.id
+                               `, [req.params.projectId]);          
+    if (result.rows.length === 0) return res.status(404).json({ msg: "No table has been added yet" });
     res.status(200).json({ tables: result.rows });
 });
 
 router.get('/viewTableStructure/:tableId', requireAuth, async (req, res) => {
+     const tableAccess = await query(`
+                            SELECT 1
+                            FROM schema_tables t 
+                            JOIN projects P ON P.id = t.project_id
+                            WHERE t.id = $1 AND ( 
+                            p.author_id = $2 OR
+                            EXISTS (
+                            SELECT 1 
+                            FROM project_collaborators cb
+                            WHERE cb.user_id = $2 AND  cb.status = $3  AND cb.project_id = p.id )
+                             )` ,
+        [req.params.tableId, req.loggedInUser.id, 'accepted']);
+    if (tableAccess.rows.length === 0) return res.status(404).json({ msg: "Table not found" });
     const result = await query(`SELECT 
-                                c.* , t.table_name
+                                c.* , t.name
                                 FROM schema_tables t
                                 JOIN schema_columns c ON c.schema_table_id = t.id
-                                JOIN projects p ON p.id = t.project_id
-                                WHERE t.id = $1 AND (p.author_id = $2 OR EXISTS (
-                                SELECT 1 
-                                FROM project_collaborators pc 
-                                WHERE  pc.user_id = $2 AND pc.status = $3 AND pc.project_id = p.id ))
+                                WHERE t.id = $1
                                 ORDER BY c.is_primary_key DESC , c.id ASC
-                                `, [req.params.tableId, req.loggedInUser.id, 'accepted']);
-    if (result.rows.length < 1) return res.status(403).json({ msg: "You don't have access to the table" });
+                                `, [req.params.tableId]);
     res.status(200).json({ coloumns: result.rows });
 });
-router.get('/viewTableData/:tableId/:limit/:offset', requireAuth, async (req, res) => {
-    const { tableId, limit, offset } = req.params;
+router.get('/viewTableData/:tableId', requireAuth, async (req, res) => {
+    const { tableId } = req.params;
+    const limit = Number(req.query.limit)||10;
+    const offset = Number(req.query.offset)||0;
 
     const table = await query(`SELECT
                                     UPPER('PROJ_'||P.id||'_'||P.author_id) AS schema_name , S.table_name AS table_name
@@ -175,14 +172,27 @@ router.get('/viewTableData/:tableId/:limit/:offset', requireAuth, async (req, re
                                               FROM project_collaborators pc 
                                               WHERE  pc.user_id = $3 AND pc.status = $4 AND pc.project_id = p.id))
                                           `, [tableId, false, req.loggedInUser.id, 'accepted']);
-    if (table.rows.length < 1) return res.status(404).json({ msg: "Table not found" });
-
+    if (table.rows.length === 0) return res.status(404).json({ msg: "Table not found" });
     const schema = table.rows[0].schema_name;
     const table_name = table.rows[0].table_name;
     const result = await query(`SELECT *
                            FROM "${schema}".${table_name}
-                           LIMIT $1 OFFSET $2 `, [Number(limit) || 10, Number(offset) || 0]);
+                           LIMIT $1 OFFSET $2 `, [ limit , offset]);
     res.status(200).json({ msg: "Successfully show the data of the table ", data: result.rows });
+});
+router.get('/apis/:projectId' , requireAuth , requireProjectAccess , async(req , res)=>{
+    const result = await query(`SELECT
+                             a.*
+                             FROM api_definitions a
+                             JOIN projects p ON p.id = a.project_id
+                             WHERE a.project_id = $1 AND (p.author_id = $2 OR EXISTS (
+                             SELECT 1 
+                             FROM project_collaborators pc 
+                             WHERE  pc.user_id = $2 AND pc.status = $3 AND pc.project_id = p.id ))
+                             ORDER BY a.created_at DESC
+                                `, [req.params.tableId, req.loggedInUser.id, 'accepted']);
+     return res.status(200).json({ apis : result.rows});
+                             
 });
 router.get('/viewUserSessions', requireAuth, async (req, res) => {
 

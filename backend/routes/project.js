@@ -69,7 +69,7 @@ const requireProjectAuthor = async (req, res, next) => {
 
 //it also chk is if the proj is not a template 
 const requireProjectAccess = async (req, res, next) => {
-    const proj_id = req.body.proj_id ? req.body.proj_id : (req.params.projectId ? req.params.projectId : req.query.projectId);
+    const proj_id = req.body?.proj_id ||  req.params?.projectId || req.query?.projectId ;
     if (!proj_id) return res.status(400).json({ msg: "You should insert a project id with your request" });
 
     const result = await query('SELECT id FROM projects WHERE id=$1 AND author_id=$2  AND is_template=$3', [proj_id, req.loggedInUser.id, false]);
@@ -278,8 +278,8 @@ router.post('/createTable', requireAuth, requireProjectAccess, isProjectActive, 
         //0 col_name,1 col_type,2 default,3(array) col_len,4 is_pk,5 is_auto_inc
         // 6 is_nullable,7 is_unique, 8 element_id_frontend
 
-        cols[i][2] = cols[i][2] == '' ? null : cols[i][2];
-        cols[i][3] = cols[i][3] == '' ? 6 : (cols[i][3] < 6 ? cols[i][3] + 6 : cols[i][3]);
+        cols[i][2] = cols[i][2] == null ? null : cols[i][2];
+        cols[i][3] = cols[i][3] == null ? null : (cols[i][3] < 6 ? cols[i][3] + 6 : cols[i][3]);
 
         cols[i][4] = cols[i][4] === true ? true : false; // is_pk
         cols[i][5] = cols[i][5] === true ? true : false; // is_auto_inc
