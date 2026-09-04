@@ -79,6 +79,16 @@ function buildWhereSQL(whereArray, catalog, req, values) {
     return `WHERE ${parts.join('')}`;
 }
 
+function coercePaginationInt(value, label) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) {
+        const err = new Error(`Invalid value for ${label}: must be a non-negative integer`);
+        err.status = 400;
+        throw err;
+    }
+    return n;
+}
+
 // --- main builder ---
 
 function buildSelectSQL(payload, catalog, req) {
@@ -155,9 +165,19 @@ function buildSelectSQL(payload, catalog, req) {
         sql += ` ORDER BY ${orderParts.join(', ')}`;
     }
 
-    // LIMIT / OFFSET // ******** NOTE: Dyanmic limit and offset value must be added here *********
-    if (payload.limit != null) sql += ` LIMIT ${payload.limit}`;
-    if (payload.offset != null) sql += ` OFFSET ${payload.offset}`;
+    // LIMIT / OFFSET
+    if (payload.limit != null) {
+        const rawLimit = resolveVal(payload.limit, req, 'limit');
+        const limit = coercePaginationInt(rawLimit, 'limit');
+        values.push(limit);
+        sql += ` LIMIT $${values.length}`;
+    }
+    if (payload.offset != null) {
+        const rawOffset = resolveVal(payload.offset, req, 'offset');
+        const offset = coercePaginationInt(rawOffset, 'offset');
+        values.push(offset);
+        sql += ` OFFSET $${values.length}`;
+    }
 
     return { text: sql, values };
 }

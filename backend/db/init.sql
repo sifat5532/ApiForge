@@ -800,25 +800,46 @@ EXECUTE FUNCTION tgfunc_add_columns ();
 -- DECLARE 
 -- BEGIN 
 --    SELECT  
-CREATE OR REPLACE FUNCTION tgfunc_add_fks () RETURNS TRIGGER LANGUAGE plpgsql AS $$ 
-  DECLARE 
-  rec RECORD ;
+CREATE OR REPLACE FUNCTION tgfunc_add_fks () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+  rec RECORD;
   fk_def TEXT;
-  BEGIN
-    SELECT P.is_template , P.id, P.author_id, S1.TABLE_NAME as child_table , S2.TABLE_NAME as parent_table, Ch.col_name  AS child_name, Pa.col_name AS parent_name  INTO rec
-    FROM schema_columns Ch 
-    JOIN schema_tables S1 ON S1.id = Ch.schema_table_id
-        JOIN projects P ON P.id = S1.project_id,
-        schema_columns Pa
-    JOIN schema_tables S2 ON S2.id = Pa.schema_table_id
-    WHERE Ch.id = NEW.child_col_id AND pa.id = NEW.parent_col_id ;
-     fk_def := FORMATE('FOREIGN KEY (%I) REFERENCES %I(%I) ON DELETE %s ON UPDATE %s ',REC.child_name, rec.parent_table, rec.parent_name, NEW.on_delete, NEW.on_update );
-     IF NOT rec.is_template THEN
-        EXECUTE FORMAT ('ALTER TABLE %I.%I ADD CONSTRAINT %I %s ', 'PROJ'||'_'||rec.id||'_'||rec.author_id,rec.child_table,  NEW.fk_name, fk_def );
-     END IF;
-      RETURN NEW;
-    END;
-    $$;
+  schema_name TEXT;
+BEGIN
+  SELECT
+    P.is_template,
+    P.id,
+    P.author_id,
+    S1.TABLE_NAME AS child_table,
+    S2.TABLE_NAME AS parent_table,
+    Ch.col_name AS child_name,
+    Pa.col_name AS parent_name
+  INTO rec
+  FROM schema_columns Ch
+  JOIN schema_tables S1 ON S1.id = Ch.schema_table_id
+  JOIN projects P ON P.id = S1.project_id
+  CROSS JOIN schema_columns Pa
+  JOIN schema_tables S2 ON S2.id = Pa.schema_table_id
+  WHERE Ch.id = NEW.child_col_id
+    AND Pa.id = NEW.parent_col_id;
+
+  schema_name := 'PROJ_' || rec.id || '_' || rec.author_id;
+
+  fk_def := FORMAT(
+    'FOREIGN KEY (%I) REFERENCES %I.%I(%I) ON DELETE %s ON UPDATE %s',
+    rec.child_name, schema_name, rec.parent_table, rec.parent_name, NEW.on_delete, NEW.on_update
+  );
+
+  IF NOT rec.is_template THEN
+    EXECUTE FORMAT(
+      'ALTER TABLE %I.%I ADD CONSTRAINT %I %s',
+      schema_name, rec.child_table, NEW.fk_name, fk_def
+    );
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
 
 DROP TRIGGER IF EXISTS tg_insert_schema_fks ON schema_foreign_keys;
 

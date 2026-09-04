@@ -7,25 +7,8 @@ const { requireProjectAuthor } = require('./project');
 const { requireProjectAccess } = require('./project');
 const { isProjectActive } = require('./project');
 const checkPlanLimit = require('./../utils/planLimitChecker');
+const loadProjectCatalog = require('./../utils/projectCatalog');
 const _ = require('lodash');
-
-async function loadProjectCatalog(pgClient, projectId) {
-  const tables = await pgClient.query(
-    `SELECT id, table_name FROM schema_tables WHERE project_id = $1`,
-    [projectId]
-  );
-  const columns = await pgClient.query(
-    `SELECT id, schema_table_id, col_name AS column_name, col_type AS data_type
-     FROM schema_columns WHERE schema_table_id = ANY($1::int[])`,
-    [tables.rows.map(t => t.id)]
-  );
-
-  return {
-    tableById: new Map(tables.rows.map(t => [t.id, t])),
-    colById: new Map(columns.rows.map(c => [c.id, c])),
-    colsByTable: _.groupBy(columns.rows, 'schema_table_id')
-  };
-}
 
 const VALID_JOIN_OPERATORS = new Set(['=', '!=', '<>', '<', '>', '<=', '>=']);
 function isValidJoinOperator(op) {
@@ -368,7 +351,9 @@ router.post('/create', requireAuth, requireProjectAccess, isProjectActive, async
     await client.query('BEGIN');
     await checkPlanLimit(client, req.projectAuthorId, 'api', proj_id);
     const projectCatalog = await loadProjectCatalog(client, proj_id);
-    const errors = validateSelectPayload(req.body, projectCatalog);
+    if(method == "GET"){
+      const errors = validateSelectPayload(req.body, projectCatalog);
+    }
 
     if (errors.length) {
       await client.query('ROLLBACK');
