@@ -1039,10 +1039,327 @@ function deleteProject() {
 }
 
 /* -----------------------------------------------------------------------
+   Create Table
+   ----------------------------------------------------------------------- */
+
+/* Counter used to give each column card a stable local id */
+let _ctColCounter = 0;
+
+const CT_TYPES = ['INTEGER', 'TEXT', 'NUMERIC', 'BOOLEAN', 'VARCHAR', 'DATE', 'TIMESTAMP'];
+/* Types that require a length field */
+const CT_NEEDS_LEN = new Set(['VARCHAR', 'NUMERIC']);
+/* Types that support auto-increment (PK or UNIQUE + INTEGER) */
+const CT_AUTO_INC_TYPE = 'INTEGER';
+
+function openCreateTableModal() {
+  _ctColCounter = 0;
+
+  const overlay = document.getElementById('vp-modal-overlay');
+  if (overlay) overlay.classList.add('vp-modal--wide');
+
+  const bodyHtml = `
+    <div class="modal-form" id="ct-form">
+      <div class="field ct-name-row">
+        <label class="field__label" for="ct-table-name">Table name</label>
+        <input class="modal-input" type="text" id="ct-table-name" maxlength="30"
+          placeholder="e.g. orders" autocomplete="off" />
+        <span class="field__hint">Lowercase letters, digits and underscores only. Must start with a letter or underscore.</span>
+      </div>
+      <div class="ct-form-error" id="ct-form-error"></div>
+      <div class="ct-col-list" id="ct-col-list"></div>
+      <div class="ct-add-col-row">
+        <button class="btn btn--ghost btn--sm" id="ct-add-col" type="button">+ Add Column</button>
+      </div>
+    </div>
+  `;
+
+  const footHtml = `
+    <button class="btn btn--ghost btn--sm" id="ct-cancel" type="button">Cancel</button>
+    <button class="btn btn--primary btn--sm" id="ct-submit" type="button">Create Table</button>
+  `;
+
+  showModal('Create Table', bodyHtml, footHtml);
+
+  /* Add a first column by default */
+  ctAddColumn();
+
+  document.getElementById('ct-add-col').addEventListener('click', ctAddColumn);
+  document.getElementById('ct-cancel').addEventListener('click', () => {
+    if (overlay) overlay.classList.remove('vp-modal--wide');
+    closeModal();
+  });
+  document.getElementById('ct-submit').addEventListener('click', submitCreateTable);
+
+  const tableNameEl = document.getElementById('ct-table-name');
+  if (tableNameEl) tableNameEl.focus();
+}
+
+function ctAddColumn() {
+  const list = document.getElementById('ct-col-list');
+  if (!list) return;
+
+  const id = ++_ctColCounter;
+  const typeOptions = CT_TYPES.map(t => `<option value="${t}">${t}</option>`).join('');
+
+  const card = document.createElement('div');
+  card.className = 'ct-col-card';
+  card.setAttribute('data-col-id', id);
+  card.innerHTML = `
+    <div class="ct-col-top">
+      <div class="field">
+        <label class="field__label" for="ct-col-name-${id}">Column name</label>
+        <input class="modal-input ct-col-name" type="text" id="ct-col-name-${id}"
+          maxlength="30" placeholder="e.g. user_id" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label class="field__label" for="ct-col-type-${id}">Type</label>
+        <select class="modal-select ct-col-type" id="ct-col-type-${id}">${typeOptions}</select>
+      </div>
+      <div class="ct-col-len-wrap ct-hidden">
+        <div class="field">
+          <label class="field__label" for="ct-col-len-${id}">Length</label>
+          <input class="modal-input ct-col-len" type="number" id="ct-col-len-${id}"
+            min="1" max="9999" placeholder="255" />
+        </div>
+      </div>
+    </div>
+    <div class="ct-col-bottom">
+      <label class="ct-check ct-check-pk">
+        <input type="checkbox" class="ct-pk" id="ct-pk-${id}" />
+        Primary Key
+      </label>
+      <label class="ct-check ct-check-ai">
+        <input type="checkbox" class="ct-ai" id="ct-ai-${id}" />
+        Auto Increment
+      </label>
+      <label class="ct-check ct-check-uq">
+        <input type="checkbox" class="ct-uq" id="ct-uq-${id}" />
+        Unique
+      </label>
+      <label class="ct-check ct-check-nl">
+        <input type="checkbox" class="ct-nl" id="ct-nl-${id}" />
+        Nullable
+      </label>
+      <div class="field ct-col-default">
+        <label class="field__label" for="ct-col-def-${id}">Default</label>
+        <input class="modal-input ct-def" type="text" id="ct-col-def-${id}"
+          placeholder="(none)" autocomplete="off" />
+      </div>
+      <button type="button" class="ct-col-delete" title="Remove column" aria-label="Remove column">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+          <path d="M10 11v6M14 11v6"></path>
+          <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+        </svg>
+      </button>
+    </div>
+    <span class="ct-col-error" id="ct-col-err-${id}"></span>
+  `;
+
+  list.appendChild(card);
+
+  /* Bind delete */
+  card.querySelector('.ct-col-delete').addEventListener('click', () => {
+    card.remove();
+  });
+
+  /* Bind type change → show/hide length, enforce AI rules */
+  const typeEl = card.querySelector('.ct-col-type');
+  const lenWrap = card.querySelector('.ct-col-len-wrap');
+  const pkEl = card.querySelector('.ct-pk');
+  const aiEl = card.querySelector('.ct-ai');
+  const uqEl = card.querySelector('.ct-uq');
+  const nlEl = card.querySelector('.ct-nl');
+  const defEl = card.querySelector('.ct-def');
+  const aiCheckWrap = card.querySelector('.ct-check-ai');
+  const uqCheckWrap = card.querySelector('.ct-check-uq');
+  const nlCheckWrap = card.querySelector('.ct-check-nl');
+
+  function syncTypeControls() {
+    const type = typeEl.value;
+    /* Length field visibility */
+    lenWrap.classList.toggle('ct-hidden', !CT_NEEDS_LEN.has(type));
+
+    /* Auto-increment is only available for INTEGER */
+    const aiAllowed = type === CT_AUTO_INC_TYPE && (pkEl.checked || uqEl.checked);
+    if (!aiAllowed) {
+      aiEl.checked = false;
+    }
+    aiCheckWrap.classList.toggle('ct-disabled', !aiAllowed);
+
+    /* Default value is not meaningful when auto-increment is on */
+    const aiActive = aiEl.checked;
+    if (defEl) {
+      defEl.disabled = aiActive;
+      if (aiActive) defEl.value = '';
+      defEl.placeholder = aiActive ? '(auto — no default allowed)' : '(none)';
+    }
+  }
+
+  function syncPkControls() {
+    if (pkEl.checked) {
+      /* PK → disable and uncheck unique and nullable */
+      uqEl.checked = false;
+      nlEl.checked = false;
+      uqCheckWrap.classList.add('ct-disabled');
+      nlCheckWrap.classList.add('ct-disabled');
+    } else {
+      uqCheckWrap.classList.remove('ct-disabled');
+      nlCheckWrap.classList.remove('ct-disabled');
+    }
+    syncTypeControls();
+  }
+
+  function syncCheckboxControls() {
+    /* Re-evaluate AI eligibility when unique changes too */
+    syncTypeControls();
+  }
+
+  typeEl.addEventListener('change', syncTypeControls);
+  pkEl.addEventListener('change', syncPkControls);
+  uqEl.addEventListener('change', syncCheckboxControls);
+  aiEl.addEventListener('change', syncTypeControls);
+
+  /* Initialise */
+  syncTypeControls();
+}
+
+async function submitCreateTable() {
+  const nameEl = document.getElementById('ct-table-name');
+  const errorBanner = document.getElementById('ct-form-error');
+  const submitBtn = document.getElementById('ct-submit');
+
+  function showFormError(msg) {
+    if (!errorBanner) return;
+    errorBanner.textContent = msg;
+    errorBanner.classList.add('is-visible');
+  }
+  function clearFormError() {
+    if (!errorBanner) return;
+    errorBanner.textContent = '';
+    errorBanner.classList.remove('is-visible');
+  }
+  function showColError(card, msg) {
+    card.classList.add('ct-col-card--error');
+    const errEl = card.querySelector('.ct-col-error');
+    if (errEl) { errEl.textContent = msg; errEl.classList.add('is-visible'); }
+  }
+  function clearColErrors() {
+    document.querySelectorAll('.ct-col-card').forEach(c => {
+      c.classList.remove('ct-col-card--error');
+      const e = c.querySelector('.ct-col-error');
+      if (e) { e.textContent = ''; e.classList.remove('is-visible'); }
+    });
+  }
+
+  clearFormError();
+  clearColErrors();
+
+  const tableName = (nameEl ? nameEl.value : '').trim();
+  if (!tableName) {
+    showFormError('Please enter a table name.');
+    if (nameEl) nameEl.focus();
+    return;
+  }
+
+  const cards = document.querySelectorAll('#ct-col-list .ct-col-card');
+  if (cards.length === 0) {
+    showFormError('Add at least one column.');
+    return;
+  }
+
+  /* Build cols array: [col_name, col_type, default, col_len, is_pk, is_auto_inc, is_nullable, is_unique, element_id] */
+  const cols = [];
+  let hasError = false;
+
+  cards.forEach((card) => {
+    if (hasError) return;
+    const colId = card.getAttribute('data-col-id');
+    const colName = card.querySelector('.ct-col-name').value.trim();
+    const colType = card.querySelector('.ct-col-type').value;
+    const colDefRaw = card.querySelector('.ct-def').value.trim();
+    const colDef = colDefRaw === '' ? null : colDefRaw;
+    const lenEl = card.querySelector('.ct-col-len');
+    const colLen = CT_NEEDS_LEN.has(colType) ? (lenEl ? parseInt(lenEl.value, 10) || null : null) : null;
+    const isPk = card.querySelector('.ct-pk').checked;
+    const isAi = card.querySelector('.ct-ai').checked;
+    const isNl = isPk ? false : card.querySelector('.ct-nl').checked;
+    const isUq = isPk ? false : card.querySelector('.ct-uq').checked;
+
+    if (!colName) {
+      showColError(card, 'Column name is required.');
+      hasError = true;
+      return;
+    }
+
+    if (CT_NEEDS_LEN.has(colType)) {
+      if (!colLen || colLen < 1) {
+        showColError(card, `${colType} requires a valid length (≥ 1).`);
+        hasError = true;
+        return;
+      }
+    }
+
+    if (isAi && colType !== CT_AUTO_INC_TYPE) {
+      showColError(card, 'Auto Increment is only available for INTEGER columns.');
+      hasError = true;
+      return;
+    }
+
+    if (isAi && !isPk && !isUq) {
+      showColError(card, 'Auto Increment requires the column to be a Primary Key or Unique.');
+      hasError = true;
+      return;
+    }
+
+    cols.push([colName, colType, colDef, colLen, isPk, isAi, isNl, isUq, colId]);
+  });
+
+  if (hasError) return;
+
+  /* Send request */
+  setLoading(submitBtn, true);
+  try {
+    const res = await apiFetch('/project/createTable', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ proj_id: vpState.projectId, name: tableName, cols }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      const overlay = document.getElementById('vp-modal-overlay');
+      if (overlay) overlay.classList.remove('vp-modal--wide');
+      closeModal();
+      showToast(data.msg || 'Table created successfully', 'success');
+      /* Reload tables list */
+      vpState.loaded.tables = false;
+      loadTables();
+    } else {
+      /* If the backend returns an element id, highlight that column */
+      if (data.id != null) {
+        const errCard = document.querySelector(`#ct-col-list .ct-col-card[data-col-id="${data.id}"]`);
+        if (errCard) showColError(errCard, data.msg || 'Invalid column.');
+        else showFormError(data.msg || 'Validation error.');
+      } else {
+        showFormError(data.msg || 'Failed to create table.');
+      }
+      setLoading(submitBtn, false);
+    }
+  } catch (_) {
+    showFormError('Network error. Is the backend reachable?');
+    setLoading(submitBtn, false);
+  }
+}
+
+/* -----------------------------------------------------------------------
    Global actions / bindings
    ----------------------------------------------------------------------- */
 
 function bindGlobalActions() {
+  const createTableBtn = document.getElementById('btn-create-table');
+  if (createTableBtn) createTableBtn.addEventListener('click', openCreateTableModal);
+
   const addFkBtn = document.getElementById('btn-add-fk');
   if (addFkBtn) addFkBtn.addEventListener('click', openAddFkModal);
 
@@ -1140,7 +1457,10 @@ function setModalFoot(html) {
 
 function closeModal() {
   const overlay = document.getElementById('vp-modal-overlay');
-  if (overlay) overlay.hidden = true;
+  if (overlay) {
+    overlay.hidden = true;
+    overlay.classList.remove('vp-modal--wide');
+  }
   setModalBody('');
   setModalFoot('');
 }

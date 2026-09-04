@@ -3903,6 +3903,24 @@ html.onboarding-dismissed .onboarding-card,
 .vp-modal__body {
   padding: 20px;
   overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  /* Black scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: #111 transparent;
+}
+.vp-modal__body::-webkit-scrollbar {
+  width: 6px;
+}
+.vp-modal__body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.vp-modal__body::-webkit-scrollbar-thumb {
+  background: #111;
+  border-radius: 3px;
+}
+.vp-modal__body::-webkit-scrollbar-thumb:hover {
+  background: #000;
 }
 .vp-modal__grid {
   display: grid;
@@ -4241,4 +4259,158 @@ html.onboarding-dismissed .onboarding-card,
 }
 .vp-settings-wrap .panel__title {
   margin-bottom: 20px;
+}
+
+/* -----------------------------------------------------------------------
+   Create Table modal — column builder
+----------------------------------------------------------------------- */
+
+/* Wider modal for the column builder */
+.vp-modal--wide .vp-modal {
+  max-width: 760px;
+  width: 95vw;
+}
+
+/* Table name field inside create-table modal */
+.ct-name-row {
+  margin-bottom: 20px;
+}
+
+/* Column list */
+.ct-col-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+/* Individual column card */
+.ct-col-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+  transition: border-color 0.15s ease;
+}
+.ct-col-card:focus-within {
+  border-color: var(--border-hover);
+}
+.ct-col-card--error {
+  border-color: var(--error);
+}
+
+/* Top row: name + type + length */
+.ct-col-top {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+  align-items: end;
+}
+
+/* Length field — hidden when type doesn't need it */
+.ct-col-len-wrap {
+  width: 80px;
+}
+.ct-col-len-wrap.ct-hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Bottom row: checkboxes + delete button */
+.ct-col-bottom {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* Checkbox label group */
+.ct-check {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+.ct-check input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+.ct-check.ct-disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* Default value input (compact) */
+.ct-col-default {
+  flex: 1;
+  min-width: 100px;
+}
+
+/* Delete column button */
+.ct-col-delete {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  transition: color 0.15s ease;
+}
+.ct-col-delete:hover {
+  color: var(--error);
+}
+.ct-col-delete svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+}
+
+/* Add column button row */
+.ct-add-col-row {
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+/* Per-column error message */
+.ct-col-error {
+  font-size: 0.78rem;
+  color: var(--error);
+  margin-top: -4px;
+  display: none;
+}
+.ct-col-error.is-visible {
+  display: block;
+}
+
+/* Modal-level error banner */
+.ct-form-error {
+  font-size: 0.82rem;
+  color: var(--error);
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.2);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  display: none;
+}
+.ct-form-error.is-visible {
+  display: block;
+}
+
+/* Disabled default input when auto-increment is active */
+.ct-def:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }

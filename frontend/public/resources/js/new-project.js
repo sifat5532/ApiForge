@@ -298,7 +298,7 @@ function initProjectForm() {
 
   if (!form || !submitBtn) return; // Guard clause
 
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     const nameInput = document.getElementById('project-name');
@@ -317,17 +317,54 @@ function initProjectForm() {
       errorEl.textContent = '';
     }
 
-    // Set Loading state
+    const descriptionInput = document.getElementById('project-description');
+    const authCheckbox = document.getElementById('auth-enabled');
+
+    const payload = {
+      proj_name: nameVal,
+      description: descriptionInput ? (descriptionInput.value.trim() || null) : null,
+      enable_auth: authCheckbox ? authCheckbox.checked : true,
+      tags: selectedTags.length > 0 ? [...selectedTags] : null,
+    };
+
+    // Set loading state
     submitBtn.disabled = true;
     submitBtn.classList.add('btn--loading');
     const originalText = submitBtn.textContent;
     submitBtn.textContent = 'Creating project...';
 
-    // Simulate API project creation delay
-    setTimeout(() => {
-      // Redirect to projects listing page
+    try {
+      const res = await fetch(`${window.BACKEND_URL}/project/createProject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (errorEl) {
+          errorEl.textContent = data.msg || 'Failed to create project. Please try again.';
+          errorEl.classList.add('is-visible');
+        }
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('btn--loading');
+        submitBtn.textContent = originalText;
+        return;
+      }
+
+      // Success — redirect to projects listing page
       window.location.href = '/projects';
-    }, 800);
+    } catch (err) {
+      if (errorEl) {
+        errorEl.textContent = 'A network error occurred. Please try again.';
+        errorEl.classList.add('is-visible');
+      }
+      submitBtn.disabled = false;
+      submitBtn.classList.remove('btn--loading');
+      submitBtn.textContent = originalText;
+    }
   });
 }
 
