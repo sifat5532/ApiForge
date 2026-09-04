@@ -711,6 +711,7 @@ router.delete('/deleteProject/:projectId', requireAuth,  async (req, res) => {
     return res.status(200).json({msg : "Project was deleted successfully"});
 });
 
+
 module.exports = router;
 module.exports.requireProjectAuthor = requireProjectAuthor;
 module.exports.requireProjectAccess = requireProjectAccess;

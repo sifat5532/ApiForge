@@ -755,15 +755,16 @@ BEGIN
         (TG_OP = 'INSERT' AND NEW.is_primary_key)
         OR (TG_OP = 'UPDATE' AND NEW.is_primary_key = TRUE AND OLD.is_primary_key = FALSE)
     ) THEN
-        SELECT string_agg(FORMAT('%I', col_name), ',' ORDER BY col_name)
+        SELECT string_agg(FORMAT('%I', col_name), ',' ORDER BY id)
         INTO v_pk_cols
         FROM schema_columns
         WHERE schema_table_id = NEW.schema_table_id AND is_primary_key = true;
 
         EXECUTE FORMAT('ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I',
             v_schema, rec.TABLE_NAME, 'pk_' || rec.table_id);
-
         IF v_pk_cols IS NOT NULL THEN
+             EXECUTE FORMAT('ALTER TABLE %I.%I ADD COLUMN %I NOT CONFLICT DO NOTHING',
+                v_schema, NEW.col_name);
             EXECUTE FORMAT('ALTER TABLE %I.%I ADD CONSTRAINT %I PRIMARY KEY(%s)',
                 v_schema, rec.TABLE_NAME, 'pk_' || rec.table_id, v_pk_cols);
         END IF;
@@ -780,7 +781,9 @@ BEGIN
         IF v_pk_cols IS NOT NULL THEN
             EXECUTE FORMAT('ALTER TABLE %I.%I ADD CONSTRAINT %I PRIMARY KEY(%s)',
                 v_schema, rec.TABLE_NAME, 'pk_' || rec.table_id, v_pk_cols);
+                RAISE NOTICE 'PK COLS = %', v_pk_cols;
         END IF;
+
     END IF;
 
     RETURN NEW;
