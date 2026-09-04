@@ -150,7 +150,7 @@ router.get('/viewTableStructure/:tableId', requireAuth, async (req, res) => {
         [req.params.tableId, req.loggedInUser.id, 'accepted']);
     if (tableAccess.rows.length === 0) return res.status(404).json({ msg: "Table not found" });
     const result = await query(`SELECT 
-                                c.* , t.name
+                                c.* , t.*
                                 FROM schema_tables t
                                 JOIN schema_columns c ON c.schema_table_id = t.id
                                 WHERE t.id = $1

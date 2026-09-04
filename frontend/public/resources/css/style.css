@@ -4053,7 +4053,6 @@ html.onboarding-dismissed .onboarding-card,
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-width: 560px;
 }
 .vp-settings-banner {
   background: rgba(249, 115, 22, 0.1);
@@ -4117,3 +4116,124 @@ html.onboarding-dismissed .onboarding-card,
   line-height: 1;
 }
 
+/* -----------------------------------------------------------------------
+   Shared project card variant
+----------------------------------------------------------------------- */
+.project-card--shared {
+  border-color: rgba(249, 115, 22, 0.2);
+  background: linear-gradient(135deg, var(--surface-raised) 0%, rgba(249,115,22,0.03) 100%);
+}
+
+.project-card__author-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.project-card__author-row strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* -----------------------------------------------------------------------
+   Regenerate API Key button / New API Key display
+----------------------------------------------------------------------- */
+.vp-api-key-display {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+}
+.vp-api-key-code {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--accent-light);
+  flex: 1;
+  word-break: break-all;
+}
+
+/* -----------------------------------------------------------------------
+   Modal form helpers — consistent inputs / selects inside modals
+----------------------------------------------------------------------- */
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.modal-form__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.field__label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.field__hint-inline {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-faint);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.modal-input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  padding: 9px 12px;
+  transition: border-color 0.15s ease;
+  outline: none;
+}
+.modal-input:focus {
+  border-color: var(--accent);
+}
+.modal-input::placeholder {
+  color: var(--text-faint);
+}
+.modal-select {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  padding: 9px 12px;
+  transition: border-color 0.15s ease;
+  outline: none;
+  appearance: none;
+  cursor: pointer;
+}
+.modal-select:focus {
+  border-color: var(--accent);
+}
+.modal-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* -----------------------------------------------------------------------
+   Settings panel — centered content column
+----------------------------------------------------------------------- */
+.vp-settings-wrap {
+  max-width: 560px;
+  margin: 0 auto;
+  width: 100%;
+}
+.vp-settings-wrap .panel__title {
+  margin-bottom: 20px;
+}

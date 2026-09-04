@@ -208,7 +208,15 @@
         <div class="vp-header__title-row">
           <h1 class="vp-project-title" id="vp-project-title">Loading project…</h1>
           <span class="vp-clone-badge" id="vp-clone-badge" hidden>Cloned</span>
-          <button class="btn btn--ghost btn--sm" id="vp-leave-project" type="button" hidden style="color: var(--error); border-color: var(--error); margin-left: auto;">Leave project</button>
+          <div class="vp-header__actions" style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+            <button class="btn btn--ghost btn--sm" id="vp-regen-key" type="button" hidden title="Generate a new API key for this project">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
+                <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path>
+              </svg>
+              Regenerate API Key
+            </button>
+            <button class="btn btn--ghost btn--sm" id="vp-leave-project" type="button" hidden style="color: var(--error); border-color: var(--error);">Leave project</button>
+          </div>
         </div>
         <div class="vp-meta-grid" id="vp-meta-grid" aria-live="polite">
           <!-- meta chips injected by JS -->
@@ -293,44 +301,46 @@
 
         <!-- SETTINGS PANEL -->
         <div class="vp-panel" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
-          <h2 class="panel__title">Settings</h2>
-          <div id="vp-settings-readonly-banner" class="vp-settings-banner" hidden>
-            Read-only — only the project author can edit settings.
-          </div>
-          <form class="vp-settings-form" id="vp-settings-form">
-            <div class="field">
-              <label for="vp-settings-name">Project name</label>
-              <input type="text" id="vp-settings-name" name="proj_name" maxlength="30" />
+          <div class="vp-settings-wrap">
+            <h2 class="panel__title">Settings</h2>
+            <div id="vp-settings-readonly-banner" class="vp-settings-banner" hidden>
+              Read-only — only the project author can edit settings.
             </div>
-            <div class="field">
-              <label for="vp-settings-desc">Description</label>
-              <textarea id="vp-settings-desc" name="description" class="form-textarea" maxlength="500" rows="4"></textarea>
-            </div>
-            <div class="field toggle-field">
-              <label for="vp-settings-auth">Auth enabled</label>
-              <label class="switch">
-                <input type="checkbox" id="vp-settings-auth" name="enable_auth" />
-                <span class="switch-slider"></span>
-              </label>
-            </div>
-            <div class="field">
-              <label for="vp-settings-tag-input">Tags</label>
-              <div class="selected-tags-container" id="vp-settings-tags"></div>
-              <div class="tag-input-group">
-                <input type="text" id="vp-settings-tag-input" placeholder="Add a tag (a–z, 2–20 chars)…" maxlength="20" />
-                <button class="btn btn--ghost btn--sm" id="btn-add-tag" type="button">Add</button>
+            <form class="vp-settings-form" id="vp-settings-form">
+              <div class="field">
+                <label for="vp-settings-name">Project name</label>
+                <input type="text" id="vp-settings-name" name="proj_name" maxlength="30" />
               </div>
-              <span class="field__hint">Tags must start with a–z and be 2–20 characters. Max 10 tags total.</span>
-            </div>
-            <div class="vp-settings-actions">
-              <button class="btn btn--primary" id="btn-save-settings" type="submit">Save changes</button>
-            </div>
-          </form>
+              <div class="field">
+                <label for="vp-settings-desc">Description</label>
+                <textarea id="vp-settings-desc" name="description" class="form-textarea" maxlength="500" rows="4"></textarea>
+              </div>
+              <div class="field toggle-field">
+                <label for="vp-settings-auth">Auth enabled</label>
+                <label class="switch">
+                  <input type="checkbox" id="vp-settings-auth" name="enable_auth" />
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+              <div class="field">
+                <label for="vp-settings-tag-input">Tags</label>
+                <div class="selected-tags-container" id="vp-settings-tags"></div>
+                <div class="tag-input-group">
+                  <input type="text" id="vp-settings-tag-input" placeholder="Add a tag (a–z, 2–20 chars)…" maxlength="20" />
+                  <button class="btn btn--ghost btn--sm" id="btn-add-tag" type="button">Add</button>
+                </div>
+                <span class="field__hint">Tags must start with a–z and be 2–20 characters. Max 10 tags total.</span>
+              </div>
+              <div class="vp-settings-actions">
+                <button class="btn btn--primary" id="btn-save-settings" type="submit">Save changes</button>
+              </div>
+            </form>
 
-          <div class="vp-danger-zone" id="vp-danger-zone">
-            <h3 class="vp-danger-zone__title">Danger zone</h3>
-            <p class="vp-danger-zone__hint">Deleting a project is permanent and cannot be undone.</p>
-            <button class="btn btn--ghost" id="btn-delete-project" type="button" style="color: var(--error); border-color: var(--error);">Delete Project</button>
+            <div class="vp-danger-zone" id="vp-danger-zone">
+              <h3 class="vp-danger-zone__title">Danger zone</h3>
+              <p class="vp-danger-zone__hint">Deleting a project is permanent and cannot be undone.</p>
+              <button class="btn btn--ghost" id="btn-delete-project" type="button" style="color: var(--error); border-color: var(--error);">Delete Project</button>
+            </div>
           </div>
         </div>
 

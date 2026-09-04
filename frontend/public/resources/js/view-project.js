@@ -81,7 +81,20 @@ async function loadProjectHeader() {
     vpState.isAuthor = String(vpState.loggedInUserId) === String(p.author_id);
 
     const leaveBtn = document.getElementById('vp-leave-project');
+    const regenBtn = document.getElementById('vp-regen-key');
     if (leaveBtn) leaveBtn.hidden = vpState.isAuthor;
+    if (regenBtn) regenBtn.hidden = !vpState.isAuthor;
+
+    // Apply all author-only action button visibility immediately after role is known.
+    // These buttons live in the panel action bars and should not wait for lazy tab load.
+    const inviteBtn    = document.getElementById('btn-invite-collab');
+    const addCorsBtn   = document.getElementById('btn-add-cors');
+    const addFkBtn     = document.getElementById('btn-add-fk');
+    const createTblBtn = document.getElementById('btn-create-table');
+    if (inviteBtn)    inviteBtn.hidden    = !vpState.isAuthor;
+    if (addCorsBtn)   addCorsBtn.hidden   = !vpState.isAuthor;
+    if (addFkBtn)     addFkBtn.hidden     = !vpState.isAuthor;
+    if (createTblBtn) createTblBtn.hidden = !vpState.isAuthor;
 
     if (titleEl) titleEl.textContent = p.name || 'Untitled project';
     if (crumbEl) crumbEl.textContent = p.name || 'Project';
@@ -183,6 +196,10 @@ async function loadTables() {
   if (!body) return;
   renderShimmer(body, 4);
 
+  // Hide "Create Table" button for collaborators
+  const createTableBtn = document.getElementById('btn-create-table');
+  if (createTableBtn) createTableBtn.hidden = !vpState.isAuthor;
+
   try {
     const res = await apiFetch(`/view/allTables/${vpState.projectId}`);
     if (res.status === 401) { window.location.href = '/login'; return; }
@@ -206,6 +223,15 @@ async function loadTables() {
         </td>
         <td>${escHtml(t.total_columns != null ? t.total_columns : '0')}</td>
         <td>${escHtml(formatDate(t.created_at))}</td>
+        <td>
+          <button class="btn btn--ghost btn--sm vp-table-edit" type="button" data-table-id="${t.id}" title="Edit table (coming soon)" disabled style="opacity:0.5;cursor:not-allowed;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+            </svg>
+            Edit
+          </button>
+        </td>
       </tr>
     `).join('');
 
@@ -216,6 +242,7 @@ async function loadTables() {
             <th>Table</th>
             <th>Columns</th>
             <th>Created</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -284,6 +311,10 @@ async function loadForeignKeys() {
   if (!body) return;
   renderShimmer(body, 4);
 
+  // Collaborators can view FK list but cannot add/remove
+  const addFkBtn = document.getElementById('btn-add-fk');
+  if (addFkBtn) addFkBtn.hidden = !vpState.isAuthor;
+
   try {
     const res = await apiFetch(`/view/viewAllForeignkeys/${vpState.projectId}`);
     if (res.status === 401) { window.location.href = '/login'; return; }
@@ -305,8 +336,8 @@ async function loadForeignKeys() {
         <td>${escHtml(fk.on_update)}</td>
         <td>${escHtml(formatDate(fk.created_at))}</td>
         <td>
-          <button class="btn btn--ghost btn--sm vp-fk-remove" type="button"
-            data-child-col-id="${fk.child_col_id}" data-schema-table-id="${fk.child_table_id}">Remove</button>
+          ${vpState.isAuthor ? `<button class="btn btn--ghost btn--sm vp-fk-remove" type="button"
+            data-child-col-id="${fk.child_col_id}" data-schema-table-id="${fk.child_table_id}">Remove</button>` : ''}
         </td>
       </tr>
     `).join('');
@@ -366,8 +397,9 @@ function removeFk(childColId, schemaTableId) {
 }
 
 async function openAddFkModal() {
-  if (!vpState.isAuthor && !vpState.loggedInUserId) {
-    // allow editors (requireProjectAccess) — fetch tables to confirm access
+  if (!vpState.isAuthor) {
+    showToast('Only the project author can add foreign keys', 'error');
+    return;
   }
   showModal('Add Foreign Key', '<p class="vp-empty__text">Loading tables…</p>', '');
 
@@ -393,38 +425,45 @@ async function openAddFkModal() {
   const tableOptions = tables.map(t => `<option value="${t.id}">${escHtml(t.table_name)}</option>`).join('');
 
   const bodyHtml = `
-    <div class="field">
-      <label for="fk-child-table">Child table</label>
-      <select id="fk-child-table" class="filter-select">${tableOptions}</select>
-    </div>
-    <div class="field">
-      <label for="fk-child-col">Child column</label>
-      <select id="fk-child-col" class="filter-select" disabled><option>Select a child table first</option></select>
-    </div>
-    <div class="field">
-      <label for="fk-parent-table">Parent table</label>
-      <select id="fk-parent-table" class="filter-select">${tableOptions}</select>
-    </div>
-    <div class="field">
-      <label for="fk-parent-col">Parent column (must be PK/Unique)</label>
-      <select id="fk-parent-col" class="filter-select" disabled><option>Select a parent table first</option></select>
-    </div>
-    <div class="field">
-      <label for="fk-name">FK constraint name</label>
-      <input type="text" id="fk-name" maxlength="30" placeholder="e.g. fk_order_user" />
-    </div>
-    <div class="vp-modal__grid">
-      <div class="field">
-        <label for="fk-on-delete">On Delete</label>
-        <select id="fk-on-delete" class="filter-select">
-          <option>CASCADE</option><option>SET NULL</option><option>RESTRICT</option><option selected>NO ACTION</option>
-        </select>
+    <div class="modal-form">
+      <div class="modal-form__row">
+        <div class="field">
+          <label class="field__label" for="fk-child-table">Child table</label>
+          <select id="fk-child-table" class="modal-select">${tableOptions}</select>
+        </div>
+        <div class="field">
+          <label class="field__label" for="fk-child-col">Child column</label>
+          <select id="fk-child-col" class="modal-select" disabled><option>Select child table first</option></select>
+        </div>
+      </div>
+      <div class="modal-form__row">
+        <div class="field">
+          <label class="field__label" for="fk-parent-table">Parent table</label>
+          <select id="fk-parent-table" class="modal-select">${tableOptions}</select>
+        </div>
+        <div class="field">
+          <label class="field__label" for="fk-parent-col">Parent column <span class="field__hint-inline">(PK / Unique)</span></label>
+          <select id="fk-parent-col" class="modal-select" disabled><option>Select parent table first</option></select>
+        </div>
       </div>
       <div class="field">
-        <label for="fk-on-update">On Update</label>
-        <select id="fk-on-update" class="filter-select">
-          <option>CASCADE</option><option>SET NULL</option><option>RESTRICT</option><option selected>NO ACTION</option>
-        </select>
+        <label class="field__label" for="fk-name">Constraint name</label>
+        <input class="modal-input" type="text" id="fk-name" maxlength="30" placeholder="e.g. fk_order_user" autocomplete="off" />
+        <span class="field__hint">Lowercase letters, digits and underscores only.</span>
+      </div>
+      <div class="modal-form__row">
+        <div class="field">
+          <label class="field__label" for="fk-on-delete">On Delete</label>
+          <select id="fk-on-delete" class="modal-select">
+            <option>CASCADE</option><option>SET NULL</option><option>RESTRICT</option><option selected>NO ACTION</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field__label" for="fk-on-update">On Update</label>
+          <select id="fk-on-update" class="modal-select">
+            <option>CASCADE</option><option>SET NULL</option><option>RESTRICT</option><option selected>NO ACTION</option>
+          </select>
+        </div>
       </div>
     </div>
   `;
@@ -611,10 +650,12 @@ function removeCorsOrigin(origin) {
 async function openAddCorsModal() {
   if (!vpState.isAuthor) return;
   const bodyHtml = `
-    <div class="field">
-      <label for="cors-origin-input">Origin URL</label>
-      <input type="text" id="cors-origin-input" placeholder="https://app.example.com" maxlength="200" />
-      <span class="field__hint">Include the scheme (https://). Wildcards are not supported.</span>
+    <div class="modal-form">
+      <div class="field">
+        <label class="field__label" for="cors-origin-input">Origin URL</label>
+        <input class="modal-input" type="text" id="cors-origin-input" placeholder="https://app.example.com" maxlength="200" autocomplete="off" />
+        <span class="field__hint">Must include the scheme (https://). Wildcards are not supported.</span>
+      </div>
     </div>
   `;
   const footHtml = `
@@ -650,9 +691,16 @@ async function loadCollaborators() {
   try {
     const res = await apiFetch(`/view/collaborators/${vpState.projectId}`);
     if (res.status === 401) { window.location.href = '/login'; return; }
-    if (!res.ok) { body.innerHTML = emptyState('Could not load collaborators'); return; }
-    const data = await res.json();
-    vpState.collaborators = Array.isArray(data.collaborators) ? data.collaborators : [];
+    // 404 means no collaborators yet — treat as empty list rather than an error
+    if (res.status === 404) {
+      vpState.collaborators = [];
+    } else if (!res.ok) {
+      body.innerHTML = emptyState('Could not load collaborators');
+      return;
+    } else {
+      const data = await res.json();
+      vpState.collaborators = Array.isArray(data.collaborators) ? data.collaborators : [];
+    }
   } catch (_) {
     body.innerHTML = emptyState('Network error. Is the backend reachable?');
     return;
@@ -760,15 +808,21 @@ function collabRowHtml(c, status) {
   const initial = (c.name || c.username || '?').charAt(0).toUpperCase();
   const isSelf = String(c.user_id) === String(vpState.loggedInUserId);
 
-  let actionHtml;
+  let actionHtml = '';
   if (status === 'pending') {
-    actionHtml = `<button class="btn btn--ghost btn--sm vp-collab-remove" type="button"
-      data-user-id="${c.user_id}" data-self="false" data-status="pending">Cancel</button>`;
+    // Only author can cancel a pending invitation
+    if (vpState.isAuthor) {
+      actionHtml = `<button class="btn btn--ghost btn--sm vp-collab-remove" type="button"
+        data-user-id="${c.user_id}" data-self="false" data-status="pending">Cancel invite</button>`;
+    }
   } else {
-    const showRemove = vpState.isAuthor;
-    actionHtml = showRemove
-      ? `<button class="btn btn--ghost btn--sm vp-collab-remove" type="button" data-user-id="${c.user_id}" data-self="${isSelf}" data-status="accepted">Remove</button>`
-      : '';
+    if (vpState.isAuthor) {
+      // Author can remove any collaborator
+      actionHtml = `<button class="btn btn--ghost btn--sm vp-collab-remove" type="button" data-user-id="${c.user_id}" data-self="${isSelf}" data-status="accepted">${isSelf ? 'Leave' : 'Remove'}</button>`;
+    } else if (isSelf) {
+      // A collaborator can leave the project (remove themselves)
+      actionHtml = `<button class="btn btn--ghost btn--sm vp-collab-remove" type="button" data-user-id="${c.user_id}" data-self="true" data-status="accepted" style="color:var(--error);border-color:var(--error);">Leave</button>`;
+    }
   }
 
   return `
@@ -786,13 +840,15 @@ function collabRowHtml(c, status) {
 async function inviteCollaborator() {
   if (!vpState.isAuthor) return;
   const bodyHtml = `
-    <div class="field">
-      <label for="collab-search">Search by username</label>
-      <input type="text" id="collab-search" placeholder="Type a username…" maxlength="50" autocomplete="off" />
-      <span class="field__hint">Results update as you type. Invite sends an invitation the user can accept.</span>
-    </div>
-    <div id="collab-search-results" class="vp-collab-search-results" aria-live="polite">
-      <p class="vp-empty__text">Start typing to search users.</p>
+    <div class="modal-form">
+      <div class="field">
+        <label class="field__label" for="collab-search">Search by username</label>
+        <input class="modal-input" type="text" id="collab-search" placeholder="Type a username…" maxlength="50" autocomplete="off" />
+        <span class="field__hint">Results update as you type. Invitations must be accepted by the user.</span>
+      </div>
+      <div id="collab-search-results" class="vp-collab-search-results" aria-live="polite">
+        <p class="vp-empty__text">Start typing to search users.</p>
+      </div>
     </div>
   `;
   showModal('Invite Collaborator', bodyHtml, '');
@@ -1009,6 +1065,54 @@ function bindGlobalActions() {
 
   const deleteBtn = document.getElementById('btn-delete-project');
   if (deleteBtn) deleteBtn.addEventListener('click', deleteProject);
+
+  const regenBtn = document.getElementById('vp-regen-key');
+  if (regenBtn) regenBtn.addEventListener('click', regenerateApiKey);
+}
+
+async function regenerateApiKey() {
+  if (!vpState.isAuthor) return;
+  confirmModal({
+    title: 'Regenerate API Key',
+    message: 'Generating a new API key will invalidate the current key immediately. Any services using the old key will lose access. Continue?',
+    confirmLabel: 'Regenerate',
+    danger: true,
+    onConfirm: async () => {
+      const regenBtn = document.getElementById('vp-regen-key');
+      setLoading(regenBtn, true);
+      try {
+        const res = await apiFetch('/project/regenerateKey', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ proj_id: vpState.projectId }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          showModal('New API Key', `
+            <p class="vp-confirm-msg" style="margin-bottom:14px;">Your new API key has been generated. Copy it now — it will <strong>not</strong> be shown again.</p>
+            <div class="vp-api-key-display">
+              <code id="new-api-key-value" class="vp-api-key-code">${escHtml(data.api_key || '')}</code>
+              <button class="btn btn--ghost btn--sm" id="copy-new-api-key" type="button">Copy</button>
+            </div>
+          `, `<button class="btn btn--primary btn--sm" id="close-regen-modal" type="button">Done</button>`);
+          document.getElementById('copy-new-api-key')?.addEventListener('click', () => {
+            navigator.clipboard?.writeText(data.api_key || '').then(() => {
+              const btn = document.getElementById('copy-new-api-key');
+              if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy'; }, 1600); }
+            });
+          });
+          document.getElementById('close-regen-modal')?.addEventListener('click', closeModal);
+          await loadProjectHeader();
+        } else {
+          showToast(data.msg || 'Failed to regenerate API key', 'error');
+        }
+      } catch (_) {
+        showToast('Network error', 'error');
+      } finally {
+        setLoading(regenBtn, false);
+      }
+    },
+  });
 }
 
 /* -----------------------------------------------------------------------

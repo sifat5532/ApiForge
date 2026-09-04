@@ -91,6 +91,7 @@ function mapProject(p) {
     updatedAt: formatRelativeTime(updatedAt),
     updatedTimestamp: new Date(updatedAt).getTime(),
     updatedBy: p.last_updater_name || '',
+    authorName: p.author_name || p.author_username || null, // populated for shared projects
   };
 }
 
@@ -396,11 +397,30 @@ function createProjectCardHtml(p) {
     : '';
 
   const sharedBadgeHtml = isSharedTab
-    ? `<span class="project-badge project-badge--shared">Shared by ${p.owner ? escapeHtml(p.owner.split('@')[0]) : 'Team'}</span>`
+    ? `<span class="project-badge project-badge--shared">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="9" cy="7" r="4"></circle>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+        </svg>
+        Collaborator
+       </span>`
+    : '';
+
+  // For shared projects, show who last updated (closest to "by whom" info available)
+  const authorLineHtml = isSharedTab
+    ? `<div class="project-card__author-row">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;flex-shrink:0;">
+          <circle cx="12" cy="8" r="3.5"></circle>
+          <path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"></path>
+        </svg>
+        <span>Last updated by <strong>${escapeHtml(p.updatedBy || 'team member')}</strong></span>
+      </div>`
     : '';
 
   return `
-    <article class="project-card${isLocked ? ' project-card--locked' : ''}" id="card-${p.id}">
+    <article class="project-card${isLocked ? ' project-card--locked' : ''}${isSharedTab ? ' project-card--shared' : ''}" id="card-${p.id}">
       <div class="project-card__top">
         <div class="project-card__badges">
           ${authBadgeHtml}
@@ -416,6 +436,8 @@ function createProjectCardHtml(p) {
       </div>
 
       <p class="project-card__desc">${escapeHtml(p.description)}</p>
+
+      ${authorLineHtml}
 
       <div class="project-card__route">
         <span>${escapeHtml(p.route)}</span>
@@ -435,7 +457,7 @@ function createProjectCardHtml(p) {
           <span>${p.apisCount} APIs</span>
         </div>
         <div style="color: var(--text-faint);">
-          <span>updated ${escapeHtml(p.updatedAt)}${p.updatedBy ? ` by ${escapeHtml(p.updatedBy)}` : ''}</span>
+          <span>updated ${escapeHtml(p.updatedAt)}</span>
         </div>
       </div>
 
