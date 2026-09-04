@@ -405,4 +405,14 @@
   .vp-modal__grid {
     grid-template-columns: 1fr;
   }
+
+  /* APIs tab: let the action buttons wrap below the name on small screens */
+  .vp-api-card__actions {
+    margin-left: 0;
+    width: 100%;
+  }
+  .vp-api-card__actions .btn {
+    flex: 1;
+    justify-content: center;
+  }
 }

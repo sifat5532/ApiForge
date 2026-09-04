@@ -69,7 +69,7 @@ const requireProjectAuthor = async (req, res, next) => {
 
 //it also chk is if the proj is not a template 
 const requireProjectAccess = async (req, res, next) => {
-    const proj_id = req.body?.proj_id ||  req.params?.projectId || req.query?.projectId ;
+    const proj_id = req.body?.proj_id || req.params?.projectId || req.query?.projectId;
     if (!proj_id) return res.status(400).json({ msg: "You should insert a project id with your request" });
 
     const result = await query('SELECT id FROM projects WHERE id=$1 AND author_id=$2  AND is_template=$3', [proj_id, req.loggedInUser.id, false]);
@@ -79,13 +79,13 @@ const requireProjectAccess = async (req, res, next) => {
                                   WHERE pc.user_id=$2 AND pc.status=$4 AND 
                                   pc.project_id=$1 AND pc.role=$3 
                                   GROUP BY pc.project_id, p.author_id`,
-                                   [proj_id, req.loggedInUser.id, 'editor', 'accepted']);
+        [proj_id, req.loggedInUser.id, 'editor', 'accepted']);
     if (isCollab.rows.length === 0 && result.rows.length === 0) {
         return res.status(403).json({ msg: "You don't have access to make any change to this project" });
     }
-    if(result.rows.length > 0){
+    if (result.rows.length > 0) {
         req.projectAuthorId = req.loggedInUser.id;
-    }else{
+    } else {
         req.projectAuthorId = isCollab.rows[0].author_id;
     }
     next();
@@ -199,7 +199,7 @@ router.post('/collabInvitation', requireAuth, requireProjectAuthor, isProjectAct
         return res.status(200).json({ msg: 'You are trying to add an invalid user' });
     }
 
-    const isExist = await query('SELECT * FROM project_collaborators WHERE user_id = $1 AND project_id = $2;', [ user_id , proj_id]);
+    const isExist = await query('SELECT * FROM project_collaborators WHERE user_id = $1 AND project_id = $2;', [user_id, proj_id]);
     if (isExist.rows.length > 0) {
         if (isExist.rows[0].status == 'pending') {
             return res.status(400).json({ msg: 'Already invited to this project' });
@@ -214,7 +214,7 @@ router.post('/collabInvitation', requireAuth, requireProjectAuthor, isProjectAct
 
 router.post('/proceedCollabInvitation', requireAuth, async (req, res) => {
     const { proj_id, acceptInvitation } = req.body;
-    const isExist = await query('SELECT * FROM project_collaborators WHERE user_id = $1 AND project_id = $2 ;', [ req.loggedInUser.id , proj_id]);
+    const isExist = await query('SELECT * FROM project_collaborators WHERE user_id = $1 AND project_id = $2 ;', [req.loggedInUser.id, proj_id]);
     if (isExist.rows.length === 0) {
         return res.status(404).json({ msg: 'Invitation not found' });
     }
@@ -524,6 +524,35 @@ router.post('/removeForeignKey', requireAuth, isProjectActive, async (req, res) 
 
 });
 
+router.post('/deleteApi', requireAuth, isProjectActive, async (req, res) => {
+    const { proj_id, api_id } = req.body;
+    if (!proj_id || !api_id) {
+        return res.status(400).json({ msg: "You should insert a project id and an api id with your request" });
+    }
+    const result = await query(`
+                                DELETE FROM api_definitions A
+                                USING projects P
+                                WHERE
+                                    A.project_id = P.id
+                                    AND A.id = $1
+                                    AND P.id = $2
+                                    AND (
+                                        P.author_id = $3
+                                        OR EXISTS (
+                                            SELECT 1
+                                            FROM project_collaborators PC
+                                            WHERE PC.user_id = $3
+                                              AND PC.status = 'accepted'
+                                              AND PC.project_id = P.id
+                                              AND PC.role = 'editor'
+                                        )
+                                    )`,
+        [api_id, proj_id, req.loggedInUser.id]);
+
+    if (result.rowCount === 0) return res.status(400).json({ msg: "Can't delete this API. It may not exist or you don't have permission." });
+    return res.status(200).json({ msg: 'Successfully deleted the API' });
+});
+
 
 router.post('/createTemplate', requireAuth, async (req, res) => {
     const { template_name, proj_id } = req.body;
@@ -646,7 +675,7 @@ router.put('/updateProject/:projectId', requireAuth, requireProjectAuthor, async
         return res.status(400).json({ msg: 'Please give project description within 500 characters' });
     }
     if (tags != null) {
-         for (let i = 0; i < tags.length; i++) { // Try to complete all types of input validation before executing any query if its not query dependent;
+        for (let i = 0; i < tags.length; i++) { // Try to complete all types of input validation before executing any query if its not query dependent;
             const t = tags[i].trim().toLowerCase();
             if (t.length < 2 || t.length > 20) return res.status(400).json({ msg: 'Tag length must be between 2 to 20 characters' });
             if (!(t[0] >= 'a' && t[0] <= 'z')) return res.status(400).json({ msg: 'Tag name must start with an alphabet(a-z or A-Z)' });
@@ -705,10 +734,10 @@ router.put('/updateProject/:projectId', requireAuth, requireProjectAuthor, async
     }
 });
 
-router.delete('/deleteProject/:projectId', requireAuth,  async (req, res) => {
+router.delete('/deleteProject/:projectId', requireAuth, async (req, res) => {
     const result = await query('DELETE FROM projects WHERE id = $1 AND author_id = $2', [req.params.projectId, req.loggedInUser.id]);
-    if(result.rowCount === 0)  return res.status(400).json({msg : "You don't have access to delete the project or the project doesn't exist."});
-    return res.status(200).json({msg : "Project was deleted successfully"});
+    if (result.rowCount === 0) return res.status(400).json({ msg: "You don't have access to delete the project or the project doesn't exist." });
+    return res.status(200).json({ msg: "Project was deleted successfully" });
 });
 
 

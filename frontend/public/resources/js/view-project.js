@@ -14,7 +14,8 @@ const vpState = {
   isAuthor: false,
   project: null,
   tables: [],
-  loaded: { tables: false, fk: false, cors: false, collab: false, settings: false },
+  apis: [],
+  loaded: { tables: false, fk: false, apis: false, cors: false, collab: false, settings: false },
   settingsTags: [],
 };
 
@@ -153,7 +154,7 @@ function initTabs() {
   const tabs = {
     'tab-tables':   { panel: 'panel-tables',   load: loadTables },
     'tab-fk':       { panel: 'panel-fk',       load: loadForeignKeys },
-    'tab-apis':     { panel: 'panel-apis' },
+    'tab-apis':     { panel: 'panel-apis',     load: loadApis },
     'tab-cors':     { panel: 'panel-cors',     load: loadCorsOrigins },
     'tab-logs':     { panel: 'panel-logs' },
     'tab-collab':   { panel: 'panel-collab',   load: loadCollaborators },
@@ -670,6 +671,169 @@ async function submitAddFk() {
     showToast('Network error', 'error');
     setLoading(submitBtn, false);
   }
+}
+
+/* -----------------------------------------------------------------------
+   APIs
+   ----------------------------------------------------------------------- */
+
+async function loadApis() {
+  const body = document.getElementById('vp-apis-body');
+  if (!body) return;
+  renderShimmer(body, 3);
+
+  try {
+    const res = await apiFetch(`/view/apis/${vpState.projectId}`);
+    if (res.status === 401) { window.location.href = '/login'; return; }
+    if (!res.ok) { body.innerHTML = emptyState('Could not load APIs'); return; }
+
+    const data = await res.json();
+    const apis = Array.isArray(data.apis) ? data.apis : [];
+    vpState.apis = apis;
+
+    if (apis.length === 0) {
+      body.innerHTML = emptyState('No APIs defined yet. Click “+ API” to create your first endpoint.');
+      return;
+    }
+
+    body.innerHTML = apis.map(apiCardHtml).join('');
+
+    body.querySelectorAll('.vp-api-copy').forEach(btn => {
+      btn.addEventListener('click', () => copyApiUrl(btn));
+    });
+    body.querySelectorAll('.vp-api-edit').forEach(btn => {
+      btn.addEventListener('click', () => editApi(btn.getAttribute('data-api-id')));
+    });
+    body.querySelectorAll('.vp-api-delete').forEach(btn => {
+      btn.addEventListener('click', () => deleteApi(btn.getAttribute('data-api-id'), btn.getAttribute('data-api-name')));
+    });
+  } catch (_) {
+    body.innerHTML = emptyState('Network error. Is the backend reachable?');
+  }
+}
+
+/* Build the public call URL: BACKEND/api/:username/:projectname/:apiname */
+function buildApiUrl(api) {
+  const base = window.BACKEND_URL || 'http://localhost:3000';
+  const username = api.author_username || '';
+  const projectName = api.project_name || (vpState.project && vpState.project.name) || '';
+  return `${base}/api/${encodeURIComponent(username)}/${encodeURIComponent(projectName)}/${encodeURIComponent(api.name)}`;
+}
+
+function apiCardHtml(api) {
+  const method = String(api.method || 'GET').toUpperCase();
+  const methodClass = `vp-api-method--${method.toLowerCase()}`;
+  const url = buildApiUrl(api);
+  const active = api.is_active !== false;
+
+  return `
+    <div class="vp-api-card" data-api-id="${api.id}">
+      <div class="vp-api-card__head">
+        <span class="vp-api-method ${methodClass}">${escHtml(method)}</span>
+        <span class="vp-api-card__name">${escHtml(api.name)}</span>
+        <span class="vp-api-status ${active ? 'vp-api-status--active' : 'vp-api-status--inactive'}">${active ? 'Active' : 'Inactive'}</span>
+        <div class="vp-api-card__actions">
+          <button class="btn btn--ghost btn--sm vp-api-edit" type="button" data-api-id="${api.id}" title="Edit API">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="vp-api-icon">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+            </svg>
+            Edit
+          </button>
+          <button class="btn btn--ghost btn--sm vp-api-delete" type="button" data-api-id="${api.id}" data-api-name="${escHtml(api.name)}" title="Delete API">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="vp-api-icon">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+              <path d="M10 11v6M14 11v6"></path>
+              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+            </svg>
+            Delete
+          </button>
+        </div>
+      </div>
+      <div class="vp-api-url" data-url="${escHtml(url)}">
+        <span class="vp-api-url__method">${escHtml(method)}</span>
+        <code class="vp-api-url__code">${escHtml(url)}</code>
+        <button class="btn btn--ghost btn--sm vp-api-copy" type="button" title="Copy API URL">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="vp-api-icon">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+          Copy
+        </button>
+      </div>
+      <div class="vp-api-meta">
+        <span class="vp-api-meta__item"><span class="vp-api-meta__label">Rate limit</span> ${escHtml(api.rate_limit_per_day != null ? api.rate_limit_per_day + '/day' : '—')}</span>
+        <span class="vp-api-meta__sep" aria-hidden="true">·</span>
+        <span class="vp-api-meta__item"><span class="vp-api-meta__label">Created</span> ${escHtml(formatDate(api.created_at))}</span>
+      </div>
+    </div>`;
+}
+
+function copyApiUrl(btn) {
+  const card = btn.closest('.vp-api-url');
+  const url = card ? card.getAttribute('data-url') : '';
+  if (!url) return;
+  navigator.clipboard?.writeText(url).then(() => {
+    const original = btn.innerHTML;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.innerHTML = original; }, 1500);
+  }).catch(() => showToast('Could not copy to clipboard', 'error'));
+}
+
+function editApi(apiId) {
+  // The API query builder is not part of this view; direct the user to the builder.
+  showToast('API editing is available in the API builder (coming soon).', 'error');
+}
+
+function deleteApi(apiId, apiName) {
+  confirmModal({
+    title: 'Delete API',
+    message: `Delete the API "${apiName}"? This permanently removes the endpoint and cannot be undone.`,
+    confirmLabel: 'Delete',
+    danger: true,
+    onConfirm: async () => {
+      try {
+        const res = await apiFetch('/project/deleteApi', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ proj_id: vpState.projectId, api_id: apiId }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          showToast(data.msg || 'API deleted', 'success');
+          vpState.loaded.apis = false;
+          loadApis();
+        } else {
+          showToast(data.msg || 'Failed to delete API', 'error');
+        }
+      } catch (_) {
+        showToast('Network error', 'error');
+      }
+    },
+  });
+}
+
+function openAddApiModal() {
+  const bodyHtml = `
+    <div class="modal-form">
+      <p class="vp-empty__text" style="margin:0;">
+        New API endpoints are created in the visual API builder, where you select tables,
+        columns, filters and the HTTP method for your query. The endpoint will then appear
+        in this list with its public call URL.
+      </p>
+    </div>
+  `;
+  const footHtml = `
+    <button class="btn btn--ghost btn--sm" id="api-cancel" type="button">Close</button>
+    <button class="btn btn--primary btn--sm" id="api-open-builder" type="button">Open API Builder</button>
+  `;
+  showModal('Create API', bodyHtml, footHtml);
+  document.getElementById('api-cancel')?.addEventListener('click', closeModal);
+  document.getElementById('api-open-builder')?.addEventListener('click', () => {
+    closeModal();
+    showToast('The API builder is coming soon.', 'error');
+  });
 }
 
 /* -----------------------------------------------------------------------
@@ -1480,6 +1644,9 @@ function bindGlobalActions() {
 
   const addFkBtn = document.getElementById('btn-add-fk');
   if (addFkBtn) addFkBtn.addEventListener('click', openAddFkModal);
+
+  const addApiBtn = document.getElementById('btn-add-api');
+  if (addApiBtn) addApiBtn.addEventListener('click', openAddApiModal);
 
   const addCorsBtn = document.getElementById('btn-add-cors');
   if (addCorsBtn) addCorsBtn.addEventListener('click', openAddCorsModal);

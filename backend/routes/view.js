@@ -207,15 +207,18 @@ router.get('/viewTableData/:tableId', requireAuth, async (req, res) => {
 });
 router.get('/apis/:projectId' , requireAuth , requireProjectAccess , async(req , res)=>{
     const result = await query(`SELECT
-                             a.*
+                             a.* ,
+                             p.name AS project_name ,
+                             u.username AS author_username
                              FROM api_definitions a
                              JOIN projects p ON p.id = a.project_id
+                             JOIN users u ON u.id = p.author_id
                              WHERE a.project_id = $1 AND (p.author_id = $2 OR EXISTS (
                              SELECT 1 
                              FROM project_collaborators pc 
                              WHERE  pc.user_id = $2 AND pc.status = $3 AND pc.project_id = p.id ))
                              ORDER BY a.created_at DESC
-                                `, [req.params.tableId, req.loggedInUser.id, 'accepted']);
+                                `, [req.params.projectId, req.loggedInUser.id, 'accepted']);
      return res.status(200).json({ apis : result.rows});
                              
 });
