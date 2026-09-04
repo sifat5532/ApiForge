@@ -220,6 +220,17 @@ async function loadTables() {
         <td>${escHtml(t.total_columns != null ? t.total_columns : '0')}</td>
         <td>${escHtml(formatDate(t.created_at))}</td>
         <td>
+          <button class="btn btn--ghost btn--sm vp-table-view-data" type="button" data-table-id="${t.id}" title="View table data">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="3" y1="9" x2="21" y2="9"></line>
+              <line x1="3" y1="15" x2="21" y2="15"></line>
+              <line x1="9" y1="9" x2="9" y2="21"></line>
+            </svg>
+            View Data
+          </button>
+        </td>
+        <td>
           <button class="btn btn--ghost btn--sm vp-table-edit" type="button" data-table-id="${t.id}" title="Edit table (coming soon)" disabled style="opacity:0.5;cursor:not-allowed;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -239,15 +250,21 @@ async function loadTables() {
             <th>Columns</th>
             <th>Created</th>
             <th></th>
+            <th></th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
       <div id="vp-struct-wrap"></div>
+      <div id="vp-data-wrap"></div>
     `;
 
     body.querySelectorAll('.vp-table__link').forEach(btn => {
       btn.addEventListener('click', () => toggleTableStructure(btn.getAttribute('data-table-id')));
+    });
+
+    body.querySelectorAll('.vp-table-view-data').forEach(btn => {
+      btn.addEventListener('click', () => toggleTableData(btn.getAttribute('data-table-id')));
     });
   } catch (_) {
     body.innerHTML = emptyState('Network error. Is the backend reachable?');
@@ -280,7 +297,8 @@ async function toggleTableStructure(tableId) {
         <tr>
           <td>${escHtml(c.col_name)}</td>
           <td>${escHtml(c.col_type)}</td>
-          <td>${c.is_primary_key ? '<span class="tag">PK</span>' : ''}${c.is_unique ? ' <span class="tag">UNIQUE</span>' : ''}</td>
+          <td>${c.is_primary_key ? '<span class="tag">PK</span>' : ''}${c.is_unique ? ' <span class="tag">UNIQUE</span>' : ''}
+          ${c.is_auto_increment ? ' <span class="tag">AUTO INCREMENT</span>' : ''}</td>
           <td>${escHtml(c.is_nullable ? 'NULL' : 'NOT NULL')}</td>
         </tr>`).join('')
       : `<tr><td colspan="4" style="color:var(--text-faint)">No columns</td></tr>`;
@@ -295,6 +313,104 @@ async function toggleTableStructure(tableId) {
           <tbody>${rows}</tbody>
         </table>
       </div>`;
+  } catch (_) {
+    wrap.innerHTML = `<div class="vp-struct-panel"><p class="vp-empty__text">Network error.</p></div>`;
+  }
+}
+
+/* -----------------------------------------------------------------------
+   Table Data (view rows)
+   ----------------------------------------------------------------------- */
+
+const _tableDataState = { tableId: null, limit: 10, offset: 0 };
+
+async function toggleTableData(tableId) {
+  const wrap = document.getElementById('vp-data-wrap');
+  if (!wrap) return;
+
+  // Collapse if the same table is already open
+  if (_tableDataState.tableId === tableId && !wrap.hidden && wrap.innerHTML !== '') {
+    wrap.innerHTML = '';
+    wrap.removeAttribute('data-open');
+    _tableDataState.tableId = null;
+    return;
+  }
+
+  _tableDataState.tableId = tableId;
+  _tableDataState.offset = 0;
+  wrap.setAttribute('data-open', tableId);
+
+  await renderTableData(tableId);
+}
+
+async function renderTableData(tableId) {
+  const wrap = document.getElementById('vp-data-wrap');
+  if (!wrap) return;
+
+  const { limit, offset } = _tableDataState;
+  const tableMeta = (vpState.tables || []).find(t => String(t.id) === String(tableId));
+  const tableName = tableMeta ? tableMeta.table_name : `Table #${tableId}`;
+
+  wrap.innerHTML = `<div class="vp-struct-panel"><div class="vp-struct-panel__shimmer">Loading data…</div></div>`;
+
+  try {
+    const res = await apiFetch(`/view/viewTableData/${tableId}?limit=${limit}&offset=${offset}`);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      wrap.innerHTML = `<div class="vp-struct-panel"><p class="vp-empty__text">${escHtml(errData.msg || 'Could not load table data.')}</p></div>`;
+      return;
+    }
+
+    const data = await res.json();
+    const rows = Array.isArray(data.data) ? data.data : [];
+
+    if (rows.length === 0 && offset === 0) {
+      wrap.innerHTML = `
+        <div class="vp-struct-panel">
+          <div class="vp-struct-panel__header">
+            <h4 class="vp-struct-panel__title">${escHtml(tableName)} — Data</h4>
+          </div>
+          <p class="vp-empty__text">No rows in this table.</p>
+        </div>`;
+      return;
+    }
+
+    const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
+    const headerCells = columns.map(c => `<th>${escHtml(c)}</th>`).join('');
+    const bodyRows = rows.map(row =>
+      `<tr>${columns.map(c => `<td>${escHtml(row[c] != null ? String(row[c]) : 'NULL')}</td>`).join('')}</tr>`
+    ).join('');
+
+    const hasPrev = offset > 0;
+    const hasNext = rows.length === limit;
+    const pageInfo = `Rows ${offset + 1}–${offset + rows.length}`;
+
+    wrap.innerHTML = `
+      <div class="vp-struct-panel">
+        <div class="vp-struct-panel__header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <h4 class="vp-struct-panel__title" style="margin:0;">${escHtml(tableName)} — Data</h4>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <span style="font-size:0.78rem;color:var(--text-faint);">${escHtml(pageInfo)}</span>
+            <button class="btn btn--ghost btn--sm" id="vp-data-prev" type="button" ${hasPrev ? '' : 'disabled'}>← Prev</button>
+            <button class="btn btn--ghost btn--sm" id="vp-data-next" type="button" ${hasNext ? '' : 'disabled'}>Next →</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="vp-table">
+            <thead><tr>${headerCells}</tr></thead>
+            <tbody>${bodyRows}</tbody>
+          </table>
+        </div>
+      </div>`;
+
+    document.getElementById('vp-data-prev')?.addEventListener('click', () => {
+      _tableDataState.offset = Math.max(0, offset - limit);
+      renderTableData(tableId);
+    });
+    document.getElementById('vp-data-next')?.addEventListener('click', () => {
+      _tableDataState.offset = offset + limit;
+      renderTableData(tableId);
+    });
   } catch (_) {
     wrap.innerHTML = `<div class="vp-struct-panel"><p class="vp-empty__text">Network error.</p></div>`;
   }
