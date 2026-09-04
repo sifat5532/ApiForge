@@ -4414,3 +4414,143 @@ html.onboarding-dismissed .onboarding-card,
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* -----------------------------------------------------------------------
+   Table detail modal — Structure & Data tabs  (.tm-*)
+----------------------------------------------------------------------- */
+
+/* Tab strip inside modal */
+.tm-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin: -20px -20px 18px;
+  padding: 0 20px;
+}
+
+.tm-tab {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1px;
+}
+.tm-tab:hover {
+  color: var(--text);
+}
+.tm-tab.is-active {
+  color: var(--accent-light);
+  border-bottom-color: var(--accent);
+}
+
+/* Panels */
+.tm-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* Structure table wrapper — horizontal scroll for wide tables */
+.tm-struct-wrap,
+.tm-data-wrap {
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+}
+
+/* Structure table */
+.tm-struct-table td:first-child .tm-col-name {
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  color: var(--text);
+}
+
+/* Inline type / default code */
+.tm-type {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--accent-light);
+  background: rgba(249, 115, 22, 0.08);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+
+/* Nullable tag variant */
+.tm-tag-null {
+  background: rgba(34, 197, 94, 0.08);
+  color: var(--success);
+  border-color: rgba(34, 197, 94, 0.25);
+}
+
+/* Data table */
+.tm-data-table {
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+.tm-data-table th {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+/* Data pagination bar */
+.tm-data-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 14px 0 4px;
+}
+.tm-data-page {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+/* Edit button in tables list */
+.vp-table-actions {
+  white-space: nowrap;
+}
+.vp-tbl-edit {
+  color: var(--text-muted);
+  border-color: transparent;
+  gap: 4px;
+  display: inline-flex;
+  align-items: center;
+}
+.vp-tbl-edit:hover {
+  color: var(--accent-light);
+  border-color: var(--accent-light);
+}
+
+/* Chevron expand indicator next to table name */
+.vp-tbl-chevron {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  transition: transform 0.18s ease;
+  color: var(--text-faint);
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.vp-tbl-chevron.is-open {
+  transform: rotate(90deg);
+}
+
+/* Inline expand row */
+.vp-tbl-expand-row td {
+  padding: 0;
+  border-bottom: 1px solid var(--border);
+}
+.vp-tbl-expand-cell {
+  padding: 0 !important;
+}
+.vp-tbl-expand-cell .vp-struct-panel {
+  margin: 10px 16px 14px;
+  border-radius: var(--radius-md);
+}
+

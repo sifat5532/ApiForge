@@ -158,7 +158,7 @@ router.get('/viewTableStructure/:tableId', requireAuth, async (req, res) => {
                                 `, [req.params.tableId]);
     res.status(200).json({ coloumns: result.rows });
 });
-router.get('viewTableData/:tableId', requireAuth, async (req, res) => {
+router.get('/viewTableData/:tableId', requireAuth, async (req, res) => {
     const { tableId } = req.params;
     const limit = Number(req.query.limit)||10;
     const offset = Number(req.query.offset)||0;
