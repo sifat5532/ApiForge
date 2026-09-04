@@ -53,8 +53,9 @@ async function initViewProject() {
 }
 
 function extractProjectId() {
-  const match = window.location.pathname.match(/\/project\/(\d+)/);
-  return match ? match[1] : null;
+  const match = window.location.pathname.match(/\/project\/([^/]+)/);
+  if (!match) return null;
+  return decodeURIComponent(match[1]);
 }
 
 /* -----------------------------------------------------------------------
@@ -77,6 +78,7 @@ async function loadProjectHeader() {
     const data = await res.json();
     const p = data.project;
     vpState.project = p;
+    vpState.projectId = p.id; // backend may have matched a name; pin numeric id for subsequent calls
     vpState.authorId = p.author_id;
     vpState.isAuthor = String(vpState.loggedInUserId) === String(p.author_id);
 

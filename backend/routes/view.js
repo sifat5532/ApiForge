@@ -74,7 +74,32 @@ router.get('/allContributingProjects', requireAuth, async (req, res) => {
 
     res.status(200).json({ projects: result.rows });
 });
-router.get('/viewProject/:projectId', requireAuth, requireProjectAccess , async (req, res) => {
+
+async function resolveProjectIdParam(req, res, next) {
+  const raw = req.params.projectId;
+  if (raw == null) return next();
+  if (/^\d+$/.test(raw)) return next();
+
+  const result = await query(
+    `SELECT p.id
+       FROM projects p
+      WHERE p.name = $1
+        AND p.is_template = $2
+        AND (p.author_id = $3 OR EXISTS (
+              SELECT 1 FROM project_collaborators pc
+               WHERE pc.user_id = $3 AND pc.status = $4 AND pc.project_id = p.id
+             ))
+      LIMIT 1`,
+    [raw, false, req.loggedInUser.id, 'accepted']
+  );
+  if (result.rows.length === 0) {
+    return res.status(404).json({ msg: 'Project not found' });
+  }
+  req.params.projectId = String(result.rows[0].id);
+  next();
+}
+
+router.get('/viewProject/:projectId', requireAuth, resolveProjectIdParam, requireProjectAccess , async (req, res) => {
     const result = await query(`SELECT
                                  p.* ,
                                  COALESCE(
