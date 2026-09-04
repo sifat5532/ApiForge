@@ -701,6 +701,9 @@ async function loadApis() {
     body.querySelectorAll('.vp-api-copy').forEach(btn => {
       btn.addEventListener('click', () => copyApiUrl(btn));
     });
+    body.querySelectorAll('.vp-api-details').forEach(btn => {
+      btn.addEventListener('click', () => openApiDetailsModal(btn.getAttribute('data-api-id')));
+    });
     body.querySelectorAll('.vp-api-edit').forEach(btn => {
       btn.addEventListener('click', () => editApi(btn.getAttribute('data-api-id')));
     });
@@ -733,6 +736,14 @@ function apiCardHtml(api) {
         <span class="vp-api-card__name">${escHtml(api.name)}</span>
         <span class="vp-api-status ${active ? 'vp-api-status--active' : 'vp-api-status--inactive'}">${active ? 'Active' : 'Inactive'}</span>
         <div class="vp-api-card__actions">
+          <button class="btn btn--ghost btn--sm vp-api-details" type="button" data-api-id="${api.id}" title="View request details">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="vp-api-icon">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+            View details
+          </button>
           <button class="btn btn--ghost btn--sm vp-api-edit" type="button" data-api-id="${api.id}" title="Edit API">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="vp-api-icon">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -784,6 +795,264 @@ function copyApiUrl(btn) {
 function editApi(apiId) {
   // The API query builder is not part of this view; direct the user to the builder.
   showToast('API editing is available in the API builder (coming soon).', 'error');
+}
+
+/* ---- Dynamic parameter extraction from query_definition ----
+   Walks a stored query_definition (per HTTP method) and returns the list of
+   dynamic inputs a caller must / may supply, so consumers know exactly how to
+   invoke the endpoint. Shapes come from backend/routes/api.js.               */
+
+/* Normalises a GET/PUT/DELETE where-value (val1/val2) into a param row. */
+function paramFromWhereVal(val, ctxLabel) {
+  if (!val || !val.is_dynamic) return null;
+  return {
+    name: val.dynamic_field_name || '(unnamed)',
+    source: normaliseSource(val.dynamic_value_getting_type),
+    required: !!val.is_dynamic_required,
+    fallback: val.fallback_value,
+    context: ctxLabel,
+  };
+}
+
+/* Normalises a POST/PUT value_obj_array entry into a param row. */
+function paramFromValueObj(v) {
+  // A value entry may be nested as { value: {...} } or be the object directly.
+  const val = v && v.value ? v.value : v;
+  if (!val) return null;
+  const source = normaliseSource(val.source);
+  // static_value entries are not caller-supplied inputs.
+  if (!val.is_dynamic || source === 'Static value') return null;
+  return {
+    name: val.dynamic_field_name || '(unnamed)',
+    source,
+    required: val.default_value === undefined || val.default_value === null,
+    fallback: val.default_value,
+    context: 'Insert/Update value',
+  };
+}
+
+function normaliseSource(raw) {
+  switch (raw) {
+    case 'query_param': return 'Query param';
+    case 'route_param': return 'Route param';
+    case 'body':
+    case 'body_field': return 'Body field';
+    case 'static_value': return 'Static value';
+    default: return raw || '—';
+  }
+}
+
+/* Recursively walk a where[] array (conditions + nested groups). */
+function collectWhereParams(nodes, out) {
+  if (!Array.isArray(nodes)) return;
+  nodes.forEach(node => {
+    if (!node) return;
+    if (node.node_type === 'group') {
+      collectWhereParams(node.children, out);
+      return;
+    }
+    // condition
+    const label = 'Filter (where)';
+    const p1 = paramFromWhereVal(node.val1, label);
+    if (p1) out.push(p1);
+    const p2 = paramFromWhereVal(node.val2, label);
+    if (p2) out.push(p2);
+  });
+}
+
+/* Returns { params: [...], meta: {...} } describing a stored definition. */
+function extractApiParams(method, def) {
+  const params = [];
+  const meta = {};
+  if (!def || typeof def !== 'object') return { params, meta };
+
+  const m = String(method || 'GET').toUpperCase();
+
+  if (m === 'GET') {
+    collectWhereParams(def.where, params);
+    if (Array.isArray(def.having)) {
+      def.having.forEach(h => {
+        const p = paramFromWhereVal(h, 'Having (aggregate filter)');
+        if (p) params.push(p);
+      });
+    }
+    meta.limit = def.limit;
+    meta.offset = def.offset;
+    meta.allow_client_paging = !!def.allow_client_paging;
+  } else if (m === 'POST') {
+    if (Array.isArray(def.value_obj_array)) {
+      def.value_obj_array.forEach(v => {
+        const p = paramFromValueObj(v);
+        if (p) params.push(p);
+      });
+    }
+  } else if (m === 'PUT') {
+    if (Array.isArray(def.value_obj_array)) {
+      def.value_obj_array.forEach(v => {
+        const p = paramFromValueObj(v);
+        if (p) params.push(p);
+      });
+    }
+    collectWhereParams(def.where, params);
+  } else if (m === 'DELETE') {
+    collectWhereParams(def.where, params);
+  }
+
+  // De-duplicate by name + source (same field can be referenced twice).
+  const seen = new Set();
+  const deduped = [];
+  params.forEach(p => {
+    const key = `${p.source}::${p.name}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    deduped.push(p);
+  });
+
+  return { params: deduped, meta };
+}
+
+function openApiDetailsModal(apiId) {
+  const api = (vpState.apis || []).find(a => String(a.id) === String(apiId));
+  if (!api) { showToast('API not found', 'error'); return; }
+
+  const method = String(api.method || 'GET').toUpperCase();
+  const url = buildApiUrl(api);
+  const authRequired = !!(vpState.project && vpState.project.auth_enabled);
+
+  // query_definition may arrive as an object (JSONB) or a JSON string.
+  let def = api.query_definition;
+  if (typeof def === 'string') {
+    try { def = JSON.parse(def); } catch (_) { def = null; }
+  }
+
+  const { params, meta } = extractApiParams(method, def);
+
+  const queryParams = params.filter(p => p.source === 'Query param');
+  const routeParams = params.filter(p => p.source === 'Route param');
+  const bodyParams  = params.filter(p => p.source === 'Body field');
+
+  const paramRows = (list) => list.map(p => `
+    <tr>
+      <td><code class="vp-api-param__name">${escHtml(p.name)}</code></td>
+      <td>${p.required
+            ? '<span class="vp-api-req vp-api-req--yes">Required</span>'
+            : '<span class="vp-api-req vp-api-req--no">Optional</span>'}</td>
+      <td>${p.fallback === undefined || p.fallback === null
+            ? '<span class="vp-api-param__none">—</span>'
+            : `<code>${escHtml(String(p.fallback))}</code>`}</td>
+      <td class="vp-api-param__ctx">${escHtml(p.context || '')}</td>
+    </tr>
+  `).join('');
+
+  const paramTable = (title, list) => list.length ? `
+    <div class="vp-api-detail-section">
+      <h4 class="vp-api-detail-section__title">${escHtml(title)} <span class="vp-api-detail-count">${list.length}</span></h4>
+      <table class="vp-table vp-api-param-table">
+        <thead><tr><th>Field name</th><th>Required</th><th>Fallback / default</th><th>Used in</th></tr></thead>
+        <tbody>${paramRows(list)}</tbody>
+      </table>
+    </div>` : '';
+
+  const noParams = params.length === 0;
+
+  // Build a copy-ready example call
+  const exampleUrl = buildExampleCall(url, method, routeParams, queryParams);
+
+  const pagingHtml = (method === 'GET')
+    ? `<div class="vp-api-detail-section">
+         <h4 class="vp-api-detail-section__title">Paging</h4>
+         <div class="vp-api-meta" style="margin-top:0;">
+           <span class="vp-api-meta__item"><span class="vp-api-meta__label">Default limit</span> ${escHtml(meta.limit != null ? String(meta.limit) : '—')}</span>
+           <span class="vp-api-meta__sep" aria-hidden="true">·</span>
+           <span class="vp-api-meta__item"><span class="vp-api-meta__label">Default offset</span> ${escHtml(meta.offset != null ? String(meta.offset) : '—')}</span>
+           <span class="vp-api-meta__sep" aria-hidden="true">·</span>
+           <span class="vp-api-meta__item"><span class="vp-api-meta__label">Client paging</span> ${meta.allow_client_paging ? 'Allowed (?limit &amp; ?offset)' : 'Disabled'}</span>
+         </div>
+       </div>`
+    : '';
+
+  const bodyHtml = `
+    <div class="vp-api-detail">
+      <div class="vp-api-url" data-url="${escHtml(url)}" style="margin-top:0;">
+        <span class="vp-api-url__method vp-api-method--${method.toLowerCase()}">${escHtml(method)}</span>
+        <code class="vp-api-url__code">${escHtml(url)}</code>
+        <button class="btn btn--ghost btn--sm vp-api-copy" type="button" title="Copy API URL">Copy</button>
+      </div>
+
+      <div class="vp-api-detail-badges">
+        <span class="vp-api-status ${api.is_active !== false ? 'vp-api-status--active' : 'vp-api-status--inactive'}">${api.is_active !== false ? 'Active' : 'Inactive'}</span>
+        <span class="vp-api-detail-badge">${authRequired ? 'Auth required — send <code>x-api-key</code> header' : 'No auth required'}</span>
+        <span class="vp-api-detail-badge">Rate limit: ${escHtml(api.rate_limit_per_day != null ? api.rate_limit_per_day + '/day' : '—')}</span>
+      </div>
+
+      ${noParams
+        ? '<p class="vp-empty__text vp-api-detail-empty">This endpoint takes no dynamic parameters — call the URL as-is.</p>'
+        : `${paramTable('Route parameters', routeParams)}
+           ${paramTable('Query parameters', queryParams)}
+           ${paramTable('Body fields', bodyParams)}`}
+
+      ${pagingHtml}
+
+      <div class="vp-api-detail-section">
+        <h4 class="vp-api-detail-section__title">Example request</h4>
+        <div class="vp-api-example">
+          <code class="vp-api-example__code">${escHtml(exampleUrl)}</code>
+          <button class="btn btn--ghost btn--sm vp-api-example-copy" type="button" data-example="${escHtml(exampleUrl)}">Copy</button>
+        </div>
+        ${bodyParams.length ? `<pre class="vp-api-example__body"><code>${escHtml(buildExampleBody(bodyParams))}</code></pre>` : ''}
+      </div>
+    </div>
+  `;
+
+  const footHtml = `<button class="btn btn--primary btn--sm" id="api-detail-close" type="button">Done</button>`;
+
+  const overlay = document.getElementById('vp-modal-overlay');
+  if (overlay) overlay.classList.add('vp-modal--wide');
+  showModal(`API — ${method} ${api.name}`, bodyHtml, footHtml);
+
+  document.getElementById('api-detail-close')?.addEventListener('click', closeModal);
+
+  // Copy handlers inside modal
+  document.querySelectorAll('#vp-modal-body .vp-api-copy').forEach(btn => {
+    btn.addEventListener('click', () => copyApiUrl(btn));
+  });
+  const exCopy = document.querySelector('#vp-modal-body .vp-api-example-copy');
+  if (exCopy) {
+    exCopy.addEventListener('click', () => {
+      const text = exCopy.getAttribute('data-example') || '';
+      navigator.clipboard?.writeText(text).then(() => {
+        exCopy.textContent = 'Copied!';
+        setTimeout(() => { exCopy.textContent = 'Copy'; }, 1500);
+      });
+    });
+  }
+}
+
+/* Build an example call URL: substitutes route params inline and appends query string. */
+function buildExampleCall(baseUrl, method, routeParams, queryParams) {
+  let url = baseUrl;
+  // Route params are appended as extra path segments (best-effort illustration).
+  routeParams.forEach(p => {
+    const sample = p.fallback !== undefined && p.fallback !== null ? p.fallback : `<${p.name}>`;
+    url += `/${encodeURIComponent(String(sample))}`;
+  });
+  if (queryParams.length) {
+    const qs = queryParams.map(p => {
+      const sample = p.fallback !== undefined && p.fallback !== null ? p.fallback : `<${p.name}>`;
+      return `${encodeURIComponent(p.name)}=${encodeURIComponent(String(sample))}`;
+    }).join('&');
+    url += `?${qs}`;
+  }
+  return url;
+}
+
+/* Build an example JSON body from body-field params. */
+function buildExampleBody(bodyParams) {
+  const obj = {};
+  bodyParams.forEach(p => {
+    obj[p.name] = (p.fallback !== undefined && p.fallback !== null) ? p.fallback : `<${p.name}>`;
+  });
+  return JSON.stringify(obj, null, 2);
 }
 
 function deleteApi(apiId, apiName) {
