@@ -42,7 +42,7 @@ const requireAuth = async (req, res, next) => {
             res.clearCookie('session_token');
             return res.status(401).json({ msg: 'You are not logged in' });
         } else {
-            // await query('UPDATE user_sessions SET last_active_at = now() WHERE session_token_hashed = $1',[hashedToken]);
+            await query('UPDATE user_sessions SET last_active_at = now() WHERE session_token_hashed = $1',[hashedToken]);
 
             const userData = await query('SELECT id, username, email, name from users WHERE id = $1', [result.rows[0].user_id]);
             req.loggedInUser = userData.rows[0];
@@ -127,6 +127,11 @@ router.get('/me', requireAuth, (req, res) => {
 });
 
 router.post('/logout', requireAuth, async (req, res) => {
+    const hashedToken = hashToken(req.cookies.session_token);
+    await query(
+        'UPDATE user_sessions SET revoked_at = now() WHERE session_token_hashed = $1',
+        [hashedToken]
+    );
     res.clearCookie('session_token');
     res.status(200).json({ msg: 'Logout successful' });
 });
