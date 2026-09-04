@@ -354,8 +354,8 @@ function initProjectForm() {
         return;
       }
 
-      // Success — redirect to projects listing page
-      window.location.href = '/projects';
+      // Success — show API key modal before redirecting
+      showApiKeyModal(data.api_key);
     } catch (err) {
       if (errorEl) {
         errorEl.textContent = 'A network error occurred. Please try again.';
@@ -365,6 +365,95 @@ function initProjectForm() {
       submitBtn.classList.remove('btn--loading');
       submitBtn.textContent = originalText;
     }
+  });
+}
+
+/**
+ * Shows a modal with the newly generated API key and redirects on close.
+ */
+function showApiKeyModal(apiKey) {
+  // Build overlay
+  const overlay = document.createElement('div');
+  overlay.id = 'api-key-modal-overlay';
+  overlay.style.cssText = [
+    'position:fixed', 'inset:0', 'z-index:9999',
+    'display:flex', 'align-items:center', 'justify-content:center',
+    'background:rgba(0,0,0,0.65)', 'padding:1rem'
+  ].join(';');
+
+  overlay.innerHTML = `
+    <div role="dialog" aria-modal="true" aria-labelledby="akm-title" style="
+      background:var(--surface, #1a1a2e);
+      border:1px solid var(--border, #2e2e4a);
+      border-radius:12px;
+      padding:2rem;
+      max-width:520px;
+      width:100%;
+      box-shadow:0 24px 64px rgba(0,0,0,0.5);
+    ">
+      <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f5a623" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+        <h2 id="akm-title" style="margin:0;font-size:1.1rem;color:var(--text-primary,#e8e8f0);">Your API Key</h2>
+      </div>
+      <p style="margin:0 0 1.25rem;font-size:0.875rem;color:var(--text-secondary,#a0a0b8);line-height:1.5;">
+        Project created successfully. Copy your API key now —
+        <strong style="color:var(--text-primary,#e8e8f0);">it will not be shown again.</strong>
+      </p>
+
+      <div style="
+        display:flex;align-items:center;gap:0.5rem;
+        background:var(--surface-raised,#12122a);
+        border:1px solid var(--border,#2e2e4a);
+        border-radius:8px;padding:0.6rem 0.75rem;
+        margin-bottom:1.5rem;
+      ">
+        <code id="akm-key-display" style="
+          flex:1;font-family:monospace;font-size:0.8rem;
+          color:var(--accent,#7c6af7);word-break:break-all;
+          background:none;border:none;outline:none;
+          cursor:default;user-select:all;
+        ">${escapeHtml(apiKey)}</code>
+        <button id="akm-copy-btn" title="Copy API key" style="
+          flex-shrink:0;background:none;border:none;cursor:pointer;
+          color:var(--text-secondary,#a0a0b8);padding:0.25rem;
+          border-radius:4px;transition:color 0.15s;
+        " aria-label="Copy API key">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        </button>
+      </div>
+
+      <div style="padding:0.75rem 1rem;background:rgba(245,166,35,0.08);border:1px solid rgba(245,166,35,0.25);border-radius:8px;margin-bottom:1.5rem;font-size:0.8rem;color:var(--text-secondary,#a0a0b8);line-height:1.5;">
+        Store this key in a secure place (e.g. environment variables). You can regenerate it later from your project settings, but the old key will stop working immediately.
+      </div>
+
+      <button id="akm-continue-btn" class="btn btn--primary btn--block" style="width:100%;">
+        I've saved my key — Go to projects
+      </button>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // Copy button
+  document.getElementById('akm-copy-btn').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(apiKey);
+      const btn = document.getElementById('akm-copy-btn');
+      btn.style.color = '#4caf7d';
+      setTimeout(() => { btn.style.color = ''; }, 1500);
+    } catch (_) {
+      // Fallback: select the text so user can copy manually
+      const codeEl = document.getElementById('akm-key-display');
+      const range = document.createRange();
+      range.selectNodeContents(codeEl);
+      window.getSelection().removeAllRanges();
+      window.getSelection().addRange(range);
+    }
+  });
+
+  // Continue button
+  document.getElementById('akm-continue-btn').addEventListener('click', () => {
+    window.location.href = '/projects';
   });
 }
 
