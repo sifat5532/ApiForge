@@ -277,6 +277,8 @@ async function toggleTableStructure(tableId) {
     }
     const data = await res.json();
     const cols = Array.isArray(data.coloumns) ? data.coloumns : [];
+    const tableMeta = (vpState.tables || []).find(t => String(t.id) === String(tableId));
+    const tableName = tableMeta ? tableMeta.table_name : '';
     const rows = cols.length
       ? cols.map(c => `
         <tr>
@@ -289,7 +291,7 @@ async function toggleTableStructure(tableId) {
 
     wrap.innerHTML = `
       <div class="vp-struct-panel">
-        <h4 class="vp-struct-panel__title">Columns</h4>
+        ${tableName ? `<h4 class="vp-struct-panel__title">${escHtml(tableName)}</h4>` : ''}
         <table class="vp-table">
           <thead>
             <tr><th>Column</th><th>Type</th><th>Key</th><th>Null</th></tr>
