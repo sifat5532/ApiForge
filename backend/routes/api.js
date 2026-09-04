@@ -337,35 +337,35 @@ router.post('/create', requireAuth, requireProjectAccess, isProjectActive, async
   const proj_id = (req.params.projectId ? req.params.projectId : req.query.projectId);
   const api_name = (req.params.api_name ? req.params.api_name : req.query.api_name);
   const method = (req.params.method ? req.params.method : req.query.method);
-  if(!api_name || !method){
-    return res.status(400).json({ msg: "You should insert api_name and method with your request"});
+  if (!api_name || !method) {
+    return res.status(400).json({ msg: "You should insert api_name and method with your request" });
   }
   if (!/^[a-z][a-z0-9_]{0,29}$/.test(api_name)) {
-    return res.status(400).json({ msg: `Please give a valid name using only a-z, A-Z, 0-9 and _`});
+    return res.status(400).json({ msg: `Please give a valid name using only a-z, A-Z, 0-9 and _` });
   }
   if (!["POST", "GET", "PUT", "DELETE"].includes(_.toUpper(method.trim()))) {
-      return res.status(400).json({ msg: `Invalid method name`});
+    return res.status(400).json({ msg: `Invalid method name` });
   }
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await checkPlanLimit(client, req.projectAuthorId, 'api', proj_id);
     const projectCatalog = await loadProjectCatalog(client, proj_id);
-    if(method == "GET"){
+    if (method == "GET") {
       const errors = validateSelectPayload(req.body, projectCatalog);
+      if (errors.length) {
+        await client.query('ROLLBACK');
+        return res.status(422).json({ valid: false, errors });
+      }
     }
 
-    if (errors.length) {
-      await client.query('ROLLBACK');
-      return res.status(422).json({ valid: false, errors });
-    }
     await client.query(`
       INSERT INTO api_definitions
           (name, project_id, method, query_definition, rate_limit_per_day)
       VALUES
           ($1, $2, $3, $4, $5);`, [api_name, proj_id, method, req.body, 1000])
     await client.query('COMMIT');
-    return res.status(200).json({ valid: true, msg: "Api definition added successfully"});
+    return res.status(200).json({ valid: true, msg: "Api definition added successfully" });
   } catch (e) {
     await client.query('ROLLBACK');
     console.error(e);

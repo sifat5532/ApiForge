@@ -1,3 +1,5 @@
+const _ = require('lodash');
+
 async function loadProjectCatalog(pgClient, projectId) {
   const tables = await pgClient.query(
     `SELECT id, table_name FROM schema_tables WHERE project_id = $1`,

@@ -1,35 +1,35 @@
 const express = require('express');
 const query = require('./../db/query');
 const router = express.Router();
-const { requireAuth } = require('./auth');
 const pool = require('./../db/connection');
-const { requireProjectAuthor } = require('./project');
-const { requireProjectAccess } = require('./project');
-const { isProjectActive } = require('./project');
-const checkPlanLimit = require('./../utils/planLimitChecker');
 const loadProjectCatalog = require('./../utils/projectCatalog');
-const buildSelectSQL = require('./../utils/build.sql.select');
-const _ = require('lodash');
-const bcrypt = require('bcrypt');
+const { buildSelectSQL } = require('./../utils/build.sql.select');
+const crypto = require('crypto');
+
+function qi(identifier) {
+    return `"${String(identifier).replace(/"/g, '""')}"`;
+}
 
 async function validateApiRoute(req, res, next) {
     const { username, projectname, apiname } = req.params;
 
     try {
         const result = await query(`
-            SELECT
-                a.id AS api_id,
-                a.method,
-                a.is_active AS api_is_active,
-                a.query_definition,
-                p.id AS project_id,
-                p.auth_enabled,
-                p.api_key_hashed,
-                p.subscription_status
-            FROM api_definitions a
-            JOIN projects p ON p.id = a.project_id
-            JOIN users u ON u.id = p.author_id
-            WHERE u.username = $1 AND p.name = $2 AND a.name = $3 AND p.is_template = $4`,
+        SELECT
+            a.id AS api_id,
+            a.method,
+            a.is_active AS api_is_active,
+            a.query_definition,
+            a.rate_limit_per_day,
+            p.id AS project_id,
+            p.author_id,
+            p.auth_enabled,
+            p.api_key_hashed,
+            p.subscription_status
+        FROM api_definitions a
+        JOIN projects p ON p.id = a.project_id
+        JOIN users u ON u.id = p.author_id
+        WHERE u.username = $1 AND p.name = $2 AND a.name = $3 AND p.is_template = $4`,
             [username, projectname, apiname, false]
         );
 
@@ -47,6 +47,10 @@ async function validateApiRoute(req, res, next) {
             return res.status(404).json({ error: 'API is not active' });
         }
 
+        if (apiDefinition.subscription_status !== 'active') {
+            return res.status(402).json({ error: 'Project subscription is not active' });
+        }
+
         if (apiDefinition.auth_enabled) {
             const providedKey = req.header('x-api-key');
 
@@ -54,7 +58,11 @@ async function validateApiRoute(req, res, next) {
                 return res.status(401).json({ error: 'API key required' });
             }
 
-            const isValidKey = await bcrypt.compare(providedKey, apiDefinition.api_key_hashed);
+            const providedKeyHashed = crypto.createHash('sha256').update(providedKey).digest('hex');
+            const isValidKey = crypto.timingSafeEqual(
+                Buffer.from(providedKeyHashed, 'hex'),
+                Buffer.from(apiDefinition.api_key_hashed, 'hex')
+            );
 
             if (!isValidKey) {
                 return res.status(401).json({ error: 'Invalid API key' });
@@ -91,32 +99,60 @@ async function handleApiRequest(req, res) {
 }
 
 async function handleGet(req, res, apiDefinition) {
-    const catalog = await loadProjectCatalog(apiDefinition.project_id);
-
-    // apiDefinition.query_definition is the JSONB payload describing the SELECT
-    const { text, values } = buildSelectSQL(apiDefinition.query_definition, catalog, req);
-
     const client = await pool.connect();
+    const startedAt = process.hrtime.bigint();
+
     try {
-        // Scope this connection to the project's own Postgres schema
-        await client.query(
-            `SET search_path TO ${JSON.stringify(`proj_${apiDefinition.project_id}_${apiDefinition.author_id}`)}`
+        await client.query('BEGIN');
+
+        // rate-limit / catalog / log tables live in public; reset search_path on
+        // this (possibly reused pool) connection before touching them
+        await client.query(`SET search_path TO public`);
+
+        const usage = await client.query(`
+            SELECT COUNT(*)::int AS cnt
+            FROM api_logs
+            WHERE api_definition_id = $1
+            AND created_at >= now() - interval '1 day'`,
+            [apiDefinition.api_id]
+        );
+        if (usage.rows[0].cnt >= apiDefinition.rate_limit_per_day) {
+            await client.query('ROLLBACK');
+            return res.status(429).json({ error: 'Rate limit exceeded' });
+        }
+
+        const catalog = await loadProjectCatalog(client, apiDefinition.project_id);
+
+        const schema = `PROJ_${apiDefinition.project_id}_${apiDefinition.author_id}`;
+        await client.query(`SET search_path TO ${qi(schema)}`);
+
+        const { text, values } = buildSelectSQL(apiDefinition.query_definition, catalog, req);
+        const result = await client.query(text, values);
+
+        const responseTimeMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+
+        // api_logs lives in public; switch back before inserting
+        await client.query(`SET search_path TO public`);
+
+        await client.query(`
+            INSERT INTO api_logs (api_definition_id, ip_address, status_code, response_time_ms)
+            VALUES ($1, $2, $3, $4)`,
+            [apiDefinition.api_id, req.ip, 200, Math.round(responseTimeMs)]
         );
 
-        const result = await client.query(text, values);
-        res.status(200).json(result.rows);
+        await client.query('COMMIT');
+        return res.status(200).json(result.rows);
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
     } finally {
         client.release();
     }
 }
 
-module.exports = handleApiRequest;
-
-
 router.get('/:username/:projectname/:apiname', validateApiRoute, handleApiRequest);
 router.post('/:username/:projectname/:apiname', validateApiRoute, handleApiRequest);
 router.put('/:username/:projectname/:apiname', validateApiRoute, handleApiRequest);
 router.delete('/:username/:projectname/:apiname', validateApiRoute, handleApiRequest);
-
 
 module.exports = router;
