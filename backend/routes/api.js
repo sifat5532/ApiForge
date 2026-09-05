@@ -60,6 +60,21 @@ function buildAliasMap(select_obj, join_obj_array, errors) {
   return aliasToTableId;
 }
 
+// single-table alias map for PUT/DELETE (mirrors buildAliasMap, but no joins)
+function buildSingleTableAliasMap(table_alias, table_id, errors) {
+  const aliasToTableId = new Map();
+  if (!table_alias) {
+    errors.push('table_alias is missing');
+    return aliasToTableId;
+  }
+  if (!isSafeIdentifier(table_alias)) {
+    errors.push(`table_alias "${table_alias}" contains invalid characters`);
+    return aliasToTableId;
+  }
+  aliasToTableId.set(table_alias, table_id);
+  return aliasToTableId;
+}
+
 function checkAlias(nodeTableAlias, col, aliasToTableId, errors, label) {
   if (!nodeTableAlias) {
     errors.push(`${label} is missing table_alias`);
@@ -333,6 +348,215 @@ function validateSelectPayload(payload, catalog) {
   return errors;
 }
 
+// POST / PUT value object validation
+
+const VALID_VALUE_SOURCES = new Set(['body_field', 'query_param', 'route_param', 'static_value']);
+function isValidValueSource(source) {
+  return typeof source === 'string' && VALID_VALUE_SOURCES.has(source.trim());
+}
+
+function validateValueObj(valObj, errors, label, col) {
+  if (!valObj || typeof valObj !== 'object') { errors.push(`${label} is missing`); return; }
+
+  if (!isValidValueSource(valObj.source)) {
+    errors.push(`${label}: invalid source "${valObj.source}"`);
+    return;
+  }
+
+  const source = valObj.source.trim();
+  if (source === 'static_value') {
+    if (valObj.is_dynamic === true) {
+      errors.push(`${label}: source is static_value but is_dynamic is true`);
+    }
+    if (valObj.default_value === undefined || valObj.default_value === null) {
+      errors.push(`${label}: default_value required when source is static_value`);
+    }
+  } else {
+    if (valObj.is_dynamic === false) {
+      errors.push(`${label}: source is "${source}" but is_dynamic is false`);
+    }
+    if (!valObj.dynamic_field_name) {
+      errors.push(`${label}: dynamic_field_name required when source is "${source}"`);
+    }
+    // default_value here acts as a fallback if the dynamic field is missing at request time —
+    // no is_dynamic_required flag exists in this format, so it's optional.
+  }
+
+  if (col && valObj.default_value !== undefined && valObj.default_value !== null) {
+    if (!typeMatchesColumn(valObj.default_value, col.data_type)) {
+      errors.push(`${label}: default_value type mismatch for column of type ${col.data_type}`);
+    }
+  }
+}
+
+function validateReturningCols(returning_cols_id, catalog, table_id, errors) {
+  if (!Array.isArray(returning_cols_id)) {
+    errors.push('returning_cols_id must be an array');
+    return;
+  }
+  for (const colId of returning_cols_id) {
+    const col = catalog.colById.get(colId);
+    if (!col || col.schema_table_id !== table_id) {
+      errors.push(`returning_cols_id: col_id ${colId} invalid or not part of table_id ${table_id}`);
+    }
+  }
+}
+
+// ---------- POST ----------
+
+function validateInsertPayload(payload, catalog) {
+  const errors = [];
+  if (!payload || typeof payload !== 'object') return ['payload must be an object'];
+
+  if (payload.table_id == null) {
+    errors.push('table_id is required');
+    return errors;
+  }
+  if (!catalog.tableById.get(payload.table_id)) {
+    errors.push(`table_id ${payload.table_id} does not exist in this project`);
+    return errors;
+  }
+
+  const column_id_array = payload.column_id_array;
+  const value_obj_array = payload.value_obj_array;
+
+  if (!Array.isArray(column_id_array) || column_id_array.length === 0) {
+    errors.push('column_id_array must be a non-empty array');
+  }
+  if (!Array.isArray(value_obj_array) || value_obj_array.length === 0) {
+    errors.push('value_obj_array must be a non-empty array');
+  }
+  if (!Array.isArray(column_id_array) || !Array.isArray(value_obj_array)) {
+    return errors;
+  }
+
+  const validColIds = new Set();
+  column_id_array.forEach((colId, i) => {
+    const col = catalog.colById.get(colId);
+    if (!col) { errors.push(`column_id_array[${i}]: col_id ${colId} not found`); return; }
+    if (col.schema_table_id !== payload.table_id) {
+      errors.push(`column_id_array[${i}]: col_id ${colId} does not belong to table_id ${payload.table_id}`);
+      return;
+    }
+    if (validColIds.has(colId)) {
+      errors.push(`column_id_array[${i}]: duplicate col_id ${colId}`);
+      return;
+    }
+    validColIds.add(colId);
+  });
+
+  if (value_obj_array.length !== column_id_array.length) {
+    errors.push(`value_obj_array length (${value_obj_array.length}) must match column_id_array length (${column_id_array.length})`);
+  }
+
+  const seenValueColIds = new Set();
+  value_obj_array.forEach((v, i) => {
+    if (!v || v.col_id == null) { errors.push(`value_obj_array[${i}] is missing col_id`); return; }
+    if (!validColIds.has(v.col_id)) {
+      errors.push(`value_obj_array[${i}]: col_id ${v.col_id} is not present in column_id_array`);
+    }
+    if (seenValueColIds.has(v.col_id)) {
+      errors.push(`value_obj_array[${i}]: duplicate col_id ${v.col_id}`);
+    }
+    seenValueColIds.add(v.col_id);
+
+    const col = catalog.colById.get(v.col_id);
+    validateValueObj(v, errors, `value_obj_array[${i}]`, col);
+  });
+
+  validateReturningCols(payload.returning_cols_id ?? [], catalog, payload.table_id, errors);
+
+  return errors;
+}
+
+// ---------- PUT ----------
+
+function validateUpdatePayload(payload, catalog) {
+  const errors = [];
+  if (!payload || typeof payload !== 'object') return ['payload must be an object'];
+
+  if (payload.table_id == null) {
+    errors.push('table_id is required');
+    return errors;
+  }
+  if (!catalog.tableById.get(payload.table_id)) {
+    errors.push(`table_id ${payload.table_id} does not exist in this project`);
+    return errors;
+  }
+
+  const value_obj_array = payload.value_obj_array;
+  const where = payload.where ?? [];
+
+  if (!Array.isArray(value_obj_array) || value_obj_array.length === 0) {
+    errors.push('value_obj_array must be a non-empty array');
+  } else {
+    const seenColIds = new Set();
+    value_obj_array.forEach((v, i) => {
+      if (!v || v.col_id == null) { errors.push(`value_obj_array[${i}] is missing col_id`); return; }
+      const col = catalog.colById.get(v.col_id);
+      if (!col) { errors.push(`value_obj_array[${i}]: col_id ${v.col_id} not found`); return; }
+      if (col.schema_table_id !== payload.table_id) {
+        errors.push(`value_obj_array[${i}]: col_id ${v.col_id} does not belong to table_id ${payload.table_id}`);
+        return;
+      }
+      if (seenColIds.has(v.col_id)) {
+        errors.push(`value_obj_array[${i}]: duplicate col_id ${v.col_id}`);
+      }
+      seenColIds.add(v.col_id);
+      validateValueObj(v, errors, `value_obj_array[${i}]`, col);
+    });
+  }
+
+  const aliasToTableId = buildSingleTableAliasMap(payload.table_alias, payload.table_id, errors);
+  const scopedTableIds = new Set([payload.table_id]);
+
+  if (!Array.isArray(where)) {
+    errors.push('where must be an array');
+  } else if (where.length === 0) {
+    // Prevents an accidental full-table update — remove this check if you want to allow it explicitly.
+    errors.push('where must not be empty for an update');
+  } else {
+    validateWhereArray(where, catalog, scopedTableIds, aliasToTableId, errors);
+  }
+
+  validateReturningCols(payload.returning_cols_id ?? [], catalog, payload.table_id, errors);
+
+  return errors;
+}
+
+// ---------- DELETE ----------
+
+function validateDeletePayload(payload, catalog) {
+  const errors = [];
+  if (!payload || typeof payload !== 'object') return ['payload must be an object'];
+
+  if (payload.table_id == null) {
+    errors.push('table_id is required');
+    return errors;
+  }
+  if (!catalog.tableById.get(payload.table_id)) {
+    errors.push(`table_id ${payload.table_id} does not exist in this project`);
+    return errors;
+  }
+
+  const where = payload.where ?? [];
+  const aliasToTableId = buildSingleTableAliasMap(payload.table_alias, payload.table_id, errors);
+  const scopedTableIds = new Set([payload.table_id]);
+
+  if (!Array.isArray(where)) {
+    errors.push('where must be an array');
+  } else if (where.length === 0) {
+    // Prevents an accidental full-table delete — remove this check if you want to allow it explicitly.
+    errors.push('where must not be empty for a delete');
+  } else {
+    validateWhereArray(where, catalog, scopedTableIds, aliasToTableId, errors);
+  }
+
+  validateReturningCols(payload.returning_cols_id ?? [], catalog, payload.table_id, errors);
+
+  return errors;
+}
+
 router.post('/create', requireAuth, requireProjectAccess, isProjectActive, async (req, res) => {
   const proj_id = (req.params.projectId ? req.params.projectId : req.query.projectId);
   const api_name = (req.params.api_name ? req.params.api_name : req.query.api_name);
@@ -343,7 +567,8 @@ router.post('/create', requireAuth, requireProjectAccess, isProjectActive, async
   if (!/^[a-z][a-z0-9_]{0,29}$/.test(api_name)) {
     return res.status(400).json({ msg: `Please give a valid name using only a-z, A-Z, 0-9 and _` });
   }
-  if (!["POST", "GET", "PUT", "DELETE"].includes(_.toUpper(method.trim()))) {
+  const method_upper = _.toUpper(method.trim());
+  if (!["POST", "GET", "PUT", "DELETE"].includes(method_upper)) {
     return res.status(400).json({ msg: `Invalid method name` });
   }
   const client = await pool.connect();
@@ -351,19 +576,27 @@ router.post('/create', requireAuth, requireProjectAccess, isProjectActive, async
     await client.query('BEGIN');
     await checkPlanLimit(client, req.projectAuthorId, 'api', proj_id);
     const projectCatalog = await loadProjectCatalog(client, proj_id);
-    if (method == "GET") {
-      const errors = validateSelectPayload(req.body, projectCatalog);
-      if (errors.length) {
-        await client.query('ROLLBACK');
-        return res.status(422).json({ valid: false, errors });
-      }
+
+    let errors = [];
+    if (method_upper === "GET") {
+      errors = validateSelectPayload(req.body, projectCatalog);
+    } else if (method_upper === "POST") {
+      errors = validateInsertPayload(req.body, projectCatalog);
+    } else if (method_upper === "PUT") {
+      errors = validateUpdatePayload(req.body, projectCatalog);
+    } else if (method_upper === "DELETE") {
+      errors = validateDeletePayload(req.body, projectCatalog);
+    }
+    if (errors.length) {
+      await client.query('ROLLBACK');
+      return res.status(422).json({ valid: false, errors });
     }
 
     await client.query(`
       INSERT INTO api_definitions
           (name, project_id, method, query_definition, rate_limit_per_day)
       VALUES
-          ($1, $2, $3, $4, $5);`, [api_name, proj_id, method, req.body, 1000])
+          ($1, $2, $3, $4, $5);`, [api_name, proj_id, method_upper, req.body, 1000])
     await client.query('COMMIT');
     return res.status(200).json({ valid: true, msg: "Api definition added successfully" });
   } catch (e) {

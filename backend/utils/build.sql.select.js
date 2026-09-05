@@ -182,4 +182,4 @@ function buildSelectSQL(payload, catalog, req) {
     return { text: sql, values };
 }
 
-module.exports = { buildSelectSQL };
+module.exports = { buildSelectSQL, qi, colExpr, buildWhereSQL };

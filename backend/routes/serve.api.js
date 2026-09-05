@@ -4,6 +4,9 @@ const router = express.Router();
 const pool = require('./../db/connection');
 const loadProjectCatalog = require('./../utils/projectCatalog');
 const { buildSelectSQL } = require('./../utils/build.sql.select');
+const { buildInsertSQL } = require('./../utils/build.sql.insert');
+const { buildUpdateSQL } = require('./../utils/build.sql.update');
+const { buildDeleteSQL } = require('./../utils/build.sql.delete');
 const crypto = require('crypto');
 
 function qi(identifier) {
@@ -98,56 +101,77 @@ async function handleApiRequest(req, res) {
     }
 }
 
-async function handleGet(req, res, apiDefinition) {
+
+async function enforceRateLimit(client, apiDefinition) {
+    const usage = await client.query(`
+        SELECT COUNT(*)::int AS cnt
+        FROM api_logs
+        WHERE api_definition_id = $1
+        AND created_at >= now() - interval '1 day'`,
+        [apiDefinition.api_id]
+    );
+    if (usage.rows[0].cnt >= apiDefinition.rate_limit_per_day) {
+        const err = new Error('Rate limit exceeded');
+        err.status = 429;
+        throw err;
+    }
+}
+
+async function logApiCall(client, apiDefinition, req, statusCode, responseTimeMs) {
+    await client.query(`SET search_path TO public`);
+    await client.query(`
+        INSERT INTO api_logs (api_definition_id, ip_address, status_code, response_time_ms)
+        VALUES ($1, $2, $3, $4)`,
+        [apiDefinition.api_id, req.ip, statusCode, Math.round(responseTimeMs)]
+    );
+}
+
+async function executeApiQuery(req, res, apiDefinition, buildSQLFn, successStatus) {
     const client = await pool.connect();
     const startedAt = process.hrtime.bigint();
 
     try {
         await client.query('BEGIN');
 
-        // rate-limit / catalog / log tables live in public; reset search_path on
-        // this (possibly reused pool) connection before touching them
         await client.query(`SET search_path TO public`);
-
-        const usage = await client.query(`
-            SELECT COUNT(*)::int AS cnt
-            FROM api_logs
-            WHERE api_definition_id = $1
-            AND created_at >= now() - interval '1 day'`,
-            [apiDefinition.api_id]
-        );
-        if (usage.rows[0].cnt >= apiDefinition.rate_limit_per_day) {
-            await client.query('ROLLBACK');
-            return res.status(429).json({ error: 'Rate limit exceeded' });
-        }
+        await enforceRateLimit(client, apiDefinition);
 
         const catalog = await loadProjectCatalog(client, apiDefinition.project_id);
 
         const schema = `PROJ_${apiDefinition.project_id}_${apiDefinition.author_id}`;
         await client.query(`SET search_path TO ${qi(schema)}`);
 
-        const { text, values } = buildSelectSQL(apiDefinition.query_definition, catalog, req);
+        const { text, values } = buildSQLFn(apiDefinition.query_definition, catalog, req);
         const result = await client.query(text, values);
 
         const responseTimeMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
-
-        // api_logs lives in public; switch back before inserting
-        await client.query(`SET search_path TO public`);
-
-        await client.query(`
-            INSERT INTO api_logs (api_definition_id, ip_address, status_code, response_time_ms)
-            VALUES ($1, $2, $3, $4)`,
-            [apiDefinition.api_id, req.ip, 200, Math.round(responseTimeMs)]
-        );
+        await logApiCall(client, apiDefinition, req, successStatus, responseTimeMs);
 
         await client.query('COMMIT');
-        return res.status(200).json(result.rows);
+        return res.status(successStatus).json(result.rows);
     } catch (err) {
         await client.query('ROLLBACK');
         throw err;
     } finally {
         client.release();
     }
+}
+
+
+async function handleGet(req, res, apiDefinition) {
+    return executeApiQuery(req, res, apiDefinition, buildSelectSQL, 200);
+}
+
+async function handleInsert(req, res, apiDefinition) {
+    return executeApiQuery(req, res, apiDefinition, buildInsertSQL, 201);
+}
+
+async function handleUpdate(req, res, apiDefinition) {
+    return executeApiQuery(req, res, apiDefinition, buildUpdateSQL, 200);
+}
+
+async function handleDelete(req, res, apiDefinition) {
+    return executeApiQuery(req, res, apiDefinition, buildDeleteSQL, 200);
 }
 
 router.get('/:username/:projectname/:apiname', validateApiRoute, handleApiRequest);
