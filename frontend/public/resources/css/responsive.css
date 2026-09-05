@@ -34,6 +34,17 @@
     max-width: 420px;
     margin: 0 auto;
   }
+
+  .cab-join-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .cab-select-grid,
+  .cab-write-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .cab-col-head {
+    display: none;
+  }
 }
 
 /* ===================== Mobile nav (≤840px) ===================== */
@@ -414,5 +425,24 @@
   .vp-api-card__actions .btn {
     flex: 1;
     justify-content: center;
+  }
+
+  .cab-row--2,
+  .cab-row--3,
+  .cab-row--paging,
+  .cab-select-grid,
+  .cab-join-grid,
+  .cab-write-grid,
+  .cab-order-grid,
+  .cab-group-grid,
+  .cab-return-grid,
+  .cab-col-head {
+    grid-template-columns: 1fr;
+  }
+  .cab-col-head {
+    display: none;
+  }
+  .cab-icon-btn {
+    justify-self: start;
   }
 }

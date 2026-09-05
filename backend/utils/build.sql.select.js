@@ -79,6 +79,11 @@ function buildWhereSQL(whereArray, catalog, req, values) {
     return `WHERE ${parts.join('')}`;
 }
 
+function resolvePagingVal(val, req, label) {
+    if (val != null && typeof val === 'object') return resolveVal(val, req, label);
+    return val;
+}
+
 function coercePaginationInt(value, label) {
     const n = Number(value);
     if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) {
@@ -165,15 +170,15 @@ function buildSelectSQL(payload, catalog, req) {
         sql += ` ORDER BY ${orderParts.join(', ')}`;
     }
 
-    // LIMIT / OFFSET
+    // LIMIT / OFFSET — accepts a plain integer or a dynamic val object
     if (payload.limit != null) {
-        const rawLimit = resolveVal(payload.limit, req, 'limit');
+        const rawLimit = resolvePagingVal(payload.limit, req, 'limit');
         const limit = coercePaginationInt(rawLimit, 'limit');
         values.push(limit);
         sql += ` LIMIT $${values.length}`;
     }
     if (payload.offset != null) {
-        const rawOffset = resolveVal(payload.offset, req, 'offset');
+        const rawOffset = resolvePagingVal(payload.offset, req, 'offset');
         const offset = coercePaginationInt(rawOffset, 'offset');
         values.push(offset);
         sql += ` OFFSET $${values.length}`;

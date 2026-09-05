@@ -88,6 +88,32 @@ function checkAlias(nodeTableAlias, col, aliasToTableId, errors, label) {
   }
 }
 
+function validatePagingVal(val, errors, label, max) {
+  if (val == null) return;
+  if (typeof val === 'number' || typeof val === 'string') {
+    const n = Number(val);
+    if (!Number.isInteger(n) || n < 0 || (max != null && n > max)) {
+      errors.push(max != null
+        ? `${label} must be a non-negative integer no greater than ${max}`
+        : `${label} must be a non-negative integer`);
+    }
+    return;
+  }
+  if (typeof val !== 'object') {
+    errors.push(`${label} is invalid`);
+    return;
+  }
+  validateDynamicVal(val, errors, label, { data_type: 'integer' });
+  if (val.fallback_value !== undefined && val.fallback_value !== null && val.fallback_value !== '') {
+    const n = Number(val.fallback_value);
+    if (!Number.isInteger(n) || n < 0 || (max != null && n > max)) {
+      errors.push(max != null
+        ? `${label} fallback_value must be a non-negative integer no greater than ${max}`
+        : `${label} fallback_value must be a non-negative integer`);
+    }
+  }
+}
+
 function validateDynamicVal(val, errors, label, col) {
   if (!val) { errors.push(`${label} is missing`); return; }
   if (val.is_dynamic) {
@@ -338,12 +364,8 @@ function validateSelectPayload(payload, catalog) {
   }
 
   const MAX_LIMIT = 1000;
-  if (payload.limit != null && (!Number.isInteger(payload.limit) || payload.limit < 0 || payload.limit > MAX_LIMIT)) {
-    errors.push(`limit must be a non-negative integer no greater than ${MAX_LIMIT}`);
-  }
-  if (payload.offset != null && (!Number.isInteger(payload.offset) || payload.offset < 0)) {
-    errors.push(`offset must be a non-negative integer`);
-  }
+  validatePagingVal(payload.limit, errors, 'limit', MAX_LIMIT);
+  validatePagingVal(payload.offset, errors, 'offset', null);
 
   return errors;
 }

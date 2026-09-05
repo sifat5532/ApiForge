@@ -19,6 +19,11 @@ const vpState = {
   settingsTags: [],
 };
 
+const cabState = {
+  tables: [],
+  colsByTableId: {},
+};
+
 document.addEventListener('DOMContentLoaded', () => {
   initViewProject();
 });
@@ -876,9 +881,12 @@ function extractApiParams(method, def) {
         if (p) params.push(p);
       });
     }
-    meta.limit = def.limit;
-    meta.offset = def.offset;
-    meta.allow_client_paging = !!def.allow_client_paging;
+    const limitParam = paramFromWhereVal(typeof def.limit === 'object' ? def.limit : null, 'Limit');
+    if (limitParam) params.push(limitParam);
+    else meta.limit = def.limit;
+    const offsetParam = paramFromWhereVal(typeof def.offset === 'object' ? def.offset : null, 'Offset');
+    if (offsetParam) params.push(offsetParam);
+    else meta.offset = def.offset;
   } else if (m === 'POST') {
     if (Array.isArray(def.value_obj_array)) {
       def.value_obj_array.forEach(v => {
@@ -1084,25 +1092,1061 @@ function deleteApi(apiId, apiName) {
 }
 
 function openAddApiModal() {
-  const bodyHtml = `
-    <div class="modal-form">
-      <p class="vp-empty__text" style="margin:0;">
-        New API endpoints are created in the visual API builder, where you select tables,
-        columns, filters and the HTTP method for your query. The endpoint will then appear
-        in this list with its public call URL.
-      </p>
-    </div>
-  `;
-  const footHtml = `
-    <button class="btn btn--ghost btn--sm" id="api-cancel" type="button">Close</button>
-    <button class="btn btn--primary btn--sm" id="api-open-builder" type="button">Open API Builder</button>
-  `;
-  showModal('Create API', bodyHtml, footHtml);
-  document.getElementById('api-cancel')?.addEventListener('click', closeModal);
-  document.getElementById('api-open-builder')?.addEventListener('click', () => {
-    closeModal();
-    showToast('The API builder is coming soon.', 'error');
+  openCreateApiModal();
+}
+
+/* -----------------------------------------------------------------------
+   Create API — visual query builder
+   ----------------------------------------------------------------------- */
+
+const CAB_AGG = ['NONE', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX'];
+const CAB_JOIN_TYPES = [
+  { value: 'inner', label: 'INNER JOIN' },
+  { value: 'left', label: 'LEFT JOIN' },
+  { value: 'right', label: 'RIGHT JOIN' },
+  { value: 'full', label: 'FULL OUTER JOIN' },
+];
+const CAB_COMPARE_OPS = ['=', '!=', '<>', '<', '>', '<=', '>=', 'LIKE', 'NOT LIKE', 'IN', 'NOT IN', 'IS NULL', 'IS NOT NULL', 'BETWEEN'];
+const CAB_HAVING_OPS = ['=', '!=', '<>', '<', '>', '<=', '>=', 'LIKE', 'NOT LIKE'];
+const CAB_JOIN_OPS = ['=', '!=', '<', '>', '<=', '>='];
+const CAB_CONNECTORS = [
+  { value: 'and', label: 'AND' },
+  { value: 'or', label: 'OR' },
+];
+const CAB_ALIAS_RE = /^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/;
+const CAB_API_NAME_RE = /^[a-z][a-z0-9_]{0,29}$/;
+
+function cabOptions(arr, selected) {
+  return arr.map(v => {
+    const value = typeof v === 'object' ? v.value : v;
+    const label = typeof v === 'object' ? v.label : v;
+    return `<option value="${escHtml(value)}"${value === selected ? ' selected' : ''}>${escHtml(label)}</option>`;
+  }).join('');
+}
+
+function cabTableOptionsHtml() {
+  return cabState.tables.map(t =>
+    `<option value="${t.id}">${escHtml(t.table_name)} (#${t.id})</option>`
+  ).join('');
+}
+
+function cabTableColOptionsHtml(tableId) {
+  const table = cabState.tables.find(t => String(t.id) === String(tableId));
+  const tName = table ? table.table_name : '';
+  const tId = table ? table.id : tableId;
+  const cols = cabState.colsByTableId[tableId] || cabState.colsByTableId[String(tableId)] || [];
+  return '<option value="">Select column</option>' + cols.map(c =>
+    `<option value="${c.id}">${escHtml(tName)}.${escHtml(c.col_name)} (table #${tId}, col #${c.id})</option>`
+  ).join('');
+}
+
+function cabScopedColOptionsHtml() {
+  const scoped = cabGetScopedTables().filter(t => t.alias);
+  const opts = ['<option value="">Select column</option>'];
+  scoped.forEach(t => {
+    const cols = cabState.colsByTableId[t.tableId] || cabState.colsByTableId[String(t.tableId)] || [];
+    cols.forEach(c => {
+      opts.push(
+        `<option value="${escHtml(t.alias)}|${c.id}">${escHtml(t.alias)}.${escHtml(c.col_name)} — ${escHtml(t.tableName)}.${escHtml(c.col_name)} (table #${t.tableId}, col #${c.id})</option>`
+      );
+    });
   });
+  return opts.join('');
+}
+
+function cabParseColRef(value) {
+  if (!value || !value.includes('|')) return null;
+  const idx = value.lastIndexOf('|');
+  const table_alias = value.slice(0, idx);
+  const col_id = Number(value.slice(idx + 1));
+  if (!table_alias || !Number.isInteger(col_id)) return null;
+  return { table_alias, col_id };
+}
+
+function cabGetScopedTables() {
+  const tableEl = document.getElementById('cab-from-table');
+  const aliasEl = document.getElementById('cab-from-alias');
+  const tableId = tableEl ? tableEl.value : '';
+  const alias = aliasEl ? aliasEl.value.trim() : '';
+  const table = cabState.tables.find(t => String(t.id) === String(tableId));
+  const out = [];
+  if (table) {
+    out.push({ tableId: Number(table.id), alias, tableName: table.table_name });
+  }
+  document.querySelectorAll('#cab-joins-list .cab-join-row').forEach(row => {
+    const jTableId = row.querySelector('[data-field="table"]')?.value;
+    const jAlias = (row.querySelector('[data-field="alias"]')?.value || '').trim();
+    const jTable = cabState.tables.find(t => String(t.id) === String(jTableId));
+    if (jTable) {
+      out.push({ tableId: Number(jTable.id), alias: jAlias, tableName: jTable.table_name });
+    }
+  });
+  return out;
+}
+
+function cabRestoreSelect(sel, prev) {
+  if (!sel) return;
+  if (prev && [...sel.options].some(o => o.value === prev)) {
+    sel.value = prev;
+    return;
+  }
+  if (prev && prev.includes('|')) {
+    const colId = prev.slice(prev.lastIndexOf('|') + 1);
+    const match = [...sel.options].find(o => o.value.endsWith('|' + colId));
+    if (match) sel.value = match.value;
+  }
+}
+
+function cabRefreshScopedColSelects() {
+  const html = cabScopedColOptionsHtml();
+  document.querySelectorAll('#vp-modal-body [data-cab-col="scoped"]').forEach(sel => {
+    const prev = sel.value;
+    sel.innerHTML = html;
+    cabRestoreSelect(sel, prev);
+  });
+  cabRenderSelectAll();
+}
+
+function cabRefreshTargetColSelects() {
+  const tableId = document.getElementById('cab-from-table')?.value;
+  const html = cabTableColOptionsHtml(tableId);
+  document.querySelectorAll('#vp-modal-body [data-cab-col="target"]').forEach(sel => {
+    const prev = sel.value;
+    sel.innerHTML = html;
+    cabRestoreSelect(sel, prev);
+  });
+}
+
+function cabRefreshAllColSelects() {
+  cabRefreshScopedColSelects();
+  cabRefreshTargetColSelects();
+}
+
+async function cabLoadCatalog() {
+  const res = await apiFetch(`/view/allTables/${vpState.projectId}`);
+  if (res.status === 401) { window.location.href = '/login'; throw new Error('auth'); }
+  if (!res.ok) throw new Error('tables');
+  const data = await res.json();
+  cabState.tables = Array.isArray(data.tables) ? data.tables : [];
+  cabState.colsByTableId = {};
+  await Promise.all(cabState.tables.map(async t => {
+    const r = await apiFetch(`/view/viewTableStructure/${t.id}`);
+    if (!r.ok) { cabState.colsByTableId[t.id] = []; return; }
+    const d = await r.json();
+    cabState.colsByTableId[t.id] = Array.isArray(d.coloumns) ? d.coloumns : [];
+  }));
+}
+
+function cabDynHtml(prefix, placeholder, inputType) {
+  const typeAttr = inputType ? ` type="${inputType}"` : ' type="text"';
+  return `
+    <div class="cab-dyn" data-dyn="${prefix}">
+      <div class="cab-dyn__row">
+        <input class="modal-input"${typeAttr} data-field="${prefix}" placeholder="${escHtml(placeholder)}" autocomplete="off" />
+        <button type="button" class="cab-dyn-toggle" data-action="toggle-dyn">dynamic</button>
+      </div>
+      <div class="cab-dyn-config cab-hidden" data-dyn-config>
+        <select class="modal-select" data-field="${prefix}_src">
+          <option value="query_param">query param ?x=</option>
+          <option value="route_param">route param :x</option>
+          <option value="body">body field</option>
+        </select>
+        <input class="modal-input" type="text" data-field="${prefix}_name" placeholder="param/field name" autocomplete="off" />
+        <input class="modal-input"${typeAttr} data-field="${prefix}_default" placeholder="fallback default" autocomplete="off" />
+        <label class="cab-check">
+          <input type="checkbox" data-field="${prefix}_required" /> required
+        </label>
+      </div>
+    </div>`;
+}
+
+function cabWireDyn(root, prefix) {
+  const wrap = root.querySelector(`[data-dyn="${prefix}"]`);
+  if (!wrap) return;
+  const toggle = wrap.querySelector('[data-action="toggle-dyn"]');
+  const config = wrap.querySelector('[data-dyn-config]');
+  const staticInput = wrap.querySelector(`[data-field="${prefix}"]`);
+  toggle.addEventListener('click', () => {
+    const on = toggle.classList.toggle('is-on');
+    config.classList.toggle('cab-hidden', !on);
+    staticInput.classList.toggle('cab-hidden', on);
+  });
+}
+
+function cabCoerceLiteral(raw) {
+  if (raw === '' || raw == null) return '';
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  if (/^-?\d+$/.test(raw)) return Number(raw);
+  if (/^-?\d+\.\d+$/.test(raw)) return Number(raw);
+  return raw;
+}
+
+function cabReadDyn(root, prefix) {
+  const wrap = root.querySelector(`[data-dyn="${prefix}"]`);
+  if (!wrap) return null;
+  const isDyn = wrap.querySelector('[data-action="toggle-dyn"]').classList.contains('is-on');
+  if (!isDyn) {
+    const raw = wrap.querySelector(`[data-field="${prefix}"]`).value.trim();
+    return {
+      is_dynamic: false,
+      fallback_value: raw === '' ? undefined : cabCoerceLiteral(raw),
+      dynamic_value_getting_type: null,
+      dynamic_field_name: null,
+      is_dynamic_required: false,
+    };
+  }
+  const src = wrap.querySelector(`[data-field="${prefix}_src"]`).value;
+  const name = wrap.querySelector(`[data-field="${prefix}_name"]`).value.trim();
+  const defRaw = wrap.querySelector(`[data-field="${prefix}_default"]`).value.trim();
+  const required = wrap.querySelector(`[data-field="${prefix}_required"]`).checked;
+  return {
+    is_dynamic: true,
+    fallback_value: defRaw === '' ? null : cabCoerceLiteral(defRaw),
+    dynamic_value_getting_type: src,
+    dynamic_field_name: name || null,
+    is_dynamic_required: required,
+  };
+}
+
+function cabValidateDyn(val, label, opts) {
+  const allowEmptyStatic = opts && opts.allowEmptyStatic;
+  if (!val) return `${label} is missing`;
+  if (!val.is_dynamic) {
+    if (val.fallback_value === undefined || val.fallback_value === '') {
+      if (allowEmptyStatic) return null;
+      return `${label}: enter a static value, or mark it dynamic`;
+    }
+    return null;
+  }
+  if (!val.dynamic_field_name) return `${label}: param/field name is required when dynamic`;
+  if (!val.is_dynamic_required && (val.fallback_value === undefined || val.fallback_value === null || val.fallback_value === '')) {
+    return `${label}: fallback default is required when the dynamic field is optional`;
+  }
+  return null;
+}
+
+function cabShowErrors(messages) {
+  const box = document.getElementById('cab-errors');
+  const list = document.getElementById('cab-errors-list');
+  if (!box || !list) return;
+  if (!messages || messages.length === 0) {
+    box.classList.add('is-hidden');
+    list.innerHTML = '';
+    return;
+  }
+  list.innerHTML = messages.map(m => `<li>${escHtml(m)}</li>`).join('');
+  box.classList.remove('is-hidden');
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function cabSetCount(id, n, word) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
+function cabRenderSelectAll() {
+  const host = document.getElementById('cab-select-all-list');
+  if (!host) return;
+  const prev = new Set(
+    [...host.querySelectorAll('input[type="checkbox"]:checked')].map(cb => cb.getAttribute('data-alias'))
+  );
+  const scoped = cabGetScopedTables();
+  if (scoped.length === 0) {
+    host.innerHTML = '<span class="cab-note">Add a FROM table (with alias) to enable select all.</span>';
+    return;
+  }
+  host.innerHTML = scoped.map((t, i) => {
+    const alias = t.alias;
+    const disabled = !alias;
+    const checked = alias && prev.has(alias);
+    const label = alias
+      ? `${alias}.* — ${t.tableName} (#${t.tableId})`
+      : `${t.tableName} (#${t.tableId}) — set alias first`;
+    return `<label class="cab-check${disabled ? ' ct-disabled' : ''}">
+      <input type="checkbox" data-select-all data-alias="${escHtml(alias)}" data-table-id="${t.tableId}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''} />
+      ${escHtml(label)}
+    </label>`;
+  }).join('');
+}
+
+function cabApplyMethodVisibility() {
+  const method = document.getElementById('cab-method')?.value || 'GET';
+  const isGet = method === 'GET';
+  const isPost = method === 'POST';
+  const isPut = method === 'PUT';
+  const isDelete = method === 'DELETE';
+  const isWrite = isPost || isPut;
+
+  document.getElementById('cab-get-sections')?.classList.toggle('cab-hidden', !isGet);
+  document.getElementById('cab-get-extras')?.classList.toggle('cab-hidden', !isGet);
+  document.getElementById('cab-alias-wrap')?.classList.toggle('cab-hidden', isPost);
+  document.getElementById('cab-write-section')?.classList.toggle('cab-hidden', !isWrite);
+  document.getElementById('cab-where-section')?.classList.toggle('cab-hidden', !(isGet || isPut || isDelete));
+  document.getElementById('cab-where-required')?.classList.toggle('cab-hidden', isGet);
+  document.getElementById('cab-returning-section')?.classList.toggle('cab-hidden', !(isWrite || isDelete));
+
+  const tableLabel = document.getElementById('cab-table-label');
+  if (tableLabel) {
+    tableLabel.textContent = isPost ? 'Insert into table' : (isGet ? 'From table' : 'Target table');
+  }
+  const writeLabel = document.getElementById('cab-write-label');
+  if (writeLabel) writeLabel.textContent = isPost ? 'Columns to insert' : 'Columns to update (SET)';
+
+  const aliasLabel = document.getElementById('cab-alias-label');
+  if (aliasLabel) aliasLabel.innerHTML = 'Table alias <span class="cab-star">*</span>';
+}
+
+function cabCreateSelectColRow() {
+  const list = document.getElementById('cab-select-list');
+  if (!list) return;
+  const row = document.createElement('div');
+  row.className = 'cab-card cab-select-row';
+  row.innerHTML = `
+    <div class="cab-card-grid cab-select-grid">
+      <select class="modal-select" data-field="fn">${cabOptions(CAB_AGG, 'NONE')}</select>
+      <select class="modal-select" data-field="col" data-cab-col="scoped">${cabScopedColOptionsHtml()}</select>
+      <input class="modal-input" type="text" data-field="alias" placeholder="alias (optional)" autocomplete="off" />
+      <button type="button" class="cab-icon-btn" data-action="remove" title="Remove">✕</button>
+    </div>`;
+  row.querySelector('[data-action="remove"]').addEventListener('click', () => row.remove());
+  list.appendChild(row);
+}
+
+function cabCreateJoinRow() {
+  const list = document.getElementById('cab-joins-list');
+  if (!list) return;
+  const row = document.createElement('div');
+  row.className = 'cab-card cab-join-row';
+  row.innerHTML = `
+    <div class="cab-card-grid cab-join-grid">
+      <select class="modal-select" data-field="jointype">${cabOptions(CAB_JOIN_TYPES, 'inner')}</select>
+      <select class="modal-select" data-field="table">${cabTableOptionsHtml()}</select>
+      <input class="modal-input" type="text" data-field="alias" placeholder="alias *" autocomplete="off" />
+      <select class="modal-select" data-field="left" data-cab-col="scoped">${cabScopedColOptionsHtml()}</select>
+      <select class="modal-select" data-field="op">${cabOptions(CAB_JOIN_OPS, '=')}</select>
+      <select class="modal-select" data-field="right" data-cab-col="scoped">${cabScopedColOptionsHtml()}</select>
+      <button type="button" class="cab-icon-btn" data-action="remove" title="Remove join">✕</button>
+    </div>`;
+  const onChange = () => cabRefreshAllColSelects();
+  row.querySelector('[data-field="table"]').addEventListener('change', onChange);
+  row.querySelector('[data-field="alias"]').addEventListener('input', onChange);
+  row.querySelector('[data-action="remove"]').addEventListener('click', () => {
+    row.remove();
+    cabSetCount('cab-join-count', document.getElementById('cab-joins-list').children.length, 'join');
+    cabRefreshAllColSelects();
+  });
+  list.appendChild(row);
+  cabSetCount('cab-join-count', list.children.length, 'join');
+  cabRefreshAllColSelects();
+}
+
+function cabRefreshConnectors(container) {
+  if (!container) return;
+  const items = [...container.children].filter(c => c.classList.contains('cab-where-item'));
+  items.forEach((item, idx) => {
+    const conn = item.querySelector(':scope > .cab-conn');
+    if (conn) conn.classList.toggle('is-first', idx === 0);
+  });
+}
+
+function cabUpdateConditionValueUI(item) {
+  const op = item.querySelector('[data-field="op"]').value;
+  const val1 = item.querySelector('[data-dyn="val1"]');
+  const val2 = item.querySelector('[data-dyn="val2"]');
+  const andLabel = item.querySelector('.cab-between');
+  const hideVal = op === 'IS NULL' || op === 'IS NOT NULL';
+  const isBetween = op === 'BETWEEN';
+  if (val1) val1.classList.toggle('cab-hidden', hideVal);
+  if (val2) val2.classList.toggle('cab-hidden', !isBetween);
+  if (andLabel) andLabel.classList.toggle('cab-hidden', !isBetween);
+  const v1Input = item.querySelector('[data-field="val1"]');
+  if (v1Input) {
+    v1Input.placeholder = (op === 'IN' || op === 'NOT IN') ? 'val1, val2, val3' : 'value';
+  }
+}
+
+function cabCreateConditionItem(container) {
+  const item = document.createElement('div');
+  item.className = 'cab-where-item';
+  item.dataset.kind = 'condition';
+  item.innerHTML = `
+    <div class="cab-conn">
+      <select class="modal-select" data-field="conn">${cabOptions(CAB_CONNECTORS, 'and')}</select>
+    </div>
+    <div class="cab-card cab-cond">
+      <select class="modal-select" data-field="col" data-cab-col="scoped">${cabScopedColOptionsHtml()}</select>
+      <select class="modal-select" data-field="op">${cabOptions(CAB_COMPARE_OPS, '=')}</select>
+      ${cabDynHtml('val1', 'value')}
+      <span class="cab-between cab-hidden">AND</span>
+      ${cabDynHtml('val2', 'to')}
+      <button type="button" class="cab-icon-btn" data-action="remove" title="Remove condition">✕</button>
+    </div>`;
+  cabWireDyn(item, 'val1');
+  cabWireDyn(item, 'val2');
+  item.querySelector('[data-field="op"]').addEventListener('change', () => cabUpdateConditionValueUI(item));
+  item.querySelector('[data-action="remove"]').addEventListener('click', () => {
+    const parent = item.parentElement;
+    item.remove();
+    cabRefreshConnectors(parent);
+  });
+  container.appendChild(item);
+  cabUpdateConditionValueUI(item);
+  cabRefreshConnectors(container);
+}
+
+function cabCreateGroupItem(container) {
+  const item = document.createElement('div');
+  item.className = 'cab-where-item';
+  item.dataset.kind = 'group';
+  item.innerHTML = `
+    <div class="cab-conn">
+      <select class="modal-select" data-field="conn">${cabOptions(CAB_CONNECTORS, 'and')}</select>
+    </div>
+    <div class="cab-group">
+      <div class="cab-group__head">
+        <span class="cab-group__label">Group ( … )</span>
+        <button type="button" class="cab-icon-btn" data-action="remove-group" title="Remove group">✕</button>
+      </div>
+      <div class="cab-list cab-where-children"></div>
+      <div class="cab-add-row">
+        <button type="button" class="cab-mini" data-action="add-cond">+ condition</button>
+        <button type="button" class="cab-mini" data-action="add-group">+ nested group</button>
+      </div>
+    </div>`;
+  const children = item.querySelector('.cab-where-children');
+  item.querySelector('[data-action="add-cond"]').addEventListener('click', () => cabCreateConditionItem(children));
+  item.querySelector('[data-action="add-group"]').addEventListener('click', () => cabCreateGroupItem(children));
+  item.querySelector('[data-action="remove-group"]').addEventListener('click', () => {
+    const parent = item.parentElement;
+    item.remove();
+    cabRefreshConnectors(parent);
+  });
+  container.appendChild(item);
+  cabRefreshConnectors(container);
+  cabCreateConditionItem(children);
+}
+
+function cabCreateGroupByRow() {
+  const list = document.getElementById('cab-groupby-list');
+  if (!list) return;
+  const row = document.createElement('div');
+  row.className = 'cab-card cab-groupby-row';
+  row.innerHTML = `
+    <div class="cab-card-grid cab-group-grid">
+      <select class="modal-select" data-field="col" data-cab-col="scoped">${cabScopedColOptionsHtml()}</select>
+      <button type="button" class="cab-icon-btn" data-action="remove" title="Remove">✕</button>
+    </div>`;
+  row.querySelector('[data-action="remove"]').addEventListener('click', () => {
+    row.remove();
+    cabSetCount('cab-groupby-count', list.children.length, 'column');
+  });
+  list.appendChild(row);
+  cabSetCount('cab-groupby-count', list.children.length, 'column');
+}
+
+function cabCreateHavingRow() {
+  const list = document.getElementById('cab-having-list');
+  if (!list) return;
+  const row = document.createElement('div');
+  row.className = 'cab-where-item cab-having-row';
+  row.innerHTML = `
+    <div class="cab-conn">
+      <select class="modal-select" data-field="conn">${cabOptions(CAB_CONNECTORS, 'and')}</select>
+    </div>
+    <div class="cab-card cab-cond">
+      <select class="modal-select" data-field="fn">${cabOptions(CAB_AGG.filter(f => f !== 'NONE'), 'COUNT')}</select>
+      <select class="modal-select" data-field="col" data-cab-col="scoped">${cabScopedColOptionsHtml()}</select>
+      <select class="modal-select" data-field="op">${cabOptions(CAB_HAVING_OPS, '>')}</select>
+      ${cabDynHtml('val', 'value')}
+      <button type="button" class="cab-icon-btn" data-action="remove" title="Remove">✕</button>
+    </div>`;
+  cabWireDyn(row, 'val');
+  row.querySelector('[data-action="remove"]').addEventListener('click', () => {
+    row.remove();
+    cabRefreshConnectors(list);
+  });
+  list.appendChild(row);
+  cabRefreshConnectors(list);
+}
+
+function cabCreateOrderByRow() {
+  const list = document.getElementById('cab-orderby-list');
+  if (!list) return;
+  const row = document.createElement('div');
+  row.className = 'cab-card cab-orderby-row';
+  row.innerHTML = `
+    <div class="cab-card-grid cab-order-grid">
+      <select class="modal-select" data-field="col" data-cab-col="scoped">${cabScopedColOptionsHtml()}</select>
+      <select class="modal-select" data-field="dir">
+        <option value="asc">ASC</option>
+        <option value="desc">DESC</option>
+      </select>
+      <button type="button" class="cab-icon-btn" data-action="remove" title="Remove">✕</button>
+    </div>`;
+  row.querySelector('[data-action="remove"]').addEventListener('click', () => {
+    row.remove();
+    cabSetCount('cab-orderby-count', list.children.length, 'column');
+  });
+  list.appendChild(row);
+  cabSetCount('cab-orderby-count', list.children.length, 'column');
+}
+
+function cabCreateWriteColRow() {
+  const list = document.getElementById('cab-write-list');
+  if (!list) return;
+  const tableId = document.getElementById('cab-from-table')?.value;
+  const row = document.createElement('div');
+  row.className = 'cab-card cab-write-row';
+  row.innerHTML = `
+    <div class="cab-card-grid cab-write-grid">
+      <select class="modal-select" data-field="col" data-cab-col="target">${cabTableColOptionsHtml(tableId)}</select>
+      <select class="modal-select" data-field="src">
+        <option value="body_field">body field</option>
+        <option value="query_param">query param</option>
+        <option value="route_param">route param</option>
+        <option value="static_value">static value</option>
+      </select>
+      <input class="modal-input" type="text" data-field="name" placeholder="field name" autocomplete="off" />
+      <input class="modal-input" type="text" data-field="default" placeholder="default (optional)" autocomplete="off" />
+      <label class="cab-check cab-req-wrap" title="Required">
+        <input type="checkbox" data-field="required" checked />
+      </label>
+      <button type="button" class="cab-icon-btn" data-action="remove" title="Remove">✕</button>
+    </div>`;
+  const srcSelect = row.querySelector('[data-field="src"]');
+  const nameInput = row.querySelector('[data-field="name"]');
+  const defaultInput = row.querySelector('[data-field="default"]');
+  const requiredCb = row.querySelector('[data-field="required"]');
+  function syncMode() {
+    const isStatic = srcSelect.value === 'static_value';
+    nameInput.placeholder = isStatic ? 'literal value' : 'field/param name';
+    defaultInput.classList.toggle('cab-hidden', isStatic);
+    requiredCb.parentElement.classList.toggle('cab-hidden', isStatic);
+    if (isStatic) requiredCb.checked = false;
+  }
+  srcSelect.addEventListener('change', syncMode);
+  row.querySelector('[data-action="remove"]').addEventListener('click', () => {
+    row.remove();
+    cabSetCount('cab-write-count', list.children.length, 'column');
+  });
+  list.appendChild(row);
+  syncMode();
+  cabSetCount('cab-write-count', list.children.length, 'column');
+}
+
+function cabCreateReturningRow() {
+  const list = document.getElementById('cab-returning-list');
+  if (!list) return;
+  const tableId = document.getElementById('cab-from-table')?.value;
+  const row = document.createElement('div');
+  row.className = 'cab-card cab-returning-row';
+  row.innerHTML = `
+    <div class="cab-card-grid cab-return-grid">
+      <select class="modal-select" data-field="col" data-cab-col="target">${cabTableColOptionsHtml(tableId)}</select>
+      <button type="button" class="cab-icon-btn" data-action="remove" title="Remove">✕</button>
+    </div>`;
+  row.querySelector('[data-action="remove"]').addEventListener('click', () => {
+    row.remove();
+    cabSetCount('cab-returning-count', list.children.length, 'column');
+  });
+  list.appendChild(row);
+  cabSetCount('cab-returning-count', list.children.length, 'column');
+}
+
+function cabReadWhere(container, errors, path) {
+  const items = [...container.children].filter(c => c.classList.contains('cab-where-item'));
+  return items.map((item, i) => {
+    const logical_operator = item.querySelector(':scope > .cab-conn [data-field="conn"]')?.value || 'and';
+    if (item.dataset.kind === 'group') {
+      const childrenEl = item.querySelector('.cab-where-children');
+      const children = cabReadWhere(childrenEl, errors, `${path}[${i}].children`);
+      if (!children.length) errors.push(`${path}[${i}]: group must have at least one condition`);
+      return { node_type: 'group', logical_operator, children };
+    }
+    const ref = cabParseColRef(item.querySelector('[data-field="col"]').value);
+    if (!ref) errors.push(`${path}[${i}]: select a column`);
+    const operator = item.querySelector('[data-field="op"]').value;
+    const node = {
+      node_type: 'condition',
+      logical_operator,
+      table_alias: ref ? ref.table_alias : null,
+      col_id: ref ? ref.col_id : null,
+      operator,
+    };
+    if (operator !== 'IS NULL' && operator !== 'IS NOT NULL') {
+      node.val1 = cabReadDyn(item, 'val1');
+      const err = cabValidateDyn(node.val1, `${path}[${i}].val1`);
+      if (err) errors.push(err);
+    }
+    if (operator === 'BETWEEN') {
+      node.val2 = cabReadDyn(item, 'val2');
+      const err = cabValidateDyn(node.val2, `${path}[${i}].val2`);
+      if (err) errors.push(err);
+    }
+    return node;
+  });
+}
+
+function cabReadPaging(prefix, label, errors) {
+  const wrap = document.querySelector(`#cab-form [data-dyn="${prefix}"]`);
+  if (!wrap) return null;
+  const isDyn = wrap.querySelector('[data-action="toggle-dyn"]').classList.contains('is-on');
+  if (!isDyn) {
+    const raw = wrap.querySelector(`[data-field="${prefix}"]`).value.trim();
+    if (raw === '') return null;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 0) {
+      errors.push(`${label} must be a non-negative integer`);
+      return null;
+    }
+    if (prefix === 'limit' && n > 1000) {
+      errors.push('limit must be no greater than 1000');
+      return null;
+    }
+    return n;
+  }
+  const val = cabReadDyn(wrap, prefix);
+  const err = cabValidateDyn(val, label);
+  if (err) errors.push(err);
+  if (val && val.fallback_value !== null && val.fallback_value !== undefined && val.fallback_value !== '') {
+    const n = Number(val.fallback_value);
+    if (!Number.isInteger(n) || n < 0) errors.push(`${label} fallback default must be a non-negative integer`);
+    if (prefix === 'limit' && Number.isInteger(n) && n > 1000) errors.push('limit fallback default must be no greater than 1000');
+  }
+  return val;
+}
+
+function cabCollectAliases(errors) {
+  const method = document.getElementById('cab-method').value;
+  const tableId = Number(document.getElementById('cab-from-table').value);
+  const alias = (document.getElementById('cab-from-alias')?.value || '').trim();
+  if (method !== 'POST') {
+    if (!alias) errors.push('Table alias is required');
+    else if (!CAB_ALIAS_RE.test(alias)) errors.push('Table alias must start with a letter or underscore and use only letters, digits, or underscores');
+  }
+  const seen = new Map();
+  if (alias) seen.set(alias, tableId);
+  if (method === 'GET') {
+    document.querySelectorAll('#cab-joins-list .cab-join-row').forEach((row, i) => {
+      const jAlias = (row.querySelector('[data-field="alias"]').value || '').trim();
+      const jTableId = Number(row.querySelector('[data-field="table"]').value);
+      if (!jAlias) errors.push(`Join ${i + 1}: table alias is required`);
+      else if (!CAB_ALIAS_RE.test(jAlias)) errors.push(`Join ${i + 1}: invalid table alias`);
+      else if (seen.has(jAlias) && seen.get(jAlias) !== jTableId) errors.push(`Duplicate table alias "${jAlias}" used for different tables`);
+      else seen.set(jAlias, jTableId);
+    });
+  }
+  return { tableId, alias };
+}
+
+function cabBuildPayload(errors) {
+  const method = document.getElementById('cab-method').value;
+  const { tableId, alias } = cabCollectAliases(errors);
+  if (!tableId) errors.push('Select a table');
+
+  if (method === 'GET') {
+    const cols_obj_array = [];
+    document.querySelectorAll('#cab-select-all-list input[data-select-all]:checked').forEach(cb => {
+      const a = cb.getAttribute('data-alias');
+      if (a) cols_obj_array.push({ is_select_all: true, table_alias: a, alias: null, function: null, col_id: null });
+    });
+    document.querySelectorAll('#cab-select-list .cab-select-row').forEach((row, i) => {
+      const ref = cabParseColRef(row.querySelector('[data-field="col"]').value);
+      if (!ref) { errors.push(`Select column ${i + 1}: choose a column`); return; }
+      const fn = row.querySelector('[data-field="fn"]').value;
+      const colAlias = (row.querySelector('[data-field="alias"]').value || '').trim();
+      if (colAlias && !CAB_ALIAS_RE.test(colAlias)) errors.push(`Select column ${i + 1}: invalid output alias`);
+      cols_obj_array.push({
+        is_select_all: false,
+        table_alias: ref.table_alias,
+        alias: colAlias || null,
+        function: fn === 'NONE' ? null : fn,
+        col_id: ref.col_id,
+      });
+    });
+    if (!cols_obj_array.length) errors.push('Select at least one column, or enable select all for a table');
+
+    const join_obj_array = [...document.querySelectorAll('#cab-joins-list .cab-join-row')].map((row, i) => {
+      const type = row.querySelector('[data-field="jointype"]').value;
+      const jTableId = Number(row.querySelector('[data-field="table"]').value);
+      const jAlias = (row.querySelector('[data-field="alias"]').value || '').trim();
+      const left = cabParseColRef(row.querySelector('[data-field="left"]').value);
+      const right = cabParseColRef(row.querySelector('[data-field="right"]').value);
+      const join_operator = row.querySelector('[data-field="op"]').value;
+      if (!left || !right) errors.push(`Join ${i + 1}: select both join columns`);
+      return {
+        type,
+        table_id: jTableId,
+        alias: jAlias,
+        join_operator,
+        left: left || { table_alias: null, col_id: null },
+        right: right || { table_alias: null, col_id: null },
+      };
+    });
+
+    const whereRoot = document.getElementById('cab-where-root');
+    const where = cabReadWhere(whereRoot, errors, 'where');
+
+    const group_by_cols_array = [...document.querySelectorAll('#cab-groupby-list .cab-groupby-row')].map((row, i) => {
+      const ref = cabParseColRef(row.querySelector('[data-field="col"]').value);
+      if (!ref) errors.push(`Group by ${i + 1}: select a column`);
+      return ref || { table_alias: null, col_id: null };
+    });
+
+    const having = [...document.querySelectorAll('#cab-having-list .cab-having-row')].map((row, i) => {
+      const ref = cabParseColRef(row.querySelector('[data-field="col"]').value);
+      if (!ref) errors.push(`Having ${i + 1}: select a column`);
+      const dyn = cabReadDyn(row, 'val');
+      const err = cabValidateDyn(dyn, `Having ${i + 1}`);
+      if (err) errors.push(err);
+      return {
+        logical_operator: row.querySelector('[data-field="conn"]').value,
+        function_name: row.querySelector('[data-field="fn"]').value,
+        table_alias: ref ? ref.table_alias : null,
+        col_id: ref ? ref.col_id : null,
+        having_operator: row.querySelector('[data-field="op"]').value,
+        is_dynamic: dyn ? dyn.is_dynamic : false,
+        fallback_value: dyn ? dyn.fallback_value : undefined,
+        dynamic_value_getting_type: dyn ? dyn.dynamic_value_getting_type : null,
+        dynamic_field_name: dyn ? dyn.dynamic_field_name : null,
+        is_dynamic_required: dyn ? dyn.is_dynamic_required : false,
+      };
+    });
+
+    const order_by_array = [...document.querySelectorAll('#cab-orderby-list .cab-orderby-row')].map((row, i) => {
+      const ref = cabParseColRef(row.querySelector('[data-field="col"]').value);
+      if (!ref) errors.push(`Order by ${i + 1}: select a column`);
+      return {
+        table_alias: ref ? ref.table_alias : null,
+        col_id: ref ? ref.col_id : null,
+        order: row.querySelector('[data-field="dir"]').value,
+      };
+    });
+
+    const payload = {
+      select_obj: { table_id: tableId, table_alias: alias, cols_obj_array },
+      join_obj_array,
+      where,
+      group_by_cols_array,
+      having,
+      order_by_array,
+    };
+    const limit = cabReadPaging('limit', 'limit', errors);
+    const offset = cabReadPaging('offset', 'offset', errors);
+    if (limit != null) payload.limit = limit;
+    if (offset != null) payload.offset = offset;
+    return payload;
+  }
+
+  if (method === 'POST') {
+    const rows = [...document.querySelectorAll('#cab-write-list .cab-write-row')];
+    if (!rows.length) errors.push('Add at least one column to insert');
+    const column_id_array = [];
+    const value_obj_array = [];
+    rows.forEach((row, i) => {
+      const colId = Number(row.querySelector('[data-field="col"]').value);
+      if (!colId) { errors.push(`Insert column ${i + 1}: select a column`); return; }
+      const source = row.querySelector('[data-field="src"]').value;
+      const name = row.querySelector('[data-field="name"]').value.trim();
+      const defRaw = row.querySelector('[data-field="default"]').value.trim();
+      const isStatic = source === 'static_value';
+      if (isStatic && !name) errors.push(`Insert column ${i + 1}: enter a static value`);
+      if (!isStatic && !name) errors.push(`Insert column ${i + 1}: field/param name is required`);
+      column_id_array.push(colId);
+      value_obj_array.push({
+        col_id: colId,
+        is_dynamic: !isStatic,
+        source,
+        dynamic_field_name: isStatic ? null : name,
+        default_value: isStatic ? cabCoerceLiteral(name) : (defRaw === '' ? null : cabCoerceLiteral(defRaw)),
+      });
+    });
+    const returning_cols_id = [...document.querySelectorAll('#cab-returning-list .cab-returning-row')]
+      .map((row, i) => {
+        const colId = Number(row.querySelector('[data-field="col"]').value);
+        if (!colId) errors.push(`Returning column ${i + 1}: select a column`);
+        return colId;
+      })
+      .filter(Boolean);
+    return { table_id: tableId, column_id_array, value_obj_array, returning_cols_id };
+  }
+
+  const value_obj_array = method === 'PUT'
+    ? [...document.querySelectorAll('#cab-write-list .cab-write-row')].map((row, i) => {
+        const colId = Number(row.querySelector('[data-field="col"]').value);
+        if (!colId) { errors.push(`Update column ${i + 1}: select a column`); return null; }
+        const source = row.querySelector('[data-field="src"]').value;
+        const name = row.querySelector('[data-field="name"]').value.trim();
+        const defRaw = row.querySelector('[data-field="default"]').value.trim();
+        const isStatic = source === 'static_value';
+        if (isStatic && !name) errors.push(`Update column ${i + 1}: enter a static value`);
+        if (!isStatic && !name) errors.push(`Update column ${i + 1}: field/param name is required`);
+        return {
+          col_id: colId,
+          is_dynamic: !isStatic,
+          source,
+          dynamic_field_name: isStatic ? null : name,
+          default_value: isStatic ? cabCoerceLiteral(name) : (defRaw === '' ? null : cabCoerceLiteral(defRaw)),
+        };
+      }).filter(Boolean)
+    : undefined;
+  if (method === 'PUT' && (!value_obj_array || !value_obj_array.length)) {
+    errors.push('Add at least one column to update');
+  }
+
+  const whereRoot = document.getElementById('cab-where-root');
+  const where = cabReadWhere(whereRoot, errors, 'where');
+  if (!where.length) errors.push(`${method} requires at least one WHERE condition`);
+
+  const returning_cols_id = [...document.querySelectorAll('#cab-returning-list .cab-returning-row')]
+    .map((row, i) => {
+      const colId = Number(row.querySelector('[data-field="col"]').value);
+      if (!colId) errors.push(`Returning column ${i + 1}: select a column`);
+      return colId;
+    })
+    .filter(Boolean);
+
+  const payload = { table_id: tableId, table_alias: alias, where, returning_cols_id };
+  if (method === 'PUT') payload.value_obj_array = value_obj_array;
+  return payload;
+}
+
+async function openCreateApiModal() {
+  const overlay = document.getElementById('vp-modal-overlay');
+  if (overlay) overlay.classList.add('vp-modal--xl');
+  showModal('Create API', '<p class="vp-empty__text">Loading tables…</p>', '');
+
+  try {
+    await cabLoadCatalog();
+  } catch (_) {
+    setModalBody('<p class="vp-empty__text">Could not load tables. Is the backend reachable?</p>');
+    setModalFoot('<button class="btn btn--ghost btn--sm" id="cab-cancel" type="button">Close</button>');
+    document.getElementById('cab-cancel')?.addEventListener('click', closeModal);
+    return;
+  }
+
+  if (!cabState.tables.length) {
+    setModalBody('<p class="vp-empty__text">Create at least one table before adding an API.</p>');
+    setModalFoot('<button class="btn btn--ghost btn--sm" id="cab-cancel" type="button">Close</button>');
+    document.getElementById('cab-cancel')?.addEventListener('click', closeModal);
+    return;
+  }
+
+  const tableOptions = cabTableOptionsHtml();
+  const bodyHtml = `
+    <form class="cab-form" id="cab-form" autocomplete="off">
+      <div class="cab-errors is-hidden" id="cab-errors">
+        <div class="cab-errors__title">Could not create API</div>
+        <ul id="cab-errors-list"></ul>
+      </div>
+
+      <section class="cab-section cab-meta">
+        <div class="cab-row cab-row--3">
+          <div class="field">
+            <label class="field__label" for="cab-api-name">API name <span class="cab-star">*</span></label>
+            <input class="modal-input" type="text" id="cab-api-name" maxlength="30" placeholder="e.g. get_users" />
+            <span class="field__hint">Lowercase a–z, digits, underscore. Must start with a letter. Max 30.</span>
+          </div>
+          <div class="field">
+            <label class="field__label" for="cab-method">Method</label>
+            <select class="modal-select" id="cab-method">
+              <option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option>
+            </select>
+          </div>
+          <div class="field" id="cab-table-wrap">
+            <label class="field__label" for="cab-from-table" id="cab-table-label">From table</label>
+            <select class="modal-select" id="cab-from-table">${tableOptions}</select>
+          </div>
+        </div>
+        <div class="cab-row cab-row--2" style="margin-top:12px;">
+          <div class="field" id="cab-alias-wrap">
+            <label class="field__label" for="cab-from-alias" id="cab-alias-label">Table alias <span class="cab-star">*</span></label>
+            <input class="modal-input" type="text" id="cab-from-alias" maxlength="63" placeholder="e.g. u1" />
+            <span class="field__hint">Required. Letters, digits, underscore. Must start with a letter or underscore.</span>
+          </div>
+        </div>
+      </section>
+
+      <div id="cab-get-sections">
+        <section class="cab-section">
+          <div class="cab-section-head">
+            <span class="cab-label">Select columns</span>
+          </div>
+          <p class="cab-hint">Select all (*) is per table — every FROM / JOIN table with an alias can be included.</p>
+          <div class="cab-select-all-list" id="cab-select-all-list"></div>
+          <div class="cab-col-head cab-select-grid">
+            <div>Function</div><div>Column</div><div>Alias (AS)</div><div></div>
+          </div>
+          <div class="cab-list" id="cab-select-list"></div>
+          <button type="button" class="btn btn--ghost btn--sm cab-add" id="cab-add-select">+ Add column</button>
+        </section>
+
+        <section class="cab-section">
+          <div class="cab-section-head">
+            <span class="cab-label">Joins</span>
+            <span class="cab-count" id="cab-join-count">0 joins</span>
+          </div>
+          <div class="cab-list" id="cab-joins-list"></div>
+          <button type="button" class="btn btn--ghost btn--sm cab-add" id="cab-add-join">+ Add join</button>
+        </section>
+      </div>
+
+      <section class="cab-section cab-hidden" id="cab-write-section">
+        <div class="cab-section-head">
+          <span class="cab-label" id="cab-write-label">Columns to insert</span>
+          <span class="cab-count" id="cab-write-count">0 columns</span>
+        </div>
+        <div class="cab-col-head cab-write-grid">
+          <div>Column</div><div>Source</div><div>Field / value</div><div>Default</div><div>Req</div><div></div>
+        </div>
+        <div class="cab-list" id="cab-write-list"></div>
+        <button type="button" class="btn btn--ghost btn--sm cab-add" id="cab-add-write">+ Add column</button>
+      </section>
+
+      <section class="cab-section" id="cab-where-section">
+        <div class="cab-section-head">
+          <span class="cab-label">Where (filters)</span>
+          <span class="cab-note cab-note--warn cab-hidden" id="cab-where-required">Required for this method — prevents accidental full-table writes</span>
+        </div>
+        <div class="cab-list" id="cab-where-root"></div>
+        <div class="cab-add-row">
+          <button type="button" class="btn btn--ghost btn--sm" id="cab-add-where-cond">+ Add condition</button>
+          <button type="button" class="btn btn--ghost btn--sm" id="cab-add-where-group">+ Add group ( … )</button>
+        </div>
+      </section>
+
+      <div id="cab-get-extras">
+        <section class="cab-section">
+          <div class="cab-section-head">
+            <span class="cab-label">Group by</span>
+            <span class="cab-count" id="cab-groupby-count">0 columns</span>
+          </div>
+          <div class="cab-list" id="cab-groupby-list"></div>
+          <button type="button" class="btn btn--ghost btn--sm cab-add" id="cab-add-groupby">+ Add group by column</button>
+        </section>
+
+        <section class="cab-section">
+          <div class="cab-section-head">
+            <span class="cab-label">Having (post-aggregate filters)</span>
+            <span class="cab-note">Applies after GROUP BY</span>
+          </div>
+          <div class="cab-list" id="cab-having-list"></div>
+          <button type="button" class="btn btn--ghost btn--sm cab-add" id="cab-add-having">+ Add having condition</button>
+        </section>
+
+        <section class="cab-section">
+          <div class="cab-section-head">
+            <span class="cab-label">Order by</span>
+            <span class="cab-count" id="cab-orderby-count">0 columns</span>
+          </div>
+          <div class="cab-list" id="cab-orderby-list"></div>
+          <button type="button" class="btn btn--ghost btn--sm cab-add" id="cab-add-orderby">+ Add order by column</button>
+        </section>
+
+        <section class="cab-section cab-meta">
+          <div class="cab-row cab-row--paging">
+            <div class="field">
+              <label class="field__label">Limit</label>
+              ${cabDynHtml('limit', 'e.g. 50', 'number')}
+            </div>
+            <div class="field">
+              <label class="field__label">Offset</label>
+              ${cabDynHtml('offset', 'e.g. 0', 'number')}
+            </div>
+          </div>
+          <p class="cab-hint">Leave empty to omit. Mark dynamic to let consumers override via query / route / body — same pattern as WHERE.</p>
+        </section>
+      </div>
+
+      <section class="cab-section cab-hidden" id="cab-returning-section">
+        <div class="cab-section-head">
+          <span class="cab-label">Returning (optional)</span>
+          <span class="cab-count" id="cab-returning-count">0 columns</span>
+        </div>
+        <p class="cab-hint">Columns to send back after the write. Leave empty to return nothing.</p>
+        <div class="cab-list" id="cab-returning-list"></div>
+        <button type="button" class="btn btn--ghost btn--sm cab-add" id="cab-add-returning">+ Add returning column</button>
+      </section>
+    </form>
+  `;
+
+  const footHtml = `
+    <button class="btn btn--ghost btn--sm" id="cab-cancel" type="button">Cancel</button>
+    <button class="btn btn--primary btn--sm" id="cab-submit" type="button">Create API</button>
+  `;
+
+  setModalBody(bodyHtml);
+  setModalFoot(footHtml);
+
+  document.getElementById('cab-method').addEventListener('change', cabApplyMethodVisibility);
+  document.getElementById('cab-from-table').addEventListener('change', cabRefreshAllColSelects);
+  document.getElementById('cab-from-alias').addEventListener('input', cabRefreshAllColSelects);
+  document.getElementById('cab-add-select').addEventListener('click', cabCreateSelectColRow);
+  document.getElementById('cab-add-join').addEventListener('click', cabCreateJoinRow);
+  document.getElementById('cab-add-write').addEventListener('click', cabCreateWriteColRow);
+  document.getElementById('cab-add-where-cond').addEventListener('click', () => cabCreateConditionItem(document.getElementById('cab-where-root')));
+  document.getElementById('cab-add-where-group').addEventListener('click', () => cabCreateGroupItem(document.getElementById('cab-where-root')));
+  document.getElementById('cab-add-groupby').addEventListener('click', cabCreateGroupByRow);
+  document.getElementById('cab-add-having').addEventListener('click', cabCreateHavingRow);
+  document.getElementById('cab-add-orderby').addEventListener('click', cabCreateOrderByRow);
+  document.getElementById('cab-add-returning').addEventListener('click', cabCreateReturningRow);
+  document.getElementById('cab-cancel').addEventListener('click', closeModal);
+  document.getElementById('cab-submit').addEventListener('click', submitCreateApi);
+
+  cabWireDyn(document.getElementById('cab-form'), 'limit');
+  cabWireDyn(document.getElementById('cab-form'), 'offset');
+
+  cabApplyMethodVisibility();
+  cabRefreshAllColSelects();
+  document.getElementById('cab-api-name')?.focus();
+}
+
+async function submitCreateApi() {
+  const submitBtn = document.getElementById('cab-submit');
+  const apiName = (document.getElementById('cab-api-name')?.value || '').trim();
+  const method = document.getElementById('cab-method')?.value;
+  const errors = [];
+
+  if (!apiName) errors.push('API name is required');
+  else if (!CAB_API_NAME_RE.test(apiName)) errors.push('API name must start with a–z and use only lowercase letters, digits, or underscores (max 30)');
+
+  const payload = cabBuildPayload(errors);
+  if (errors.length) {
+    cabShowErrors(errors);
+    return;
+  }
+
+  setLoading(submitBtn, true);
+  cabShowErrors([]);
+  try {
+    const qs = new URLSearchParams({
+      projectId: String(vpState.projectId),
+      api_name: apiName,
+      method,
+    });
+    const res = await apiFetch(`/new/api/create?${qs.toString()}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.valid !== false) {
+      closeModal();
+      showToast(data.msg || 'API definition added successfully', 'success');
+      vpState.loaded.apis = false;
+      loadApis();
+      return;
+    }
+    const backendErrors = Array.isArray(data.errors) && data.errors.length
+      ? data.errors
+      : [data.msg || data.error || 'Failed to create API'];
+    cabShowErrors(backendErrors);
+    setLoading(submitBtn, false);
+  } catch (_) {
+    cabShowErrors(['Network error. Is the backend reachable?']);
+    setLoading(submitBtn, false);
+  }
 }
 
 /* -----------------------------------------------------------------------
@@ -2017,6 +3061,7 @@ function closeModal() {
   if (overlay) {
     overlay.hidden = true;
     overlay.classList.remove('vp-modal--wide');
+    overlay.classList.remove('vp-modal--xl');
   }
   setModalBody('');
   setModalFoot('');
