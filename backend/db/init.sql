@@ -763,8 +763,8 @@ BEGIN
         EXECUTE FORMAT('ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I',
             v_schema, rec.TABLE_NAME, 'pk_' || rec.table_id);
         IF v_pk_cols IS NOT NULL THEN
-             EXECUTE FORMAT('ALTER TABLE %I.%I ADD COLUMN %I NOT CONFLICT DO NOTHING',
-                v_schema, NEW.col_name);
+            --  EXECUTE FORMAT('ALTER TABLE %I.%I ADD COLUMN %I NOT CONFLICT DO NOTHING',
+            --     v_schema,rec.TABLE_NAME ,  NEW.col_name);
             EXECUTE FORMAT('ALTER TABLE %I.%I ADD CONSTRAINT %I PRIMARY KEY(%s)',
                 v_schema, rec.TABLE_NAME, 'pk_' || rec.table_id, v_pk_cols);
         END IF;
@@ -773,7 +773,7 @@ BEGIN
         EXECUTE FORMAT('ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I',
             v_schema, rec.TABLE_NAME, 'pk_' || rec.table_id);
 
-        SELECT string_agg(FORMAT('%I', col_name), ',' ORDER BY col_name)
+        SELECT string_agg(FORMAT('%I', col_name), ',' ORDER BY col_id)
         INTO v_pk_cols
         FROM schema_columns
         WHERE schema_table_id = NEW.schema_table_id AND is_primary_key = true;
@@ -826,7 +826,7 @@ BEGIN
   schema_name := 'PROJ_' || rec.id || '_' || rec.author_id;
 
   fk_def := FORMAT(
-    'FOREIGN KEY (%I) REFERENCES %I.%I(%I) ON DELETE %s ON UPDATE %s',
+    'FOREIGN KEY (%I) REFERENCES %I.%I( %I ) ON DELETE %s ON UPDATE %s',
     rec.child_name, schema_name, rec.parent_table, rec.parent_name, NEW.on_delete, NEW.on_update
   );
 

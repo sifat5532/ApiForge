@@ -262,7 +262,7 @@ router.post('/createTable', requireAuth, requireProjectAccess, isProjectActive, 
     }
     const table_name = name.trim().toLowerCase();
     if (validateName(req, res, table_name, 'table', 'NULL').isResSent) return; // can be added table front end id here later
-
+     
     if (cols == null || cols.length < 1) {
         return res.status(400).json({ msg: "You should create at least one column" });
     }
@@ -291,7 +291,7 @@ router.post('/createTable', requireAuth, requireProjectAccess, isProjectActive, 
         }
         const col_name = cols[i][0].trim().toLowerCase();
         if (validateName(req, res, col_name, 'column', cols[i][8]).isResSent) { return; }
-
+        cols[i][0] = col_name;
         for (let j = 0; j < i; j++) {
             if (col_name == cols[j][0].trim().toLowerCase()) {
                 return res.status(400).json({ msg: 'Every column name should be unique in a table', id: cols[i][8] });
