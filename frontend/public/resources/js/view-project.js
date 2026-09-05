@@ -1508,14 +1508,17 @@ function initSettingsForm() {
 function renderSettingsTags() {
   const wrap = document.getElementById('vp-settings-tags');
   if (!wrap) return;
-  wrap.innerHTML = vpState.settingsTags.map((t, i) => `
-    <span class="tag" data-tag-index="${i}">${escHtml(t)}${vpState.isAuthor ? ' <button type="button" class="tag__remove" data-tag-index="${i}" aria-label="Remove tag">&times;</button>' : ''}</span>
+  wrap.innerHTML = vpState.settingsTags.map((t) => `
+    <span class="tag">${escHtml(t)}${vpState.isAuthor ? ` <button type="button" class="tag__remove" data-tag-name="${escHtml(t)}" aria-label="Remove tag">&times;</button>` : ''}</span>
   `).join('');
   wrap.querySelectorAll('.tag__remove').forEach(btn => {
     btn.addEventListener('click', () => {
-      const idx = parseInt(btn.getAttribute('data-tag-index'), 10);
-      vpState.settingsTags.splice(idx, 1);
-      renderSettingsTags();
+      const name = btn.getAttribute('data-tag-name');
+      const idx = vpState.settingsTags.indexOf(name);
+      if (idx !== -1) {
+        vpState.settingsTags.splice(idx, 1);
+        renderSettingsTags();
+      }
     });
   });
 }
