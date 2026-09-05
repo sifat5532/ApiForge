@@ -13,6 +13,55 @@ function qi(identifier) {
     return `"${String(identifier).replace(/"/g, '""')}"`;
 }
 
+function collectRouteParamNames(definition) {
+    const names = [];
+
+    function visitVal(val) {
+        if (!val) return;
+        if (val.dynamic_value_getting_type === 'route_param' && val.dynamic_field_name) {
+            names.push(val.dynamic_field_name);
+        }
+        if (val.source === 'route_param' && val.dynamic_field_name) {
+            names.push(val.dynamic_field_name);
+        }
+    }
+
+    function visitWhere(whereArr) {
+        if (!Array.isArray(whereArr)) return;
+        for (const node of whereArr) {
+            if (node.node_type === 'group') {
+                visitWhere(node.children);
+            } else {
+                visitVal(node.val1);
+                visitVal(node.val2);
+            }
+        }
+    }
+
+    visitWhere(definition.where);
+    if (Array.isArray(definition.value_obj_array)) {
+        definition.value_obj_array.forEach(visitVal);
+    }
+    if (Array.isArray(definition.having)) {
+        definition.having.forEach(visitVal);
+    }
+    visitVal(definition.limit);
+    visitVal(definition.offset);
+
+    return names;
+}
+
+function attachRouteParams(req, definition) {
+    const extraSegments = Array.isArray(req.params.splat) ? req.params.splat : [];
+    const routeParamNames = collectRouteParamNames(definition);
+
+    routeParamNames.forEach((name, i) => {
+        if (extraSegments[i] !== undefined) {
+            req.params[name] = extraSegments[i];
+        }
+    });
+}
+
 async function validateApiRoute(req, res, next) {
     const { username, projectname, apiname } = req.params;
 
@@ -41,6 +90,7 @@ async function validateApiRoute(req, res, next) {
         }
 
         const apiDefinition = result.rows[0];
+        attachRouteParams(req, apiDefinition.query_definition);
 
         if (apiDefinition.method.toUpperCase() !== req.method) {
             return res.status(405).json({ error: 'Method not allowed' });
@@ -88,11 +138,11 @@ async function handleApiRequest(req, res) {
             case 'GET':
                 return await handleGet(req, res, apiDefinition);
             case 'POST':
-                return res.status(501).json({ error: 'Not implemented yet' });
+                return await handleInsert(req, res, apiDefinition);
             case 'PUT':
-                return res.status(501).json({ error: 'Not implemented yet' });
+                return await handleUpdate(req, res, apiDefinition);
             case 'DELETE':
-                return res.status(501).json({ error: 'Not implemented yet' });
+                return await handleDelete(req, res, apiDefinition);
         }
     } catch (err) {
         console.error('handleApiRequest error:', err);
@@ -174,9 +224,9 @@ async function handleDelete(req, res, apiDefinition) {
     return executeApiQuery(req, res, apiDefinition, buildDeleteSQL, 200);
 }
 
-router.get('/:username/:projectname/:apiname', validateApiRoute, handleApiRequest);
-router.post('/:username/:projectname/:apiname', validateApiRoute, handleApiRequest);
-router.put('/:username/:projectname/:apiname', validateApiRoute, handleApiRequest);
-router.delete('/:username/:projectname/:apiname', validateApiRoute, handleApiRequest);
+router.get('/:username/:projectname/:apiname{/*splat}', validateApiRoute, handleApiRequest);
+router.post('/:username/:projectname/:apiname{/*splat}', validateApiRoute, handleApiRequest);
+router.put('/:username/:projectname/:apiname{/*splat}', validateApiRoute, handleApiRequest);
+router.delete('/:username/:projectname/:apiname{/*splat}', validateApiRoute, handleApiRequest);
 
 module.exports = router;
