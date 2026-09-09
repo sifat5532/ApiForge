@@ -988,9 +988,13 @@ EXECUTE FUNCTION tgfunc_log_collaborator ();
 
 -- schema_tables : create (insert) / update (rename) / delete
 -- A temp table marks tables created in this transaction so their initial columns log as 'create'
--- instead of a plain 'insert'. Another temp table marks dropped tables so their cascade-deleted
--- columns are not logged individually.
+-- instead of a plain 'insert'. Another temp table (populated by a BEFORE trigger) holds the
+-- dropped table's full structure (columns + foreign keys) so a 'delete' log captures the
+-- structure, not just the table name.
 CREATE OR REPLACE FUNCTION tgfunc_log_schema_table () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+   v_dropped RECORD;
+   v_columns JSONB;
 BEGIN
    IF TG_OP = 'INSERT' THEN
       CREATE TEMP TABLE IF NOT EXISTS _log_new_tables (schema_table_id INTEGER) ON COMMIT DROP;
@@ -999,15 +1003,41 @@ BEGIN
       -- once at transaction end by tgfunc_log_new_tables_finalize.
    ELSIF TG_OP = 'UPDATE' THEN
       IF NEW.table_name IS DISTINCT FROM OLD.table_name THEN
+         SELECT COALESCE(
+            jsonb_agg(jsonb_build_object(
+               'col_name', col_name,
+               'col_type', col_type,
+               'is_primary_key', is_primary_key,
+               'is_nullable', is_nullable,
+               'is_unique', is_unique,
+               'default_value', default_value,
+               'col_length', col_length,
+               'is_auto_increment', is_auto_increment
+            ) ORDER BY id),
+            '[]'::jsonb
+         )
+         INTO v_columns
+         FROM schema_columns
+         WHERE schema_table_id = NEW.id;
+
          PERFORM func_log_project_change(NEW.project_id, 'schema_table', NEW.id, 'update',
-            jsonb_build_object('table_name', OLD.table_name),
-            jsonb_build_object('table_name', NEW.table_name));
+            jsonb_build_object('table_name', OLD.table_name, 'columns', v_columns),
+            jsonb_build_object('table_name', NEW.table_name, 'columns', v_columns));
       END IF;
    ELSIF TG_OP = 'DELETE' THEN
-      CREATE TEMP TABLE IF NOT EXISTS _log_dropped_tables (schema_table_id INTEGER) ON COMMIT DROP;
-      INSERT INTO _log_dropped_tables VALUES (OLD.id);
+      v_dropped := NULL;
+      IF to_regclass('pg_temp._log_dropped_tables') IS NOT NULL THEN
+         SELECT * INTO v_dropped FROM _log_dropped_tables WHERE schema_table_id = OLD.id;
+      END IF;
+
       PERFORM func_log_project_change(OLD.project_id, 'schema_table', OLD.id, 'delete',
-         jsonb_build_object('table_name', OLD.table_name), NULL);
+         CASE
+            WHEN v_dropped IS NULL THEN
+               jsonb_build_object('table_name', OLD.table_name)
+            ELSE
+               jsonb_build_object('table_name', v_dropped.table_name, 'columns', v_dropped.columns, 'foreign_keys', v_dropped.foreign_keys)
+         END,
+         NULL);
    END IF;
    RETURN COALESCE(NEW, OLD);
 END;
@@ -1019,6 +1049,70 @@ CREATE TRIGGER tg_log_schema_table
 AFTER INSERT OR UPDATE OR DELETE ON schema_tables FOR EACH ROW
 EXECUTE FUNCTION tgfunc_log_schema_table ();
 
+-- BEFORE DELETE snapshot of a dropped table's full structure (columns + foreign keys) so the
+-- AFTER DELETE log can record the structure, not just the table name. Runs before the cascade
+-- delete of child columns / foreign keys, so the structure is still readable here.
+CREATE OR REPLACE FUNCTION tgfunc_snapshot_dropped_table () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+   v_columns JSONB;
+   v_foreign_keys JSONB;
+BEGIN
+   SELECT COALESCE(
+      jsonb_agg(jsonb_build_object(
+         'col_name', col_name,
+         'col_type', col_type,
+         'is_primary_key', is_primary_key,
+         'is_nullable', is_nullable,
+         'is_unique', is_unique,
+         'default_value', default_value,
+         'col_length', col_length,
+         'is_auto_increment', is_auto_increment
+      ) ORDER BY id),
+      '[]'::jsonb
+   )
+   INTO v_columns
+   FROM schema_columns
+   WHERE schema_table_id = OLD.id;
+
+   SELECT COALESCE(
+      jsonb_agg(jsonb_build_object(
+         'fk_name', fk.fk_name,
+         'child_table', cst.table_name,
+         'child_col', cc.col_name,
+         'parent_table', pst.table_name,
+         'parent_col', pc.col_name,
+         'on_delete', fk.on_delete,
+         'on_update', fk.on_update
+      ) ORDER BY fk.child_col_id),
+      '[]'::jsonb
+   )
+   INTO v_foreign_keys
+   FROM schema_foreign_keys fk
+   JOIN schema_columns cc ON cc.id = fk.child_col_id
+   JOIN schema_tables cst ON cst.id = cc.schema_table_id
+   JOIN schema_columns pc ON pc.id = fk.parent_col_id
+   JOIN schema_tables pst ON pst.id = pc.schema_table_id
+   WHERE cc.schema_table_id = OLD.id;
+
+   CREATE TEMP TABLE IF NOT EXISTS _log_dropped_tables (
+      schema_table_id INTEGER,
+      table_name VARCHAR,
+      columns JSONB,
+      foreign_keys JSONB
+   ) ON COMMIT DROP;
+
+   INSERT INTO _log_dropped_tables VALUES (OLD.id, OLD.table_name, v_columns, v_foreign_keys);
+
+   RETURN OLD;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS tg_snapshot_dropped_table ON schema_tables;
+
+CREATE TRIGGER tg_snapshot_dropped_table
+BEFORE DELETE ON schema_tables FOR EACH ROW
+EXECUTE FUNCTION tgfunc_snapshot_dropped_table ();
+
 -- At transaction end (deferred), emit one 'create' log per newly created table that
 -- bundles the table name and ALL of its initial columns. This avoids one log row per
 -- initial column. Marked INITIALLY DEFERRED so every column inserted in the
@@ -1028,6 +1122,7 @@ DECLARE
    v_table_name VARCHAR;
    v_project_id INTEGER;
    v_columns JSONB;
+   v_foreign_keys JSONB;
 BEGIN
    -- A constraint trigger must be FOR EACH ROW; NEW.id is the newly created table.
    -- This runs at transaction end (INITIALLY DEFERRED), so all of the table's
@@ -1058,10 +1153,30 @@ BEGIN
    FROM schema_columns
    WHERE schema_table_id = NEW.id;
 
+   SELECT COALESCE(
+      jsonb_agg(jsonb_build_object(
+         'fk_name', fk.fk_name,
+         'child_table', cst.table_name,
+         'child_col', cc.col_name,
+         'parent_table', pst.table_name,
+         'parent_col', pc.col_name,
+         'on_delete', fk.on_delete,
+         'on_update', fk.on_update
+      ) ORDER BY fk.child_col_id),
+      '[]'::jsonb
+   )
+   INTO v_foreign_keys
+   FROM schema_foreign_keys fk
+   JOIN schema_columns cc ON cc.id = fk.child_col_id
+   JOIN schema_tables cst ON cst.id = cc.schema_table_id
+   JOIN schema_columns pc ON pc.id = fk.parent_col_id
+   JOIN schema_tables pst ON pst.id = pc.schema_table_id
+   WHERE cc.schema_table_id = NEW.id;
+
    PERFORM func_log_project_change(
       v_project_id, 'schema_table', NEW.id, 'create',
       NULL,
-      jsonb_build_object('table_name', v_table_name, 'columns', v_columns)
+      jsonb_build_object('table_name', v_table_name, 'columns', v_columns, 'foreign_keys', v_foreign_keys)
    );
 
    RETURN NULL;
@@ -1092,45 +1207,57 @@ BEGIN
          SELECT EXISTS (SELECT 1 FROM _log_new_tables WHERE schema_table_id = NEW.schema_table_id) INTO v_is_new_table;
       END IF;
 
-      IF v_is_new_table THEN
-         -- Columns of a newly created table are bundled into the single
-         -- 'create' log written by tgfunc_log_new_tables_finalize, so skip here.
-         NULL;
-      ELSE
-         PERFORM func_log_project_change(v_project_id, 'schema_column', NEW.id, 'insert',
-            NULL, jsonb_build_object('table_name', v_table_name, 'col_name', NEW.col_name, 'col_type', NEW.col_type, 'is_primary_key', NEW.is_primary_key));
-      END IF;
+       IF v_is_new_table THEN
+          -- Columns of a newly created table are bundled into the single
+          -- 'create' log written by tgfunc_log_new_tables_finalize, so skip here.
+          NULL;
+       ELSE
+          PERFORM func_log_project_change(v_project_id, 'schema_column', NEW.id, 'insert',
+             NULL, jsonb_build_object('table_name', v_table_name,
+                'col_name', NEW.col_name, 'col_type', NEW.col_type, 'is_primary_key', NEW.is_primary_key,
+                'is_nullable', NEW.is_nullable, 'is_unique', NEW.is_unique, 'default_value', NEW.default_value,
+                'col_length', NEW.col_length, 'is_auto_increment', NEW.is_auto_increment));
+       END IF;
 
-   ELSIF TG_OP = 'UPDATE' THEN
-      SELECT st.project_id, st.table_name INTO v_project_id, v_table_name
-      FROM schema_tables st WHERE st.id = NEW.schema_table_id;
+    ELSIF TG_OP = 'UPDATE' THEN
+       SELECT st.project_id, st.table_name INTO v_project_id, v_table_name
+       FROM schema_tables st WHERE st.id = NEW.schema_table_id;
 
-      IF NEW.col_name IS DISTINCT FROM OLD.col_name
-         OR NEW.col_type IS DISTINCT FROM OLD.col_type
-         OR NEW.is_primary_key IS DISTINCT FROM OLD.is_primary_key
-         OR NEW.is_nullable IS DISTINCT FROM OLD.is_nullable
-         OR NEW.is_unique IS DISTINCT FROM OLD.is_unique
-         OR NEW.default_value IS DISTINCT FROM OLD.default_value
-         OR NEW.col_length IS DISTINCT FROM OLD.col_length
-         OR NEW.is_auto_increment IS DISTINCT FROM OLD.is_auto_increment THEN
-         PERFORM func_log_project_change(v_project_id, 'schema_column', NEW.id, 'update',
-            jsonb_build_object('col_name', OLD.col_name, 'col_type', OLD.col_type, 'is_primary_key', OLD.is_primary_key, 'is_nullable', OLD.is_nullable, 'is_unique', OLD.is_unique),
-            jsonb_build_object('col_name', NEW.col_name, 'col_type', NEW.col_type, 'is_primary_key', NEW.is_primary_key, 'is_nullable', NEW.is_nullable, 'is_unique', NEW.is_unique));
-      END IF;
+       IF NEW.col_name IS DISTINCT FROM OLD.col_name
+          OR NEW.col_type IS DISTINCT FROM OLD.col_type
+          OR NEW.is_primary_key IS DISTINCT FROM OLD.is_primary_key
+          OR NEW.is_nullable IS DISTINCT FROM OLD.is_nullable
+          OR NEW.is_unique IS DISTINCT FROM OLD.is_unique
+          OR NEW.default_value IS DISTINCT FROM OLD.default_value
+          OR NEW.col_length IS DISTINCT FROM OLD.col_length
+          OR NEW.is_auto_increment IS DISTINCT FROM OLD.is_auto_increment THEN
+          PERFORM func_log_project_change(v_project_id, 'schema_column', NEW.id, 'update',
+             jsonb_build_object('table_name', v_table_name,
+                'col_name', OLD.col_name, 'col_type', OLD.col_type, 'is_primary_key', OLD.is_primary_key,
+                'is_nullable', OLD.is_nullable, 'is_unique', OLD.is_unique, 'default_value', OLD.default_value,
+                'col_length', OLD.col_length, 'is_auto_increment', OLD.is_auto_increment),
+             jsonb_build_object('table_name', v_table_name,
+                'col_name', NEW.col_name, 'col_type', NEW.col_type, 'is_primary_key', NEW.is_primary_key,
+                'is_nullable', NEW.is_nullable, 'is_unique', NEW.is_unique, 'default_value', NEW.default_value,
+                'col_length', NEW.col_length, 'is_auto_increment', NEW.is_auto_increment));
+       END IF;
 
-   ELSIF TG_OP = 'DELETE' THEN
-      SELECT st.project_id, st.table_name INTO v_project_id, v_table_name
-      FROM schema_tables st WHERE st.id = OLD.schema_table_id;
+    ELSIF TG_OP = 'DELETE' THEN
+       SELECT st.project_id, st.table_name INTO v_project_id, v_table_name
+       FROM schema_tables st WHERE st.id = OLD.schema_table_id;
 
-      IF to_regclass('pg_temp._log_dropped_tables') IS NOT NULL THEN
-         SELECT EXISTS (SELECT 1 FROM _log_dropped_tables WHERE schema_table_id = OLD.schema_table_id) INTO v_is_dropped_table;
-      END IF;
+       IF to_regclass('pg_temp._log_dropped_tables') IS NOT NULL THEN
+          SELECT EXISTS (SELECT 1 FROM _log_dropped_tables WHERE schema_table_id = OLD.schema_table_id) INTO v_is_dropped_table;
+       END IF;
 
-      IF NOT v_is_dropped_table THEN
-         PERFORM func_log_project_change(v_project_id, 'schema_column', OLD.id, 'delete',
-            jsonb_build_object('table_name', v_table_name, 'col_name', OLD.col_name, 'col_type', OLD.col_type), NULL);
-      END IF;
-   END IF;
+       IF NOT v_is_dropped_table THEN
+          PERFORM func_log_project_change(v_project_id, 'schema_column', OLD.id, 'delete',
+             jsonb_build_object('table_name', v_table_name,
+                'col_name', OLD.col_name, 'col_type', OLD.col_type, 'is_primary_key', OLD.is_primary_key,
+                'is_nullable', OLD.is_nullable, 'is_unique', OLD.is_unique, 'default_value', OLD.default_value,
+                'col_length', OLD.col_length, 'is_auto_increment', OLD.is_auto_increment), NULL);
+       END IF;
+    END IF;
    RETURN COALESCE(NEW, OLD);
 END;
 $$;
@@ -1142,9 +1269,11 @@ AFTER INSERT OR UPDATE OR DELETE ON schema_columns FOR EACH ROW
 EXECUTE FUNCTION tgfunc_log_schema_column ();
 
 -- schema_foreign_keys : insert / update / delete
+-- Logs include the resolved table/column names so the structure is self-describing.
 CREATE OR REPLACE FUNCTION tgfunc_log_foreign_key () RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE
    v_project_id INTEGER;
+   v_data JSONB;
 BEGIN
    IF TG_OP = 'INSERT' THEN
       SELECT p.id INTO v_project_id
@@ -1154,7 +1283,14 @@ BEGIN
       WHERE c.id = NEW.child_col_id;
 
       PERFORM func_log_project_change(v_project_id, 'foreign_key', NEW.child_col_id, 'insert',
-         NULL, jsonb_build_object('fk_name', NEW.fk_name, 'child_col_id', NEW.child_col_id, 'parent_col_id', NEW.parent_col_id, 'on_delete', NEW.on_delete, 'on_update', NEW.on_update));
+         NULL, jsonb_build_object(
+            'fk_name', NEW.fk_name,
+            'child_table', (SELECT table_name FROM schema_tables st JOIN schema_columns c ON c.schema_table_id = st.id WHERE c.id = NEW.child_col_id),
+            'child_col', (SELECT col_name FROM schema_columns WHERE id = NEW.child_col_id),
+            'parent_table', (SELECT table_name FROM schema_tables st JOIN schema_columns c ON c.schema_table_id = st.id WHERE c.id = NEW.parent_col_id),
+            'parent_col', (SELECT col_name FROM schema_columns WHERE id = NEW.parent_col_id),
+            'on_delete', NEW.on_delete,
+            'on_update', NEW.on_update));
 
    ELSIF TG_OP = 'UPDATE' THEN
       SELECT p.id INTO v_project_id
@@ -1164,8 +1300,22 @@ BEGIN
       WHERE c.id = NEW.child_col_id;
 
       PERFORM func_log_project_change(v_project_id, 'foreign_key', NEW.child_col_id, 'update',
-         jsonb_build_object('fk_name', OLD.fk_name, 'on_delete', OLD.on_delete, 'on_update', OLD.on_update),
-         jsonb_build_object('fk_name', NEW.fk_name, 'on_delete', NEW.on_delete, 'on_update', NEW.on_update));
+         jsonb_build_object(
+            'fk_name', OLD.fk_name,
+            'child_table', (SELECT table_name FROM schema_tables st JOIN schema_columns c ON c.schema_table_id = st.id WHERE c.id = OLD.child_col_id),
+            'child_col', (SELECT col_name FROM schema_columns WHERE id = OLD.child_col_id),
+            'parent_table', (SELECT table_name FROM schema_tables st JOIN schema_columns c ON c.schema_table_id = st.id WHERE c.id = OLD.parent_col_id),
+            'parent_col', (SELECT col_name FROM schema_columns WHERE id = OLD.parent_col_id),
+            'on_delete', OLD.on_delete,
+            'on_update', OLD.on_update),
+         jsonb_build_object(
+            'fk_name', NEW.fk_name,
+            'child_table', (SELECT table_name FROM schema_tables st JOIN schema_columns c ON c.schema_table_id = st.id WHERE c.id = NEW.child_col_id),
+            'child_col', (SELECT col_name FROM schema_columns WHERE id = NEW.child_col_id),
+            'parent_table', (SELECT table_name FROM schema_tables st JOIN schema_columns c ON c.schema_table_id = st.id WHERE c.id = NEW.parent_col_id),
+            'parent_col', (SELECT col_name FROM schema_columns WHERE id = NEW.parent_col_id),
+            'on_delete', NEW.on_delete,
+            'on_update', NEW.on_update));
 
    ELSIF TG_OP = 'DELETE' THEN
       SELECT p.id INTO v_project_id
@@ -1175,7 +1325,14 @@ BEGIN
       WHERE c.id = OLD.child_col_id;
 
       PERFORM func_log_project_change(v_project_id, 'foreign_key', OLD.child_col_id, 'delete',
-         jsonb_build_object('fk_name', OLD.fk_name, 'child_col_id', OLD.child_col_id, 'parent_col_id', OLD.parent_col_id), NULL);
+         jsonb_build_object(
+            'fk_name', OLD.fk_name,
+            'child_table', (SELECT table_name FROM schema_tables st JOIN schema_columns c ON c.schema_table_id = st.id WHERE c.id = OLD.child_col_id),
+            'child_col', (SELECT col_name FROM schema_columns WHERE id = OLD.child_col_id),
+            'parent_table', (SELECT table_name FROM schema_tables st JOIN schema_columns c ON c.schema_table_id = st.id WHERE c.id = OLD.parent_col_id),
+            'parent_col', (SELECT col_name FROM schema_columns WHERE id = OLD.parent_col_id),
+            'on_delete', OLD.on_delete,
+            'on_update', OLD.on_update), NULL);
    END IF;
    RETURN COALESCE(NEW, OLD);
 END;
@@ -1192,7 +1349,7 @@ CREATE OR REPLACE FUNCTION tgfunc_log_api_definition () RETURNS TRIGGER LANGUAGE
 BEGIN
    IF TG_OP = 'INSERT' THEN
       PERFORM func_log_project_change(NEW.project_id, 'api_definition', NEW.id, 'insert',
-         NULL, jsonb_build_object('name', NEW.name, 'method', NEW.method, 'rate_limit_per_day', NEW.rate_limit_per_day));
+         NULL, jsonb_build_object('name', NEW.name, 'method', NEW.method, 'rate_limit_per_day', NEW.rate_limit_per_day, 'is_active', NEW.is_active, 'query_definition', NEW.query_definition));
 
    ELSIF TG_OP = 'UPDATE' THEN
       IF NEW.name IS DISTINCT FROM OLD.name
@@ -1201,13 +1358,13 @@ BEGIN
          OR NEW.rate_limit_per_day IS DISTINCT FROM OLD.rate_limit_per_day
          OR NEW.is_active IS DISTINCT FROM OLD.is_active THEN
          PERFORM func_log_project_change(NEW.project_id, 'api_definition', NEW.id, 'update',
-            jsonb_build_object('name', OLD.name, 'method', OLD.method, 'rate_limit_per_day', OLD.rate_limit_per_day),
-            jsonb_build_object('name', NEW.name, 'method', NEW.method, 'rate_limit_per_day', NEW.rate_limit_per_day));
+            jsonb_build_object('name', OLD.name, 'method', OLD.method, 'rate_limit_per_day', OLD.rate_limit_per_day, 'is_active', OLD.is_active, 'query_definition', OLD.query_definition),
+            jsonb_build_object('name', NEW.name, 'method', NEW.method, 'rate_limit_per_day', NEW.rate_limit_per_day, 'is_active', NEW.is_active, 'query_definition', NEW.query_definition));
       END IF;
 
    ELSIF TG_OP = 'DELETE' THEN
       PERFORM func_log_project_change(OLD.project_id, 'api_definition', OLD.id, 'delete',
-         jsonb_build_object('name', OLD.name, 'method', OLD.method), NULL);
+         jsonb_build_object('name', OLD.name, 'method', OLD.method, 'rate_limit_per_day', OLD.rate_limit_per_day, 'is_active', OLD.is_active, 'query_definition', OLD.query_definition), NULL);
    END IF;
    RETURN COALESCE(NEW, OLD);
 END;

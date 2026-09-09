@@ -15,7 +15,7 @@ const vpState = {
   project: null,
   tables: [],
   apis: [],
-  loaded: { tables: false, fk: false, apis: false, cors: false, collab: false, settings: false },
+  loaded: { tables: false, fk: false, apis: false, cors: false, collab: false, logs: false, settings: false },
   settingsTags: [],
   apisSearchBound: false,
 };
@@ -53,6 +53,12 @@ async function initViewProject() {
   initModal();
   bindGlobalActions();
   await loadProjectHeader();
+
+  // The Project Logs tab is the exception to the lazy per-visit fetch rule: its
+  // data is fetched ONCE here (on page load) so opening the tab never triggers a
+  // server request. All other tabs (Tables, FK, APIs, CORS, Collaborators) re-fetch
+  // their data every time the user opens them.
+  await loadProjectLogsOnce();
 
   // Load the default (active) tab's content on first paint
   const activeTabBtn = document.querySelector('.vp-tab.is-active');
@@ -162,7 +168,7 @@ function initTabs() {
     'tab-fk':       { panel: 'panel-fk',       load: loadForeignKeys },
     'tab-apis':     { panel: 'panel-apis',     load: loadApis },
     'tab-cors':     { panel: 'panel-cors',     load: loadCorsOrigins },
-    'tab-logs':     { panel: 'panel-logs' },
+    'tab-logs':     { panel: 'panel-logs',   load: loadProjectLogs },
     'tab-collab':   { panel: 'panel-collab',   load: loadCollaborators },
     'tab-settings': { panel: 'panel-settings' },
   };
@@ -184,10 +190,10 @@ function initTabs() {
         otherPanel.hidden = !active;
       });
 
-      // lazy-load content once
-      const key = tabId.replace('tab-', '');
-      if (cfg.load && !vpState.loaded[key]) {
-        vpState.loaded[key] = true;
+      // The Project Logs tab renders from a snapshot taken at page load
+      // (loadProjectLogsOnce), so it never fetches when opened. Every other tab
+      // re-fetches its data on each visit to stay in sync with the server.
+      if (cfg.load) {
         cfg.load();
       }
     });
@@ -2355,6 +2361,194 @@ async function loadCollaborators() {
       removeCollaborator(userId, isSelf, status);
     });
   });
+}
+
+/* -----------------------------------------------------------------------
+   Project Logs
+   ----------------------------------------------------------------------- */
+
+const LOG_ENTITY_LABEL = {
+  schema_table: 'Table',
+  schema_column: 'Column',
+  foreign_key: 'Foreign key',
+  cors_origin: 'CORS origin',
+  api: 'API',
+  project: 'Project',
+};
+
+const LOG_CHANGE_LABEL = {
+  create: 'Created',
+  insert: 'Added',
+  update: 'Updated',
+  delete: 'Deleted',
+  remove: 'Removed',
+};
+
+function changeTypeClass(changeType) {
+  switch (changeType) {
+    case 'create': return 'is-create';
+    case 'insert': return 'is-create';
+    case 'update': return 'is-update';
+    case 'delete': return 'is-delete';
+    case 'remove': return 'is-delete';
+    default: return '';
+  }
+}
+
+function logDescription(log) {
+  const entity = LOG_ENTITY_LABEL[log.entity_type] || (log.entity_type || 'item').replace(/_/g, ' ');
+  const change = LOG_CHANGE_LABEL[log.change_type] || (log.change_type || 'changed');
+
+  const newData = log.new_data || {};
+  const oldData = log.old_data || {};
+
+  const nameFields = ['table_name', 'col_name', 'name', 'origin', 'fk_name', 'api_name', 'proj_name'];
+  let subject = '';
+  for (const f of nameFields) {
+    if (newData[f] != null) { subject = newData[f]; break; }
+    if (oldData[f] != null) { subject = oldData[f]; break; }
+  }
+  if (subject) subject = `<span class="vp-log__subject">${escHtml(subject)}</span>`;
+
+  // Add the resolved relationship for foreign keys so the change is self-describing.
+  let rel = '';
+  if (log.entity_type === 'foreign_key') {
+    const src = newData.child_table || oldData.child_table || newData.child_col || oldData.child_col;
+    const dst = newData.parent_table || oldData.parent_table || newData.parent_col || oldData.parent_col;
+    if (src || dst) {
+      rel = ` <span class="vp-log__rel">${escHtml(src || '?')} → ${escHtml(dst || '?')}</span>`;
+    }
+  }
+
+  return `${change} ${entity}${subject ? ' ' + subject : ''}${rel}`;
+}
+
+function logColumnsDetail(log) {
+  const newData = log.new_data || {};
+  const oldData = log.old_data || {};
+  const parts = [];
+
+  // Columns (table create / update / delete structure)
+  const columns = Array.isArray(newData.columns) ? newData.columns : (Array.isArray(oldData.columns) ? oldData.columns : []);
+  if (columns.length > 0) {
+    const rows = columns.map(c => `
+      <li class="vp-log__col">
+        <span class="vp-log__col-name">${escHtml(c.col_name || c.name || '?')}</span>
+        <span class="vp-log__col-type">${escHtml(c.col_type || c.data_type || '')}</span>
+        ${c.is_primary_key ? '<span class="vp-log__badge vp-log__badge--pk">PK</span>' : ''}
+        ${c.is_unique ? '<span class="vp-log__badge vp-log__badge--uq">UQ</span>' : ''}
+        ${c.is_auto_increment ? '<span class="vp-log__badge vp-log__badge--ai">AI</span>' : ''}
+        ${c.is_nullable === false || c.is_nullable === 'false' ? '<span class="vp-log__badge vp-log__badge--nn">NN</span>' : ''}
+        ${c.default_value != null ? `<span class="vp-log__col-default">def: ${escHtml(String(c.default_value))}</span>` : ''}
+      </li>
+    `).join('');
+
+    parts.push(`
+      <div class="vp-log__cols">
+        <span class="vp-log__cols-label">${columns.length} column${columns.length === 1 ? '' : 's'}</span>
+        <ul class="vp-log__cols-list">${rows}</ul>
+      </div>
+    `);
+  }
+
+  // Foreign keys (table create / update / delete structure)
+  const fks = Array.isArray(newData.foreign_keys) ? newData.foreign_keys : (Array.isArray(oldData.foreign_keys) ? oldData.foreign_keys : []);
+  if (fks.length > 0) {
+    const rows = fks.map(fk => `
+      <li class="vp-log__col">
+        <span class="vp-log__col-name">${escHtml(fk.fk_name || '?')}</span>
+        <span class="vp-log__col-type">${escHtml((fk.child_table || '?') + '.' + (fk.child_col || '?'))} → ${escHtml((fk.parent_table || '?') + '.' + (fk.parent_col || '?'))}</span>
+        ${fk.on_delete ? `<span class="vp-log__col-default">ON DELETE ${escHtml(fk.on_delete)}</span>` : ''}
+        ${fk.on_update ? `<span class="vp-log__col-default">ON UPDATE ${escHtml(fk.on_update)}</span>` : ''}
+      </li>
+    `).join('');
+
+    parts.push(`
+      <div class="vp-log__cols">
+        <span class="vp-log__cols-label">${fks.length} foreign key${fks.length === 1 ? '' : 's'}</span>
+        <ul class="vp-log__cols-list">${rows}</ul>
+      </div>
+    `);
+  }
+
+  // API query definition (api create / update / delete structure)
+  const qd = newData.query_definition != null ? newData.query_definition : (oldData.query_definition != null ? oldData.query_definition : null);
+  if (qd != null) {
+    let pretty = qd;
+    if (typeof qd === 'string') {
+      try { pretty = JSON.stringify(JSON.parse(qd), null, 2); } catch (_) { pretty = qd; }
+    } else if (typeof qd === 'object') {
+      pretty = JSON.stringify(qd, null, 2);
+    }
+    parts.push(`
+      <div class="vp-log__cols">
+        <span class="vp-log__cols-label">Query definition</span>
+        <pre class="vp-log__code">${escHtml(pretty)}</pre>
+      </div>
+    `);
+  }
+
+  return parts.join('');
+}
+
+function logRowHtml(log) {
+  const actorName = log.changed_by_name || (log.changed_by_username ? log.changed_by_username : 'Unknown');
+  const actorHandle = log.changed_by_username ? `@${escHtml(log.changed_by_username)}` : '';
+  const initials = escHtml((actorName || '?').charAt(0).toUpperCase());
+  const when = log.created_at
+    ? new Date(log.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : '—';
+
+  return `
+    <div class="vp-log-row">
+      <span class="vp-log-row__avatar" aria-hidden="true">${initials}</span>
+      <div class="vp-log-row__body">
+        <div class="vp-log-row__head">
+          <span class="vp-log-row__actor">${escHtml(actorName)}</span>
+          ${actorHandle ? `<span class="vp-log-row__handle">${actorHandle}</span>` : ''}
+          <span class="vp-log__change ${changeTypeClass(log.change_type)}">${LOG_CHANGE_LABEL[log.change_type] || escHtml(log.change_type || '')}</span>
+          <span class="vp-log-row__time" title="${escHtml(String(log.created_at || ''))}">${escHtml(when)}</span>
+        </div>
+        <div class="vp-log-row__desc">${logDescription(log)}</div>
+        ${logColumnsDetail(log)}
+      </div>
+    </div>
+  `;
+}
+
+/* Fetches project logs ONCE at page load and caches them in vpState.logsSnapshot.
+   The logs tab then renders from this snapshot so opening the tab never hits the
+   server (unlike every other tab, which re-fetches on each visit). */
+async function loadProjectLogsOnce() {
+  vpState.logsSnapshot = [];
+  try {
+    const res = await apiFetch(`/view/projectLogs/${vpState.projectId}`);
+    if (res.status === 401) { window.location.href = '/login'; return; }
+    if (!res.ok) { vpState.logsSnapshot = null; return; }
+
+    const data = await res.json();
+    vpState.logsSnapshot = Array.isArray(data.logs) ? data.logs : [];
+  } catch (_) {
+    vpState.logsSnapshot = null;
+  }
+}
+
+/* Renders the project logs tab from the cached snapshot (no network call). */
+function loadProjectLogs() {
+  const body = document.getElementById('vp-logs-body');
+  if (!body) return;
+
+  const snapshot = vpState.logsSnapshot;
+  if (snapshot === null) {
+    body.innerHTML = emptyState('Could not load project logs');
+    return;
+  }
+  if (!Array.isArray(snapshot) || snapshot.length === 0) {
+    body.innerHTML = emptyState('No activity yet. Changes to this project will appear here.');
+    return;
+  }
+
+  body.innerHTML = `<div class="vp-log-list">${snapshot.map(logRowHtml).join('')}</div>`;
 }
 
 async function searchUsers(queryStr, resultsEl) {

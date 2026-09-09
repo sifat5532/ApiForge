@@ -160,6 +160,33 @@ router.get('/allTables/:projectId', requireAuth , requireProjectAccess , async (
     res.status(200).json({ tables: result.rows });
 });
 
+router.get('/projectLogs/:projectId', requireAuth, requireProjectAccess, async (req, res) => {
+   try {
+      const result = await query(`
+         SELECT
+            pl.id,
+            pl.created_at,
+            pl.entity_type,
+            pl.entity_id,
+            pl.change_type,
+            pl.old_data,
+            pl.new_data,
+            u.id AS changed_by_id,
+            u.name AS changed_by_name,
+            u.username AS changed_by_username
+         FROM project_logs pl
+         LEFT JOIN users u ON u.id = pl.changed_by
+         WHERE pl.project_id = $1
+         ORDER BY pl.created_at DESC, pl.id DESC
+      `, [req.params.projectId]);
+
+      return res.status(200).json({ logs: result.rows });
+   } catch (e) {
+      console.error(e);
+      return res.status(500).json({ msg: 'There was a server side error, please try again later' });
+   }
+});
+
 router.get('/viewTableStructure/:tableId', requireAuth, async (req, res) => {
      const tableAccess = await query(`
                             SELECT 1
