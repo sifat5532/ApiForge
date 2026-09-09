@@ -2581,6 +2581,90 @@ function initSettingsForm() {
   form.addEventListener('submit', submitSettings);
   const addTagBtn = document.getElementById('btn-add-tag');
   if (addTagBtn && vpState.isAuthor) addTagBtn.addEventListener('click', addSettingsTag);
+
+  if (vpState.isAuthor) initSettingsTagSearch();
+}
+
+/* Autocomplete existing tags from the database as the user types. */
+function initSettingsTagSearch() {
+  const input = document.getElementById('vp-settings-tag-input');
+  const group = input ? input.closest('.tag-input-group') : null;
+  const form = document.getElementById('vp-settings-form');
+  if (!input || !group || !form) return;
+
+  let dropdown = document.getElementById('vp-settings-tag-dropdown');
+  if (!dropdown) {
+    dropdown = document.createElement('div');
+    dropdown.id = 'vp-settings-tag-dropdown';
+    dropdown.className = 'tag-dropdown-menu';
+    dropdown.hidden = true;
+    group.appendChild(dropdown);
+  }
+
+  let reqId = 0;
+
+  function renderDbTags(names) {
+    dropdown.innerHTML = '';
+    const selectedLower = vpState.settingsTags.map(t => t.toLowerCase());
+    const newTags = names.filter(n => !selectedLower.includes(n.toLowerCase()));
+    if (newTags.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'tag-dropdown-empty';
+      empty.textContent = 'No matching tags found in the database.';
+      dropdown.appendChild(empty);
+      dropdown.hidden = false;
+      return;
+    }
+    newTags.forEach(name => {
+      const item = document.createElement('div');
+      item.className = 'tag-dropdown-item';
+      item.innerHTML = `<span>${escHtml(name)}</span> <span style="font-size: 0.72rem; color: var(--text-faint);">From database</span>`;
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        addSettingsTagFromValue(name);
+        input.value = '';
+        dropdown.hidden = true;
+      });
+      dropdown.appendChild(item);
+    });
+    dropdown.hidden = false;
+  }
+
+  input.addEventListener('focus', () => {
+    if (input.value.trim()) runSearch();
+  });
+
+  input.addEventListener('input', () => runSearch());
+
+  async function runSearch() {
+    const q = input.value.trim().toLowerCase();
+    if (!q) { dropdown.hidden = true; return; }
+    const myReq = ++reqId;
+    try {
+      const res = await apiFetch(`/view/searchTags?q=${encodeURIComponent(q)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (myReq !== reqId) return;
+      const names = Array.isArray(data.tags) ? data.tags.map(t => t.name) : [];
+      renderDbTags(names);
+    } catch (_) { /* non-fatal */ }
+  }
+
+  document.addEventListener('click', (e) => {
+    if (form && !form.contains(e.target)) dropdown.hidden = true;
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const items = dropdown.querySelectorAll('.tag-dropdown-item');
+      if (!dropdown.hidden && items.length > 0) {
+        e.preventDefault();
+        items[0].dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      }
+    } else if (e.key === 'Escape') {
+      dropdown.hidden = true;
+    }
+  });
 }
 
 function renderSettingsTags() {
@@ -2604,14 +2688,20 @@ function renderSettingsTags() {
 function addSettingsTag() {
   const input = document.getElementById('vp-settings-tag-input');
   if (!input) return;
-  const val = input.value.trim().toLowerCase();
+  const val = input.value.trim();
+  if (!val) return;
+  addSettingsTagFromValue(val);
+  input.value = '';
+}
+
+function addSettingsTagFromValue(raw) {
+  const val = String(raw).trim().toLowerCase();
   if (!val) return;
   if (!(val[0] >= 'a' && val[0] <= 'z')) { showToast('Tag must start with a–z', 'error'); return; }
   if (val.length < 2 || val.length > 20) { showToast('Tag must be 2–20 characters', 'error'); return; }
   if (vpState.settingsTags.length >= 10) { showToast('Max 10 tags allowed', 'error'); return; }
   if (vpState.settingsTags.includes(val)) { showToast('Tag already added', 'error'); return; }
   vpState.settingsTags.push(val);
-  input.value = '';
   renderSettingsTags();
 }
 

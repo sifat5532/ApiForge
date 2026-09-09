@@ -25,7 +25,7 @@ function isValidAggFunction(fn) {
   return typeof fn === 'string' && VALID_AGG_FUNCTIONS.has(fn.trim().toUpperCase());
 }
 
-const VALID_WHERE_OPERATORS = new Set(['=', '!=', '<>', '<', '>', '<=', '>=', 'LIKE', 'NOT LIKE', 'IN', 'NOT IN', 'IS NULL', 'IS NOT NULL', 'BETWEEN']);
+const VALID_WHERE_OPERATORS = new Set(['=', '!=', '<>', '<', '>', '<=', '>=', 'LIKE', 'NOT LIKE', 'IS NULL', 'IS NOT NULL', 'BETWEEN']);
 function isValidOperator(op) {
   return typeof op === 'string' && VALID_WHERE_OPERATORS.has(op.trim());
 }
@@ -202,7 +202,7 @@ function typeMatchesColumn(value, pgType) {
   return true;
 }
 
-const ALLOWED_OPERATORS = new Set(['=', '!=', '<>', '<', '>', '<=', '>=', 'LIKE', 'NOT LIKE', 'IN', 'NOT IN', 'IS NULL', 'IS NOT NULL', 'BETWEEN']);
+const ALLOWED_OPERATORS = new Set(['=', '!=', '<>', '<', '>', '<=', '>=', 'LIKE', 'NOT LIKE', 'IS NULL', 'IS NOT NULL', 'BETWEEN']);
 
 function validateWhereArray(nodes, catalog, scopedTableIds, aliasToTableId, errors, depth = 0) {
   if (depth > 10) { errors.push('where clause nested too deeply'); return; }
@@ -688,7 +688,7 @@ router.post('/create', requireAuth, requireProjectAccess, isProjectActive, async
   }
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
+    await client.query('BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE');
     await checkPlanLimit(client, req.projectAuthorId, 'api', proj_id);
     const projectCatalog = await loadProjectCatalog(client, proj_id);
 

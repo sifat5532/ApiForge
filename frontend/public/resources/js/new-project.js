@@ -105,21 +105,23 @@ function initTagManager() {
   });
 
   // 2. Keyboard Navigation in dropdown
-  searchInput.addEventListener('keydown', (e) => {
+  searchInput.addEventListener('keydown', async (e) => {
     const items = dropdownMenu.querySelectorAll('.tag-dropdown-item');
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      if (dropdownMenu.hidden) updateDropdown();
-      if (items.length > 0) {
-        focusedIndex = (focusedIndex + 1) % items.length;
-        highlightItem(items);
+      if (dropdownMenu.hidden) await updateDropdown();
+      const refreshed = dropdownMenu.querySelectorAll('.tag-dropdown-item');
+      if (refreshed.length > 0) {
+        focusedIndex = (focusedIndex + 1) % refreshed.length;
+        highlightItem(refreshed);
       }
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      if (items.length > 0) {
-        focusedIndex = (focusedIndex - 1 + items.length) % items.length;
-        highlightItem(items);
+      const refreshed = dropdownMenu.querySelectorAll('.tag-dropdown-item');
+      if (refreshed.length > 0) {
+        focusedIndex = (focusedIndex - 1 + refreshed.length) % refreshed.length;
+        highlightItem(refreshed);
       }
     } else if (e.key === 'Enter') {
       e.preventDefault();
@@ -159,11 +161,13 @@ function initTagManager() {
     dropdownMenu.hidden = true;
   }
 
-  // 4. Update and filter dropdown options
+  // 4. Update and filter dropdown options (presets + DB-backed search)
+  let tagSearchReqId = 0;
   function updateDropdown() {
     const query = searchInput.value.trim().toLowerCase();
+    const reqId = ++tagSearchReqId;
 
-    // Filter database matching query & excluding already selected tags
+    // Local presets matching query & excluding already selected tags
     const matches = TAG_DATABASE.filter(tag => {
       const isAlreadySelected = selectedTags.some(st => st.toLowerCase() === tag.toLowerCase());
       if (isAlreadySelected) return false;
@@ -171,15 +175,24 @@ function initTagManager() {
       return tag.toLowerCase().includes(query);
     });
 
+    renderLocalMatches(matches, query);
+
+    // Also fetch matching tags from the database (LIKE %input%)
+    if (query) {
+      fetchTagsFromDb(query, reqId);
+    }
+
+    dropdownMenu.hidden = false;
+  }
+
+  function renderLocalMatches(matches, query) {
     dropdownMenu.innerHTML = '';
 
     if (matches.length === 0 && !query) {
       dropdownMenu.innerHTML = '<div class="tag-dropdown-empty">All preset database tags have been selected!</div>';
-      dropdownMenu.hidden = false;
       return;
     }
 
-    // Render matches
     matches.forEach(tag => {
       const itemDiv = document.createElement('div');
       itemDiv.className = 'tag-dropdown-item';
@@ -192,23 +205,55 @@ function initTagManager() {
       });
       dropdownMenu.appendChild(itemDiv);
     });
+  }
 
-    // If typed text is not an exact match in matches or selected, offer "+ Add as custom tag"
-    const exactMatchExists = TAG_DATABASE.some(t => t.toLowerCase() === query) || selectedTags.some(st => st.toLowerCase() === query);
-    if (query && !exactMatchExists) {
-      const customDiv = document.createElement('div');
-      customDiv.className = 'tag-dropdown-item tag-dropdown-item--add';
-      customDiv.innerHTML = `<span>+ Add "<strong>${escapeHtml(searchInput.value.trim())}</strong>" as custom tag</span>`;
-      customDiv.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        addTag(searchInput.value.trim());
-        searchInput.value = '';
-        dropdownMenu.hidden = true;
+  async function fetchTagsFromDb(query, reqId) {
+    try {
+      const res = await fetch(`${window.BACKEND_URL}/view/searchTags?q=${encodeURIComponent(query)}`, {
+        method: 'GET',
+        credentials: 'include',
       });
-      dropdownMenu.appendChild(customDiv);
-    }
+      if (!res.ok) return;
+      const data = await res.json();
+      if (reqId !== tagSearchReqId) return; // stale response — newer keystroke arrived
 
-    dropdownMenu.hidden = false;
+      const dbTags = Array.isArray(data.tags) ? data.tags.map(t => t.name) : [];
+      const selectedLower = selectedTags.map(t => t.toLowerCase());
+
+      // Exclude names already shown (selected, preset matches, or just added)
+      const existingLower = Array.from(dropdownMenu.querySelectorAll('.tag-dropdown-item span'))
+        .map(s => s.textContent.trim().toLowerCase());
+
+      const newDbTags = dbTags.filter(name =>
+        !selectedLower.includes(name.toLowerCase()) &&
+        !existingLower.includes(name.toLowerCase())
+      );
+
+      newDbTags.forEach(tag => {
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'tag-dropdown-item';
+        itemDiv.innerHTML = `<span>${escapeHtml(tag)}</span> <span style="font-size: 0.72rem; color: var(--text-faint);">From database</span>`;
+        itemDiv.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          addTag(tag);
+          searchInput.value = '';
+          dropdownMenu.hidden = true;
+        });
+        dropdownMenu.appendChild(itemDiv);
+      });
+
+      // If no tags exist at all, show an explicit "none exist" message
+      const hasAnyItem = dropdownMenu.querySelector('.tag-dropdown-item');
+      const hasEmptyMsg = dropdownMenu.querySelector('.tag-dropdown-empty');
+      if (!hasAnyItem && !hasEmptyMsg) {
+        const emptyDiv = document.createElement('div');
+        emptyDiv.className = 'tag-dropdown-empty';
+        emptyDiv.textContent = 'No matching tags found in the database.';
+        dropdownMenu.appendChild(emptyDiv);
+      }
+    } catch (_) {
+      // Network errors are non-fatal — presets still render locally
+    }
   }
 
   // 5. Hide dropdown when clicking outside

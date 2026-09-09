@@ -355,4 +355,14 @@ router.post('/getUsername', async(req , res)=>{
    return res.status(200).json(result.rows);
 
 })
+router.get('/searchTags', requireAuth, async (req, res) => {
+    const search = (req.query.q || '').trim();
+    if (!search) return res.status(200).json({ tags: [] });
+
+    const result = await query(
+        `SELECT id, name FROM tags WHERE name LIKE $1 ORDER BY name LIMIT 20`,
+        [`%${search}%`]
+    );
+    return res.status(200).json({ tags: result.rows });
+});
 module.exports = router;

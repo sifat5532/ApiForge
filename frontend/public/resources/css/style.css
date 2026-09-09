@@ -1910,6 +1910,8 @@ html.onboarding-dismissed .onboarding-card,
 .tag-input-group {
   display: flex;
   gap: 8px;
+  position: relative;
+  flex-wrap: wrap;
 }
 
 .tag-input-group input {
