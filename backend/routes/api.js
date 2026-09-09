@@ -141,17 +141,65 @@ function validateDynamicVal(val, errors, label, col) {
   }
 
   if (col && val.fallback_value !== undefined && val.fallback_value !== null) {
-    if (!typeMatchesColumn(val.fallback_value, col.data_type)) {
-      errors.push(`${label}: fallback_value type mismatch for column of type ${col.data_type}`);
-    }
+    const result = typeMatchesColumn(val.fallback_value, col.data_type);
+    if (result !== true) errors.push(`${label}: ${result}`);
   }
 }
 
+const INT_RE = /^-?\d+$/;
+
 function typeMatchesColumn(value, pgType) {
-  const numeric = ['integer', 'bigint', 'numeric', 'real', 'double precision', 'smallint'];
-  if (numeric.includes(pgType)) return typeof value === 'number' || !isNaN(Number(value));
-  if (pgType === 'boolean') return typeof value === 'boolean';
-  return true; // text/varchar/etc accept most things; tighten as needed
+  if (value === undefined || value === null) return true;
+
+  const t = String(pgType || '').toLowerCase().trim();
+
+  // boolean
+  if (t === 'boolean') {
+    if (typeof value === 'boolean') return true;
+    if (typeof value === 'string' && /^(true|false)$/i.test(value.trim())) return true;
+    return `expected a boolean (true/false) for column of type ${pgType}`;
+  }
+
+  // integer
+  if (t === 'integer') {
+    if (typeof value === 'number' && Number.isInteger(value)) return true;
+    if (typeof value === 'string' && INT_RE.test(value.trim())) return true;
+    return `expected an integer for column of type ${pgType}`;
+  }
+
+  // numeric
+  if (t === 'numeric') {
+    if (typeof value === 'number' && Number.isFinite(value)) return true;
+    if (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))) return true;
+    return `expected a number for column of type ${pgType}`;
+  }
+
+  // date
+  if (t === 'date') {
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+      const d = new Date(value.trim());
+      if (!isNaN(d.getTime())) return true;
+    }
+    return `expected a DATE (YYYY-MM-DD) for column of type ${pgType}`;
+  }
+
+  // timestamp
+  if (t === 'timestamp') {
+    if (typeof value === 'string') {
+      const d = new Date(value.trim());
+      if (!isNaN(d.getTime())) return true;
+    }
+    return `expected a valid TIMESTAMP for column of type ${pgType}`;
+  }
+
+  // text / varchar
+  if (t === 'text' || t === 'varchar') {
+    if (typeof value === 'string') return true;
+    if (typeof value === 'number' || typeof value === 'boolean') return true;
+    return `expected a string for column of type ${pgType}`;
+  }
+
+  return true;
 }
 
 const ALLOWED_OPERATORS = new Set(['=', '!=', '<>', '<', '>', '<=', '>=', 'LIKE', 'NOT LIKE', 'IN', 'NOT IN', 'IS NULL', 'IS NOT NULL', 'BETWEEN']);
@@ -443,14 +491,11 @@ function validateValueObj(valObj, errors, label, col) {
     if (!valObj.dynamic_field_name) {
       errors.push(`${label}: dynamic_field_name required when source is "${source}"`);
     }
-    // default_value here acts as a fallback if the dynamic field is missing at request time —
-    // no is_dynamic_required flag exists in this format, so it's optional.
   }
 
   if (col && valObj.default_value !== undefined && valObj.default_value !== null) {
-    if (!typeMatchesColumn(valObj.default_value, col.data_type)) {
-      errors.push(`${label}: default_value type mismatch for column of type ${col.data_type}`);
-    }
+    const result = typeMatchesColumn(valObj.default_value, col.data_type);
+    if (result !== true) errors.push(`${label}: ${result}`);
   }
 }
 
