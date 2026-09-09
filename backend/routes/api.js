@@ -35,6 +35,16 @@ function isSafeIdentifier(str) {
   return typeof str === 'string' && SAFE_IDENTIFIER.test(str);
 }
 
+function describeCol(col, alias) {
+  if (!col) return null;
+  return alias ? `${alias}.${col.column_name}` : col.column_name;
+}
+
+function describeTable(catalog, tableId) {
+  const t = catalog.tableById.get(tableId);
+  return t ? t.table_name : `table_id ${tableId}`;
+}
+
 function buildAliasMap(select_obj, join_obj_array, errors) {
   const aliasToTableId = new Map();
 
@@ -84,7 +94,7 @@ function checkAlias(nodeTableAlias, col, aliasToTableId, errors, label) {
   if (aliasTableId === undefined) {
     errors.push(`${label} table_alias "${nodeTableAlias}" does not match any FROM/JOIN alias`);
   } else if (aliasTableId !== col.schema_table_id) {
-    errors.push(`${label} table_alias "${nodeTableAlias}" does not match the table that owns col_id ${col.id}`);
+    errors.push(`${label} table_alias "${nodeTableAlias}" does not match the table that owns column "${col.column_name}"`);
   }
 }
 
@@ -171,9 +181,9 @@ function validateWhereArray(nodes, catalog, scopedTableIds, aliasToTableId, erro
     const col = catalog.colById.get(node.col_id);
     if (!col) { errors.push(`where col_id ${node.col_id} not found`); return; }
     if (!scopedTableIds.has(col.schema_table_id)) {
-      errors.push(`where col_id ${node.col_id} out of FROM/JOIN scope`); return;
+      errors.push(`where column "${describeCol(col, node.table_alias)}" is out of FROM/JOIN scope`); return;
     }
-    checkAlias(node.table_alias, col, aliasToTableId, errors, `where col_id ${node.col_id}`);
+    checkAlias(node.table_alias, col, aliasToTableId, errors, `where column "${describeCol(col, node.table_alias)}"`);
     if (!ALLOWED_OPERATORS.has(node.operator)) {
       errors.push(`invalid where operator: ${node.operator}`); return;
     }
@@ -230,7 +240,8 @@ function validateSelectPayload(payload, catalog) {
   const scopedAliases = new Set([select_obj.table_alias]);
 
   for (const j of join_obj_array) {
-    if (!catalog.tableById.get(j.table_id)) {
+    const joinTable = catalog.tableById.get(j.table_id);
+    if (!joinTable) {
       errors.push(`join table_id ${j.table_id} not in project`);
       continue;
     }
@@ -239,32 +250,34 @@ function validateSelectPayload(payload, catalog) {
       continue;
     }
     if (!j.left || !j.left.table_alias || j.left.col_id == null || !j.right || !j.right.table_alias || j.right.col_id == null) {
-      errors.push(`join on table_id ${j.table_id} must specify left.table_alias, left.col_id, right.table_alias, right.col_id`);
+      errors.push(`join on table "${joinTable.table_name}" (alias "${j.alias}") must specify left.table_alias, left.col_id, right.table_alias, right.col_id`);
       continue;
     }
 
     const leftCol = catalog.colById.get(j.left.col_id);
     const rightCol = catalog.colById.get(j.right.col_id);
     if (!leftCol || !rightCol) {
-      errors.push(`join columns invalid: ${j.left.col_id}, ${j.right.col_id}`);
+      const leftDesc = leftCol ? describeCol(leftCol, j.left.table_alias) : `col_id ${j.left.col_id}`;
+      const rightDesc = rightCol ? describeCol(rightCol, j.right.table_alias) : `col_id ${j.right.col_id}`;
+      errors.push(`join columns invalid: ${leftDesc}, ${rightDesc}`);
       continue;
     }
 
     // each column must actually belong to the table its stated alias points to
-    checkAlias(j.left.table_alias, leftCol, aliasToTableId, errors, `join left col_id ${j.left.col_id}`);
-    checkAlias(j.right.table_alias, rightCol, aliasToTableId, errors, `join right col_id ${j.right.col_id}`);
+    checkAlias(j.left.table_alias, leftCol, aliasToTableId, errors, `join left column "${describeCol(leftCol, j.left.table_alias)}"`);
+    checkAlias(j.right.table_alias, rightCol, aliasToTableId, errors, `join right column "${describeCol(rightCol, j.right.table_alias)}"`);
 
     // exactly one side must be THIS join's own alias (the newly introduced table);
     // either left or right can be the new one
     const leftIsNewAlias = j.left.table_alias === j.alias;
     const rightIsNewAlias = j.right.table_alias === j.alias;
     if (leftIsNewAlias === rightIsNewAlias) {
-      errors.push(`join on table_id ${j.table_id} (alias ${j.alias}) must have exactly one side reference its own alias`);
+      errors.push(`join on table "${joinTable.table_name}" (alias "${j.alias}") must have exactly one side reference its own alias`);
       continue;
     }
     const otherAlias = leftIsNewAlias ? j.right.table_alias : j.left.table_alias;
     if (!scopedAliases.has(otherAlias)) {
-      errors.push(`join on table_id ${j.table_id} references alias "${otherAlias}" which is not yet in scope`);
+      errors.push(`join on table "${joinTable.table_name}" (alias "${j.alias}") references alias "${otherAlias}" which is not yet in scope`);
       continue;
     }
 
@@ -298,13 +311,13 @@ function validateSelectPayload(payload, catalog) {
     const col = catalog.colById.get(c.col_id);
     if (!col) { errors.push(`select col_id ${c.col_id} not found`); continue; }
     if (!scopedTableIds.has(col.schema_table_id)) {
-      errors.push(`select col_id ${c.col_id} belongs to a table not in FROM/JOIN scope`);
+      errors.push(`select column "${describeCol(col, c.table_alias)}" belongs to a table not in FROM/JOIN scope`);
     }
-    checkAlias(c.table_alias, col, aliasToTableId, errors, `select col_id ${c.col_id}`);
+    checkAlias(c.table_alias, col, aliasToTableId, errors, `select column "${describeCol(col, c.table_alias)}"`);
 
     if (c.alias) { // cols own alias
       if (!isSafeIdentifier(c.alias)) {
-        errors.push(`select col_id ${c.col_id} output alias "${c.alias}" contains invalid characters`);
+        errors.push(`select column "${describeCol(col, c.table_alias)}" output alias "${c.alias}" contains invalid characters`);
       } else if (seenSelectAliases.has(c.alias)) {
         errors.push(`duplicate select column alias "${c.alias}"`);
       } else {
@@ -322,29 +335,58 @@ function validateSelectPayload(payload, catalog) {
   // group by / having
   for (const g of group_by_cols_array) {
     const col = catalog.colById.get(g.col_id);
-    if (!col || !scopedTableIds.has(col.schema_table_id)) {
-      errors.push(`group_by col_id ${g.col_id} invalid or out of scope`);
+    if (!col) { errors.push(`group_by col_id ${g.col_id} not found`); continue; }
+    if (!scopedTableIds.has(col.schema_table_id)) {
+      errors.push(`group_by column "${describeCol(col, g.table_alias)}" is out of FROM/JOIN scope`);
       continue;
     }
-    checkAlias(g.table_alias, col, aliasToTableId, errors, `group_by col_id ${g.col_id}`);
+    checkAlias(g.table_alias, col, aliasToTableId, errors, `group_by column "${describeCol(col, g.table_alias)}"`);
   }
+
   // if group_by is non-empty, every non-aggregated select col must appear in group_by (classic SQL rule)
   if (group_by_cols_array.length > 0) {
     const groupedIds = new Set(group_by_cols_array.map(g => g.col_id));
+
     for (const c of select_obj.cols_obj_array) {
-      if (!c.is_select_all && !c.function && !groupedIds.has(c.col_id)) {
-        errors.push(`col_id ${c.col_id} is selected without aggregation but missing from GROUP BY`);
+      if (c.is_select_all) {
+        const tableId = aliasToTableId.get(c.table_alias);
+        if (tableId == null) continue; // already reported as an error above
+
+        const tableColIds = [];
+        for (const col of catalog.colById.values()) {
+          if (col.schema_table_id === tableId) tableColIds.push(col.id);
+        }
+
+        const groupedIdsForAlias = new Set(
+          group_by_cols_array.filter(g => g.table_alias === c.table_alias).map(g => g.col_id)
+        );
+
+        const missing = tableColIds.filter(id => !groupedIdsForAlias.has(id));
+        if (missing.length > 0) {
+          const missingNames = missing.map(id => catalog.colById.get(id)?.column_name ?? `col_id ${id}`);
+          errors.push(
+            `select_obj.cols_obj_array: is_select_all (table_alias "${c.table_alias}") requires every column of the table in GROUP BY; missing column(s): ${missingNames.join(', ')}`
+          );
+        }
+        continue;
+      }
+
+      if (!c.function && !groupedIds.has(c.col_id)) {
+        const col = catalog.colById.get(c.col_id);
+        const desc = col ? describeCol(col, c.table_alias) : `col_id ${c.col_id}`;
+        errors.push(`column "${desc}" is selected without aggregation but missing from GROUP BY`);
       }
     }
   }
 
   for (const h of having) {
     const col = catalog.colById.get(h.col_id);
-    if (!col || !scopedTableIds.has(col.schema_table_id)) {
-      errors.push(`having col_id ${h.col_id} invalid or out of scope`);
+    if (!col) { errors.push(`having col_id ${h.col_id} not found`); continue; }
+    if (!scopedTableIds.has(col.schema_table_id)) {
+      errors.push(`having column "${describeCol(col, h.table_alias)}" is out of FROM/JOIN scope`);
       continue;
     }
-    checkAlias(h.table_alias, col, aliasToTableId, errors, `having col_id ${h.col_id}`);
+    checkAlias(h.table_alias, col, aliasToTableId, errors, `having column "${describeCol(col, h.table_alias)}"`);
     if (!isValidAggFunction(h.function_name)) errors.push(`invalid having function: ${h.function_name}`);
     if (!isValidOperator(h.having_operator)) errors.push(`invalid having_operator: ${h.having_operator}`);
     validateDynamicVal(h, errors, 'having', col);
@@ -353,11 +395,12 @@ function validateSelectPayload(payload, catalog) {
   // order by
   for (const o of order_by_array) {
     const col = catalog.colById.get(o.col_id);
-    if (!col || !scopedTableIds.has(col.schema_table_id)) {
-      errors.push(`order_by col_id ${o.col_id} invalid or out of scope`);
+    if (!col) { errors.push(`order_by col_id ${o.col_id} not found`); continue; }
+    if (!scopedTableIds.has(col.schema_table_id)) {
+      errors.push(`order_by column "${describeCol(col, o.table_alias)}" is out of FROM/JOIN scope`);
       continue;
     }
-    checkAlias(o.table_alias, col, aliasToTableId, errors, `order_by col_id ${o.col_id}`);
+    checkAlias(o.table_alias, col, aliasToTableId, errors, `order_by column "${describeCol(col, o.table_alias)}"`);
     if (!['asc', 'desc'].includes((o.order || '').toLowerCase())) {
       errors.push(`invalid order direction: ${o.order}`);
     }
@@ -416,10 +459,12 @@ function validateReturningCols(returning_cols_id, catalog, table_id, errors) {
     errors.push('returning_cols_id must be an array');
     return;
   }
+  const tableName = describeTable(catalog, table_id);
   for (const colId of returning_cols_id) {
     const col = catalog.colById.get(colId);
     if (!col || col.schema_table_id !== table_id) {
-      errors.push(`returning_cols_id: col_id ${colId} invalid or not part of table_id ${table_id}`);
+      const colDesc = col ? col.column_name : `col_id ${colId}`;
+      errors.push(`returning_cols_id: column "${colDesc}" invalid or not part of table "${tableName}"`);
     }
   }
 }
@@ -434,7 +479,8 @@ function validateInsertPayload(payload, catalog) {
     errors.push('table_id is required');
     return errors;
   }
-  if (!catalog.tableById.get(payload.table_id)) {
+  const table = catalog.tableById.get(payload.table_id);
+  if (!table) {
     errors.push(`table_id ${payload.table_id} does not exist in this project`);
     return errors;
   }
@@ -457,11 +503,11 @@ function validateInsertPayload(payload, catalog) {
     const col = catalog.colById.get(colId);
     if (!col) { errors.push(`column_id_array[${i}]: col_id ${colId} not found`); return; }
     if (col.schema_table_id !== payload.table_id) {
-      errors.push(`column_id_array[${i}]: col_id ${colId} does not belong to table_id ${payload.table_id}`);
+      errors.push(`column_id_array[${i}]: column "${col.column_name}" does not belong to table "${table.table_name}"`);
       return;
     }
     if (validColIds.has(colId)) {
-      errors.push(`column_id_array[${i}]: duplicate col_id ${colId}`);
+      errors.push(`column_id_array[${i}]: duplicate column "${col.column_name}"`);
       return;
     }
     validColIds.add(colId);
@@ -474,16 +520,17 @@ function validateInsertPayload(payload, catalog) {
   const seenValueColIds = new Set();
   value_obj_array.forEach((v, i) => {
     if (!v || v.col_id == null) { errors.push(`value_obj_array[${i}] is missing col_id`); return; }
+    const col = catalog.colById.get(v.col_id);
+    const colDesc = col ? col.column_name : `col_id ${v.col_id}`;
     if (!validColIds.has(v.col_id)) {
-      errors.push(`value_obj_array[${i}]: col_id ${v.col_id} is not present in column_id_array`);
+      errors.push(`value_obj_array[${i}]: column "${colDesc}" is not present in column_id_array`);
     }
     if (seenValueColIds.has(v.col_id)) {
-      errors.push(`value_obj_array[${i}]: duplicate col_id ${v.col_id}`);
+      errors.push(`value_obj_array[${i}]: duplicate column "${colDesc}"`);
     }
     seenValueColIds.add(v.col_id);
 
-    const col = catalog.colById.get(v.col_id);
-    validateValueObj(v, errors, `value_obj_array[${i}]`, col);
+    validateValueObj(v, errors, `value_obj_array[${i}] (column "${colDesc}")`, col);
   });
 
   validateReturningCols(payload.returning_cols_id ?? [], catalog, payload.table_id, errors);
@@ -501,7 +548,8 @@ function validateUpdatePayload(payload, catalog) {
     errors.push('table_id is required');
     return errors;
   }
-  if (!catalog.tableById.get(payload.table_id)) {
+  const table = catalog.tableById.get(payload.table_id);
+  if (!table) {
     errors.push(`table_id ${payload.table_id} does not exist in this project`);
     return errors;
   }
@@ -518,14 +566,14 @@ function validateUpdatePayload(payload, catalog) {
       const col = catalog.colById.get(v.col_id);
       if (!col) { errors.push(`value_obj_array[${i}]: col_id ${v.col_id} not found`); return; }
       if (col.schema_table_id !== payload.table_id) {
-        errors.push(`value_obj_array[${i}]: col_id ${v.col_id} does not belong to table_id ${payload.table_id}`);
+        errors.push(`value_obj_array[${i}]: column "${col.column_name}" does not belong to table "${table.table_name}"`);
         return;
       }
       if (seenColIds.has(v.col_id)) {
-        errors.push(`value_obj_array[${i}]: duplicate col_id ${v.col_id}`);
+        errors.push(`value_obj_array[${i}]: duplicate column "${col.column_name}"`);
       }
       seenColIds.add(v.col_id);
-      validateValueObj(v, errors, `value_obj_array[${i}]`, col);
+      validateValueObj(v, errors, `value_obj_array[${i}] (column "${col.column_name}")`, col);
     });
   }
 
