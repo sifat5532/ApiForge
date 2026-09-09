@@ -222,7 +222,7 @@ router.post('/proceedCollabInvitation', requireAuth, async (req, res) => {
         return res.status(400).json({ msg: 'Already collaborating to this project' });
     }
     if (acceptInvitation == false) {
-        await query('UPDATE project_collaborators SET status=$1, created_at=CURRENT_TIMESTAMP WHERE project_id=$2, AND user_id=$3;', ['rejected', proj_id, req.loggedInUser.id]);
+        await query('UPDATE project_collaborators SET status=$1, created_at=CURRENT_TIMESTAMP WHERE project_id=$2 AND user_id=$3;', ['rejected', proj_id, req.loggedInUser.id]);
         return res.status(200).json({ msg: 'Successfully rejected the collaboration invitation' });
     }
     await query('UPDATE project_collaborators SET status=$1 ,created_at=CURRENT_TIMESTAMP WHERE project_id=$2 AND user_id=$3;', ['accepted', proj_id, req.loggedInUser.id]);

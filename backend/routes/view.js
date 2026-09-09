@@ -365,4 +365,96 @@ router.get('/searchTags', requireAuth, async (req, res) => {
     );
     return res.status(200).json({ tags: result.rows });
 });
+
+router.get('/notifications', requireAuth, async (req, res) => {
+    const result = await query(
+        `SELECT
+            n.id,
+            n.type,
+            n.related_entity_name,
+            n.related_entity_id,
+            n.data,
+            n.read_at,
+            n.created_at,
+            s.id            AS sender_id,
+            s.name          AS sender_name,
+            s.username      AS sender_username,
+            p.name          AS entity_name,
+            us.device_label AS session_device_label,
+            us.ip_address   AS session_ip
+        FROM notifications n
+        LEFT JOIN users s ON s.id = n.sender_id
+        LEFT JOIN projects p ON p.id = n.related_entity_id AND n.related_entity_name = 'projects'
+        LEFT JOIN user_sessions us ON us.id = n.related_entity_id AND n.related_entity_name = 'user_sessions'
+        WHERE n.receiver_id = $1
+        ORDER BY n.created_at DESC`,
+        [req.loggedInUser.id]
+    );
+
+    const notifications = result.rows.map(r => ({
+        id: r.id,
+        type: r.type,
+        relatedEntityName: r.related_entity_name,
+        relatedEntityId: r.related_entity_id,
+        data: r.data,
+        isRead: r.read_at != null,
+        createdAt: r.created_at,
+        sender: r.sender_id
+            ? { id: r.sender_id, name: r.sender_name, username: r.sender_username }
+            : null,
+        entityName: r.entity_name,
+        session: r.session_device_label
+            ? { deviceLabel: r.session_device_label, ip: r.session_ip }
+            : null
+    }));
+
+    res.status(200).json({ notifications });
+});
+
+router.post('/notifications/mark-read', requireAuth, async (req, res) => {
+    const { notificationId } = req.body;
+    if (notificationId == null) return res.status(400).json({ msg: 'notificationId is required' });
+
+    const result = await query(
+        `UPDATE notifications
+            SET read_at = COALESCE(read_at, now())
+         WHERE id = $1 AND receiver_id = $2`,
+        [notificationId, req.loggedInUser.id]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ msg: 'Notification not found' });
+    res.status(200).json({ msg: 'Notification marked as read' });
+});
+
+router.post('/notifications/mark-all-read', requireAuth, async (req, res) => {
+    await query(
+        `UPDATE notifications
+            SET read_at = COALESCE(read_at, now())
+         WHERE receiver_id = $1 AND read_at IS NULL`,
+        [req.loggedInUser.id]
+    );
+    res.status(200).json({ msg: 'All notifications marked as read' });
+});
+
+router.post('/notifications/clear-read', requireAuth, async (req, res) => {
+    const result = await query(
+        `DELETE FROM notifications
+         WHERE receiver_id = $1 AND read_at IS NOT NULL`,
+        [req.loggedInUser.id]
+    );
+    res.status(200).json({ msg: 'Read notifications cleared', deleted: result.rowCount });
+});
+
+router.post('/notifications/dismiss', requireAuth, async (req, res) => {
+    const { notificationId } = req.body;
+    if (notificationId == null) return res.status(400).json({ msg: 'notificationId is required' });
+
+    const result = await query(
+        `DELETE FROM notifications
+         WHERE id = $1 AND receiver_id = $2`,
+        [notificationId, req.loggedInUser.id]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ msg: 'Notification not found' });
+    res.status(200).json({ msg: 'Notification dismissed' });
+});
+
 module.exports = router;
