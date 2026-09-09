@@ -924,3 +924,298 @@ DROP TRIGGER IF EXISTS tg_insert_users ON users;
 CREATE TRIGGER tg_insert_users
 AFTER INSERT ON users FOR EACH ROW
 EXECUTE FUNCTION tgfunc_add_free_subscription ();
+
+-------------------------------- PROJECT LOGS TRIGGERS START HERE ----------------------------------
+-- Generic helper to insert a row into project_logs.
+-- changed_by is read from the session variable app.current_user_id which the backend sets per request.
+CREATE OR REPLACE FUNCTION func_log_project_change (
+   p_project_id INTEGER,
+   p_entity_type VARCHAR,
+   p_entity_id INTEGER,
+   p_change_type VARCHAR,
+   p_old_data JSONB,
+   p_new_data JSONB
+) RETURNS void LANGUAGE plpgsql AS $$
+DECLARE
+   v_changed_by INTEGER;
+BEGIN
+   v_changed_by := NULLIF(current_setting('app.current_user_id', true), '')::INTEGER;
+
+   INSERT INTO project_logs (project_id, changed_by, created_at, entity_type, entity_id, change_type, old_data, new_data)
+   VALUES (p_project_id, v_changed_by, now(), p_entity_type, p_entity_id, p_change_type, p_old_data, p_new_data);
+END;
+$$;
+
+-- project_cors_origin : insert / delete
+CREATE OR REPLACE FUNCTION tgfunc_log_cors_origin () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+   IF TG_OP = 'INSERT' THEN
+      PERFORM func_log_project_change(NEW.project_id, 'cors_origin', NULL, 'insert',
+         NULL, jsonb_build_object('origin', NEW.origin));
+   ELSIF TG_OP = 'DELETE' THEN
+      PERFORM func_log_project_change(OLD.project_id, 'cors_origin', NULL, 'delete',
+         jsonb_build_object('origin', OLD.origin), NULL);
+   END IF;
+   RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
+DROP TRIGGER IF EXISTS tg_log_cors_origin ON project_cors_origin;
+
+CREATE TRIGGER tg_log_cors_origin
+AFTER INSERT OR DELETE ON project_cors_origin FOR EACH ROW
+EXECUTE FUNCTION tgfunc_log_cors_origin ();
+
+-- project_collaborators : insert / remove (delete)
+CREATE OR REPLACE FUNCTION tgfunc_log_collaborator () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+   IF TG_OP = 'INSERT' THEN
+      PERFORM func_log_project_change(NEW.project_id, 'collaborator', NEW.user_id, 'insert',
+         NULL, jsonb_build_object('user_id', NEW.user_id, 'role', NEW.role, 'status', NEW.status));
+   ELSIF TG_OP = 'DELETE' THEN
+      PERFORM func_log_project_change(OLD.project_id, 'collaborator', OLD.user_id, 'delete',
+         jsonb_build_object('user_id', OLD.user_id, 'role', OLD.role, 'status', OLD.status), NULL);
+   END IF;
+   RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
+DROP TRIGGER IF EXISTS tg_log_collaborator ON project_collaborators;
+
+CREATE TRIGGER tg_log_collaborator
+AFTER INSERT OR DELETE ON project_collaborators FOR EACH ROW
+EXECUTE FUNCTION tgfunc_log_collaborator ();
+
+-- schema_tables : create (insert) / update (rename) / delete
+-- A temp table marks tables created in this transaction so their initial columns log as 'create'
+-- instead of a plain 'insert'. Another temp table marks dropped tables so their cascade-deleted
+-- columns are not logged individually.
+CREATE OR REPLACE FUNCTION tgfunc_log_schema_table () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+   IF TG_OP = 'INSERT' THEN
+      CREATE TEMP TABLE IF NOT EXISTS _log_new_tables (schema_table_id INTEGER) ON COMMIT DROP;
+      INSERT INTO _log_new_tables VALUES (NEW.id);
+      -- The 'create' log (bundled with all of the table's columns) is written
+      -- once at transaction end by tgfunc_log_new_tables_finalize.
+   ELSIF TG_OP = 'UPDATE' THEN
+      IF NEW.table_name IS DISTINCT FROM OLD.table_name THEN
+         PERFORM func_log_project_change(NEW.project_id, 'schema_table', NEW.id, 'update',
+            jsonb_build_object('table_name', OLD.table_name),
+            jsonb_build_object('table_name', NEW.table_name));
+      END IF;
+   ELSIF TG_OP = 'DELETE' THEN
+      CREATE TEMP TABLE IF NOT EXISTS _log_dropped_tables (schema_table_id INTEGER) ON COMMIT DROP;
+      INSERT INTO _log_dropped_tables VALUES (OLD.id);
+      PERFORM func_log_project_change(OLD.project_id, 'schema_table', OLD.id, 'delete',
+         jsonb_build_object('table_name', OLD.table_name), NULL);
+   END IF;
+   RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
+DROP TRIGGER IF EXISTS tg_log_schema_table ON schema_tables;
+
+CREATE TRIGGER tg_log_schema_table
+AFTER INSERT OR UPDATE OR DELETE ON schema_tables FOR EACH ROW
+EXECUTE FUNCTION tgfunc_log_schema_table ();
+
+-- At transaction end (deferred), emit one 'create' log per newly created table that
+-- bundles the table name and ALL of its initial columns. This avoids one log row per
+-- initial column. Marked INITIALLY DEFERRED so every column inserted in the
+-- transaction (whether batched or row-by-row, e.g. template clone) is already present.
+CREATE OR REPLACE FUNCTION tgfunc_log_new_tables_finalize () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+   v_table_name VARCHAR;
+   v_project_id INTEGER;
+   v_columns JSONB;
+BEGIN
+   -- A constraint trigger must be FOR EACH ROW; NEW.id is the newly created table.
+   -- This runs at transaction end (INITIALLY DEFERRED), so all of the table's
+   -- initial columns are already present and can be bundled into one 'create' log.
+   SELECT project_id, table_name
+   INTO v_project_id, v_table_name
+   FROM schema_tables
+   WHERE id = NEW.id;
+
+   IF v_table_name IS NULL THEN
+      RETURN NULL;
+   END IF;
+
+   SELECT COALESCE(
+      jsonb_agg(jsonb_build_object(
+         'col_name', col_name,
+         'col_type', col_type,
+         'is_primary_key', is_primary_key,
+         'is_nullable', is_nullable,
+         'is_unique', is_unique,
+         'default_value', default_value,
+         'col_length', col_length,
+         'is_auto_increment', is_auto_increment
+      ) ORDER BY id),
+      '[]'::jsonb
+   )
+   INTO v_columns
+   FROM schema_columns
+   WHERE schema_table_id = NEW.id;
+
+   PERFORM func_log_project_change(
+      v_project_id, 'schema_table', NEW.id, 'create',
+      NULL,
+      jsonb_build_object('table_name', v_table_name, 'columns', v_columns)
+   );
+
+   RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS tg_log_new_tables_finalize ON schema_tables;
+
+CREATE CONSTRAINT TRIGGER tg_log_new_tables_finalize
+AFTER INSERT ON schema_tables
+INITIALLY DEFERRED
+FOR EACH ROW
+EXECUTE FUNCTION tgfunc_log_new_tables_finalize ();
+
+-- schema_columns : create (initial col of a new table) / insert (added to existing table) / update / delete
+CREATE OR REPLACE FUNCTION tgfunc_log_schema_column () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+   v_project_id INTEGER;
+   v_table_name VARCHAR;
+   v_is_new_table BOOLEAN := FALSE;
+   v_is_dropped_table BOOLEAN := FALSE;
+BEGIN
+   IF TG_OP = 'INSERT' THEN
+      SELECT st.project_id, st.table_name INTO v_project_id, v_table_name
+      FROM schema_tables st WHERE st.id = NEW.schema_table_id;
+
+      IF to_regclass('pg_temp._log_new_tables') IS NOT NULL THEN
+         SELECT EXISTS (SELECT 1 FROM _log_new_tables WHERE schema_table_id = NEW.schema_table_id) INTO v_is_new_table;
+      END IF;
+
+      IF v_is_new_table THEN
+         -- Columns of a newly created table are bundled into the single
+         -- 'create' log written by tgfunc_log_new_tables_finalize, so skip here.
+         NULL;
+      ELSE
+         PERFORM func_log_project_change(v_project_id, 'schema_column', NEW.id, 'insert',
+            NULL, jsonb_build_object('table_name', v_table_name, 'col_name', NEW.col_name, 'col_type', NEW.col_type, 'is_primary_key', NEW.is_primary_key));
+      END IF;
+
+   ELSIF TG_OP = 'UPDATE' THEN
+      SELECT st.project_id, st.table_name INTO v_project_id, v_table_name
+      FROM schema_tables st WHERE st.id = NEW.schema_table_id;
+
+      IF NEW.col_name IS DISTINCT FROM OLD.col_name
+         OR NEW.col_type IS DISTINCT FROM OLD.col_type
+         OR NEW.is_primary_key IS DISTINCT FROM OLD.is_primary_key
+         OR NEW.is_nullable IS DISTINCT FROM OLD.is_nullable
+         OR NEW.is_unique IS DISTINCT FROM OLD.is_unique
+         OR NEW.default_value IS DISTINCT FROM OLD.default_value
+         OR NEW.col_length IS DISTINCT FROM OLD.col_length
+         OR NEW.is_auto_increment IS DISTINCT FROM OLD.is_auto_increment THEN
+         PERFORM func_log_project_change(v_project_id, 'schema_column', NEW.id, 'update',
+            jsonb_build_object('col_name', OLD.col_name, 'col_type', OLD.col_type, 'is_primary_key', OLD.is_primary_key, 'is_nullable', OLD.is_nullable, 'is_unique', OLD.is_unique),
+            jsonb_build_object('col_name', NEW.col_name, 'col_type', NEW.col_type, 'is_primary_key', NEW.is_primary_key, 'is_nullable', NEW.is_nullable, 'is_unique', NEW.is_unique));
+      END IF;
+
+   ELSIF TG_OP = 'DELETE' THEN
+      SELECT st.project_id, st.table_name INTO v_project_id, v_table_name
+      FROM schema_tables st WHERE st.id = OLD.schema_table_id;
+
+      IF to_regclass('pg_temp._log_dropped_tables') IS NOT NULL THEN
+         SELECT EXISTS (SELECT 1 FROM _log_dropped_tables WHERE schema_table_id = OLD.schema_table_id) INTO v_is_dropped_table;
+      END IF;
+
+      IF NOT v_is_dropped_table THEN
+         PERFORM func_log_project_change(v_project_id, 'schema_column', OLD.id, 'delete',
+            jsonb_build_object('table_name', v_table_name, 'col_name', OLD.col_name, 'col_type', OLD.col_type), NULL);
+      END IF;
+   END IF;
+   RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
+DROP TRIGGER IF EXISTS tg_log_schema_column ON schema_columns;
+
+CREATE TRIGGER tg_log_schema_column
+AFTER INSERT OR UPDATE OR DELETE ON schema_columns FOR EACH ROW
+EXECUTE FUNCTION tgfunc_log_schema_column ();
+
+-- schema_foreign_keys : insert / update / delete
+CREATE OR REPLACE FUNCTION tgfunc_log_foreign_key () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+   v_project_id INTEGER;
+BEGIN
+   IF TG_OP = 'INSERT' THEN
+      SELECT p.id INTO v_project_id
+      FROM schema_columns c
+      JOIN schema_tables st ON st.id = c.schema_table_id
+      JOIN projects p ON p.id = st.project_id
+      WHERE c.id = NEW.child_col_id;
+
+      PERFORM func_log_project_change(v_project_id, 'foreign_key', NEW.child_col_id, 'insert',
+         NULL, jsonb_build_object('fk_name', NEW.fk_name, 'child_col_id', NEW.child_col_id, 'parent_col_id', NEW.parent_col_id, 'on_delete', NEW.on_delete, 'on_update', NEW.on_update));
+
+   ELSIF TG_OP = 'UPDATE' THEN
+      SELECT p.id INTO v_project_id
+      FROM schema_columns c
+      JOIN schema_tables st ON st.id = c.schema_table_id
+      JOIN projects p ON p.id = st.project_id
+      WHERE c.id = NEW.child_col_id;
+
+      PERFORM func_log_project_change(v_project_id, 'foreign_key', NEW.child_col_id, 'update',
+         jsonb_build_object('fk_name', OLD.fk_name, 'on_delete', OLD.on_delete, 'on_update', OLD.on_update),
+         jsonb_build_object('fk_name', NEW.fk_name, 'on_delete', NEW.on_delete, 'on_update', NEW.on_update));
+
+   ELSIF TG_OP = 'DELETE' THEN
+      SELECT p.id INTO v_project_id
+      FROM schema_columns c
+      JOIN schema_tables st ON st.id = c.schema_table_id
+      JOIN projects p ON p.id = st.project_id
+      WHERE c.id = OLD.child_col_id;
+
+      PERFORM func_log_project_change(v_project_id, 'foreign_key', OLD.child_col_id, 'delete',
+         jsonb_build_object('fk_name', OLD.fk_name, 'child_col_id', OLD.child_col_id, 'parent_col_id', OLD.parent_col_id), NULL);
+   END IF;
+   RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
+DROP TRIGGER IF EXISTS tg_log_foreign_key ON schema_foreign_keys;
+
+CREATE TRIGGER tg_log_foreign_key
+AFTER INSERT OR UPDATE OR DELETE ON schema_foreign_keys FOR EACH ROW
+EXECUTE FUNCTION tgfunc_log_foreign_key ();
+
+-- api_definitions : insert / update / delete
+CREATE OR REPLACE FUNCTION tgfunc_log_api_definition () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+   IF TG_OP = 'INSERT' THEN
+      PERFORM func_log_project_change(NEW.project_id, 'api_definition', NEW.id, 'insert',
+         NULL, jsonb_build_object('name', NEW.name, 'method', NEW.method, 'rate_limit_per_day', NEW.rate_limit_per_day));
+
+   ELSIF TG_OP = 'UPDATE' THEN
+      IF NEW.name IS DISTINCT FROM OLD.name
+         OR NEW.method IS DISTINCT FROM OLD.method
+         OR NEW.query_definition IS DISTINCT FROM OLD.query_definition
+         OR NEW.rate_limit_per_day IS DISTINCT FROM OLD.rate_limit_per_day
+         OR NEW.is_active IS DISTINCT FROM OLD.is_active THEN
+         PERFORM func_log_project_change(NEW.project_id, 'api_definition', NEW.id, 'update',
+            jsonb_build_object('name', OLD.name, 'method', OLD.method, 'rate_limit_per_day', OLD.rate_limit_per_day),
+            jsonb_build_object('name', NEW.name, 'method', NEW.method, 'rate_limit_per_day', NEW.rate_limit_per_day));
+      END IF;
+
+   ELSIF TG_OP = 'DELETE' THEN
+      PERFORM func_log_project_change(OLD.project_id, 'api_definition', OLD.id, 'delete',
+         jsonb_build_object('name', OLD.name, 'method', OLD.method), NULL);
+   END IF;
+   RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
+DROP TRIGGER IF EXISTS tg_log_api_definition ON api_definitions;
+
+CREATE TRIGGER tg_log_api_definition
+AFTER INSERT OR UPDATE OR DELETE ON api_definitions FOR EACH ROW
+EXECUTE FUNCTION tgfunc_log_api_definition ();
+-------------------------------- PROJECT LOGS TRIGGERS END HERE ----------------------------------

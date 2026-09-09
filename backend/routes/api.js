@@ -3,6 +3,7 @@ const query = require('./../db/query');
 const router = express.Router();
 const { requireAuth } = require('./auth');
 const pool = require('./../db/connection');
+const withActor = require('./../db/withActor');
 const { requireProjectAuthor } = require('./project');
 const { requireProjectAccess } = require('./project');
 const { isProjectActive } = require('./project');
@@ -689,6 +690,7 @@ router.post('/create', requireAuth, requireProjectAccess, isProjectActive, async
   const client = await pool.connect();
   try {
     await client.query('BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE');
+    await client.query('SELECT set_config(\'app.current_user_id\', $1, true)', [String(req.loggedInUser.id)]);
     await checkPlanLimit(client, req.projectAuthorId, 'api', proj_id);
     const projectCatalog = await loadProjectCatalog(client, proj_id);
 

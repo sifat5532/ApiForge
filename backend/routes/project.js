@@ -4,6 +4,7 @@ const query = require('./../db/query');
 const router = express.Router();
 const { requireAuth } = require('./auth');
 const pool = require('./../db/connection');
+const withActor = require('./../db/withActor');
 const checkPlanLimit = require('./../utils/planLimitChecker');
 const PG_RESERVED_WORDS = new Set([
     'all', 'analyse', 'analyze', 'and', 'any', 'array', 'as', 'asc',
@@ -208,7 +209,9 @@ router.post('/collabInvitation', requireAuth, requireProjectAuthor, isProjectAct
         }
     }
 
-    await query('INSERT INTO project_collaborators (project_id, user_id, role, status) VALUES($1, $2, $3, $4);', [proj_id, user_id, 'editor', 'pending']);
+    await withActor(req.loggedInUser.id, async (client) => {
+        await client.query('INSERT INTO project_collaborators (project_id, user_id, role, status) VALUES($1, $2, $3, $4);', [proj_id, user_id, 'editor', 'pending']);
+    });
     return res.status(200).json({ msg: 'Successfully invited for collaboration' });
 });
 
@@ -222,10 +225,14 @@ router.post('/proceedCollabInvitation', requireAuth, async (req, res) => {
         return res.status(400).json({ msg: 'Already collaborating to this project' });
     }
     if (acceptInvitation == false) {
-        await query('UPDATE project_collaborators SET status=$1, created_at=CURRENT_TIMESTAMP WHERE project_id=$2 AND user_id=$3;', ['rejected', proj_id, req.loggedInUser.id]);
+        await withActor(req.loggedInUser.id, async (client) => {
+            await client.query('UPDATE project_collaborators SET status=$1, created_at=CURRENT_TIMESTAMP WHERE project_id=$2 AND user_id=$3;', ['rejected', proj_id, req.loggedInUser.id]);
+        });
         return res.status(200).json({ msg: 'Successfully rejected the collaboration invitation' });
     }
-    await query('UPDATE project_collaborators SET status=$1 ,created_at=CURRENT_TIMESTAMP WHERE project_id=$2 AND user_id=$3;', ['accepted', proj_id, req.loggedInUser.id]);
+    await withActor(req.loggedInUser.id, async (client) => {
+        await client.query('UPDATE project_collaborators SET status=$1 ,created_at=CURRENT_TIMESTAMP WHERE project_id=$2 AND user_id=$3;', ['accepted', proj_id, req.loggedInUser.id]);
+    });
     return res.status(200).json({ msg: 'Successfully accepted the collaboration invitation' });
 });
 
@@ -237,7 +244,9 @@ router.post('/removeCollaboration', requireAuth, async (req, res) => {
     }
     if (user_id == req.loggedInUser.id) {
         if (isExist.rows[0].status != 'accepted' && isExist.rows[0].status != 'pending') { return res.status(400).json({ msg: "You are not a collaborator of this project" }); }
-        await query('UPDATE project_collaborators SET status=$1 WHERE project_id=$2 AND user_id=$3', ['rejected', proj_id, user_id]);
+        await withActor(req.loggedInUser.id, async (client) => {
+            await client.query('UPDATE project_collaborators SET status=$1 WHERE project_id=$2 AND user_id=$3', ['rejected', proj_id, user_id]);
+        });
         return res.status(200).json({ msg: "You have successfully removed yourself from this project as a collaborator" });
 
     }
@@ -246,7 +255,9 @@ router.post('/removeCollaboration', requireAuth, async (req, res) => {
         return res.status(400).json({ msg: "You are not allowed to remove the collaborator" });
     }
     if (isExist.rows[0].status != 'accepted' && isExist.rows[0].status != 'pending') { return res.status(400).json({ msg: "User is not a collaborator of this project" }); }
-    await query('UPDATE project_collaborators SET status=$1 WHERE project_id=$2 AND user_id=$3', ['removed', proj_id, user_id]);
+    await withActor(req.loggedInUser.id, async (client) => {
+        await client.query('UPDATE project_collaborators SET status=$1 WHERE project_id=$2 AND user_id=$3', ['removed', proj_id, user_id]);
+    });
     return res.status(200).json({ msg: "Successfully removed the collaborator from this project as a collaborator" });
 
 });
@@ -318,6 +329,7 @@ router.post('/createTable', requireAuth, requireProjectAccess, isProjectActive, 
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        await client.query('SELECT set_config(\'app.current_user_id\', $1, true)', [String(req.loggedInUser.id)]);
         await checkPlanLimit(client, req.projectAuthorId, 'table', proj_id);
 
         const result = await client.query('INSERT INTO schema_tables(project_id,table_name) VALUES($1, $2) RETURNING id', [proj_id, table_name]);
@@ -370,12 +382,14 @@ router.post('/addCorsOrigin', requireAuth, requireProjectAuthor, isProjectActive
     if (!corsRegex.test(origin.trim())) {
         return res.status(400).json({ msg: "Invalid CORS origin format" });
     }
-    await query(`
-        INSERT INTO project_cors_origin
-        (project_id, origin)
-        VALUES($1, $2)
-        ON CONFLICT (project_id, origin)
-        DO NOTHING;`, [proj_id, origin]);
+    await withActor(req.loggedInUser.id, async (client) => {
+        await client.query(`
+            INSERT INTO project_cors_origin
+            (project_id, origin)
+            VALUES($1, $2)
+            ON CONFLICT (project_id, origin)
+            DO NOTHING;`, [proj_id, origin]);
+    });
     return res.status(200).json({ msg: "Successfully added cors origin" });
 
 });
@@ -387,7 +401,9 @@ router.post('/removeCorsOrigin', requireAuth, requireProjectAuthor, isProjectAct
     if (isOriginExist.rows.length < 1) {
         return res.status(400).json({ msg: "The cors origin does not exist for this project" });
     }
-    await query('DELETE FROM project_cors_origin WHERE project_id = $1 AND origin = $2', [proj_id, origin]);
+    await withActor(req.loggedInUser.id, async (client) => {
+        await client.query('DELETE FROM project_cors_origin WHERE project_id = $1 AND origin = $2', [proj_id, origin]);
+    });
     return res.status(200).json({ msg: "Successfully removed cors origin" });
 
 });
@@ -411,6 +427,7 @@ router.post('/addForeignKey', requireAuth, requireProjectAccess, isProjectActive
     const client = await pool.connect();
     try {
         await client.query("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;");
+        await client.query('SELECT set_config(\'app.current_user_id\', $1, true)', [String(req.loggedInUser.id)]);
         const isDuplicate = await client.query(`
                                      SELECT 
                                       1
@@ -498,7 +515,8 @@ router.post('/addForeignKey', requireAuth, requireProjectAccess, isProjectActive
 
 router.post('/removeForeignKey', requireAuth, isProjectActive, async (req, res) => {
     const { proj_id, schema_table_id, child_col_id } = req.body;
-    const result = await query(`
+    const result = await withActor(req.loggedInUser.id, async (client) => {
+        return await client.query(`
                                 DELETE FROM schema_foreign_keys FK USING schema_columns C,
                                 schema_tables T,
                                 projects P
@@ -524,7 +542,8 @@ router.post('/removeForeignKey', requireAuth, isProjectActive, async (req, res) 
                                             
                                         )
                                     )`,
-        [child_col_id, schema_table_id, proj_id, req.loggedInUser.id]);
+            [child_col_id, schema_table_id, proj_id, req.loggedInUser.id]);
+    });
 
     if (result.rowCount === 0) return res.status(400).json({ msg: 'Can\'t remove the foreign key. Try again later!' });
     return res.status(200).json({ msg: 'Successfully deleted the foreign key' });
@@ -536,7 +555,8 @@ router.post('/deleteApi', requireAuth, isProjectActive, async (req, res) => {
     if (!proj_id || !api_id) {
         return res.status(400).json({ msg: "You should insert a project id and an api id with your request" });
     }
-    const result = await query(`
+    const result = await withActor(req.loggedInUser.id, async (client) => {
+        return await client.query(`
                                 DELETE FROM api_definitions A
                                 USING projects P
                                 WHERE
@@ -554,7 +574,8 @@ router.post('/deleteApi', requireAuth, isProjectActive, async (req, res) => {
                                               AND PC.role = 'editor'
                                         )
                                     )`,
-        [api_id, proj_id, req.loggedInUser.id]);
+            [api_id, proj_id, req.loggedInUser.id]);
+    });
 
     if (result.rowCount === 0) return res.status(400).json({ msg: "Can't delete this API. It may not exist or you don't have permission." });
     return res.status(200).json({ msg: 'Successfully deleted the API' });
@@ -630,10 +651,11 @@ router.post('/cloneTemplate', requireAuth, async (req, res) => {
     if (result.rows.length > 0) {
         return res.status(400).json({ msg: 'You already have a project in this name' });
     }
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-        const template = await client.query(`
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            await client.query('SELECT set_config(\'app.current_user_id\', $1, true)', [String(author_id)]);
+            const template = await client.query(`
             SELECT 
             description
             FROM projects 
