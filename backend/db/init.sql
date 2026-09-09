@@ -607,8 +607,8 @@ CREATE OR REPLACE FUNCTION tgfunc_add_columns () RETURNS TRIGGER LANGUAGE plpgsq
 DECLARE
     rec       RECORD;
     v_col_def TEXT;
-    v_pk_cols TEXT;
     v_actions TEXT;
+    v_pk_cols TEXT;
     v_schema  TEXT;
 BEGIN
     SELECT P.is_template, P.id, P.author_id, S.id AS table_id, S.TABLE_NAME
@@ -627,7 +627,7 @@ BEGIN
         v_col_def := NEW.col_type;
 
         IF NEW.col_type = 'NUMERIC' THEN
-            v_col_def := v_col_def || ' (' || NEW.col_length || ',6) ';
+            v_col_def := v_col_def || ' (' || NEW.col_length || ', 6) ';
         ELSIF NEW.col_type = 'VARCHAR' THEN
             v_col_def := v_col_def || ' (' || NEW.col_length || ') ';
         END IF;
@@ -668,15 +668,13 @@ BEGIN
                 RAISE EXCEPTION 'Invalid data type: %', NEW.col_type;
             END IF;
         END IF;
-
         IF NOT rec.is_template THEN
             EXECUTE FORMAT(
                 'ALTER TABLE %I.%I ADD COLUMN %I %s',
                 v_schema, rec.TABLE_NAME, NEW.col_name, v_col_def
             );
         END IF;
-
-    ELSIF TG_OP = 'UPDATE' THEN
+     ELSIF TG_OP = 'UPDATE' THEN
         v_actions := NULL;
 
         IF NEW.col_name <> OLD.col_name AND NOT rec.is_template THEN
@@ -751,41 +749,7 @@ BEGIN
         END IF;
     END IF;
 
-    IF rec.is_template = FALSE AND (
-        (TG_OP = 'INSERT' AND NEW.is_primary_key)
-        OR (TG_OP = 'UPDATE' AND NEW.is_primary_key = TRUE AND OLD.is_primary_key = FALSE)
-    ) THEN
-        SELECT string_agg(FORMAT('%I', col_name), ',' ORDER BY id)
-        INTO v_pk_cols
-        FROM schema_columns
-        WHERE schema_table_id = NEW.schema_table_id AND is_primary_key = true;
-
-        EXECUTE FORMAT('ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I',
-            v_schema, rec.TABLE_NAME, 'pk_' || rec.table_id);
-        IF v_pk_cols IS NOT NULL THEN
-            --  EXECUTE FORMAT('ALTER TABLE %I.%I ADD COLUMN %I NOT CONFLICT DO NOTHING',
-            --     v_schema,rec.TABLE_NAME ,  NEW.col_name);
-            EXECUTE FORMAT('ALTER TABLE %I.%I ADD CONSTRAINT %I PRIMARY KEY(%s)',
-                v_schema, rec.TABLE_NAME, 'pk_' || rec.table_id, v_pk_cols);
-        END IF;
-
-    ELSIF rec.is_template = FALSE AND (TG_OP = 'UPDATE' AND NEW.is_primary_key = FALSE AND OLD.is_primary_key = TRUE) THEN
-        EXECUTE FORMAT('ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I',
-            v_schema, rec.TABLE_NAME, 'pk_' || rec.table_id);
-
-        SELECT string_agg(FORMAT('%I', col_name), ',' ORDER BY col_id)
-        INTO v_pk_cols
-        FROM schema_columns
-        WHERE schema_table_id = NEW.schema_table_id AND is_primary_key = true;
-
-        IF v_pk_cols IS NOT NULL THEN
-            EXECUTE FORMAT('ALTER TABLE %I.%I ADD CONSTRAINT %I PRIMARY KEY(%s)',
-                v_schema, rec.TABLE_NAME, 'pk_' || rec.table_id, v_pk_cols);
-                RAISE NOTICE 'PK COLS = %', v_pk_cols;
-        END IF;
-
-    END IF;
-
+  
     RETURN NEW;
 END;
 $$;
@@ -794,6 +758,65 @@ DROP TRIGGER IF EXISTS tg_insert_schema_column ON schema_columns;
 CREATE TRIGGER tg_insert_schema_column
 AFTER INSERT OR UPDATE ON schema_columns FOR EACH ROW
 EXECUTE FUNCTION tgfunc_add_columns ();
+
+
+CREATE OR REPLACE FUNCTION  tgfunc_rebuild_pk() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE 
+   r RECORD;
+   v_schema TEXT;
+   v_pk_cols TEXT;
+
+BEGIN
+   FOR r IN
+     SELECT DISTINCT 
+       st.id AS table_id ,
+       st.table_name ,
+       p.id AS project_id ,
+       p.author_id ,
+       p.is_template
+       FROM new_rows nr 
+       JOIN schema_tables st
+       ON st.id = nr.schema_table_id 
+       JOIN projects p 
+       ON p.id = st.project_id 
+      LOOP 
+      IF r.is_template THEN CONTINUE ;
+      END IF;
+      
+      v_schema := 'PROJ_' || r.project_id || '_'||r.author_id;
+         SELECT string_agg(format('%I', col_name), ',' ORDER BY id)
+        INTO v_pk_cols
+        FROM schema_columns
+        WHERE schema_table_id = r.table_id
+          AND is_primary_key = TRUE;
+        EXECUTE format(
+            'ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I',
+            v_schema,
+            r.table_name,
+            'pk_' || r.table_id
+        );
+
+        IF v_pk_cols IS NOT NULL THEN
+            EXECUTE format(
+                'ALTER TABLE %I.%I ADD CONSTRAINT %I PRIMARY KEY (%s)',
+                v_schema,
+                r.table_name,
+                'pk_' || r.table_id,
+                v_pk_cols
+            );
+        END IF;
+
+    END LOOP;
+
+    RETURN NULL;
+END;
+$$;
+DROP TRIGGER IF EXISTS tg_rebuild_pk_insert ON schema_columns;
+CREATE TRIGGER tg_rebuild_pk_insert
+AFTER INSERT ON schema_columns
+REFERENCING NEW TABLE AS new_rows 
+FOR EACH STATEMENT 
+EXECUTE FUNCTION tgfunc_rebuild_pk();
 
 -- we need to insert a row into the project_logs table that a new column has been inserted, it will be implemented later. But it should be ensured that only when an actual alter table is called (adding col to existing tabel), it will insert into logs
 -- CREATE OR REPLACE FUNCTION tgfunc_create_cloned_proj () RETURNS TRIGGER plpgsql AS $$ 
@@ -847,6 +870,19 @@ CREATE TRIGGER tg_insert_schema_fks
 AFTER INSERT ON schema_foreign_keys FOR EACH ROW
 EXECUTE FUNCTION tgfunc_add_fks ();
 
+CREATE OR REPLACE FUNCTION tgfunc_remove_fks () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+   EXECUTE FORMAT(
+      'ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I ',
+      schema_name, rec.child_table, NEW.fk_name
+    );
+END;
+$$;
+
+DROP TRIGGER IF EXISTS tg_remove_schema_fks ON schema_foreign_keys;
+CREATE TRIGGER tg_remove_schema_fks
+AFTER DELETE ON schema_foreign_keys FOR EACH ROW
+EXECUTE FUNCTION tgfunc_remove_fks ();
 -- we need to insert a row into the project_logs table that a new table has been inserted, it will be implemented later
 --------------------------------Clone Template------------------------------------
 CREATE OR REPLACE FUNCTION tgfunc_clone_template () RETURNS TRIGGER LANGUAGE plpgsql AS $$ 

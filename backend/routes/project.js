@@ -266,7 +266,7 @@ router.post('/createTable', requireAuth, requireProjectAccess, isProjectActive, 
     if (cols == null || cols.length < 1) {
         return res.status(400).json({ msg: "You should create at least one column" });
     }
-    if (cols.length > 100) {
+    if (cols.length > 100 ) {
         return res.status(400).json({ msg: "You can create at most 100 columns for a table" });
     }
     const isExist = await query('SELECT * FROM schema_tables WHERE project_id=$1 AND table_name=$2', [proj_id, table_name]);
@@ -279,8 +279,9 @@ router.post('/createTable', requireAuth, requireProjectAccess, isProjectActive, 
         // 6 is_nullable,7 is_unique, 8 element_id_frontend
 
         cols[i][2] = cols[i][2] == null ? null : cols[i][2];
-        cols[i][3] = cols[i][3] == null ? null : (cols[i][3] < 6 ? cols[i][3] + 6 : cols[i][3]);
-
+        if(cols[i][1] === 'NUMERIC' ) cols[i][3] = cols[i][3] === null ? null : (cols[i][3] < 6 ? cols[i][3] + 6 : cols[i][3]);
+        else if (cols[i][1] === 'VARCHAR') cols[i][3] = cols[i][3] === null ? null :  cols[i][3]; 
+        else cols[i][3] = null;
         cols[i][4] = cols[i][4] === true ? true : false; // is_pk
         cols[i][5] = cols[i][5] === true ? true : false; // is_auto_inc
         cols[i][6] = cols[i][6] === true ? true : false; // is_nullable
@@ -349,7 +350,6 @@ router.post('/createTable', requireAuth, requireProjectAccess, isProjectActive, 
         }
         query_string += values_param;
         await client.query(query_string, values);
-
         await client.query('COMMIT');
         return res.status(200).json({ msg: 'Table successfully created' });
     } catch (e) {
@@ -395,7 +395,7 @@ router.post('/removeCorsOrigin', requireAuth, requireProjectAuthor, isProjectAct
 router.post('/addForeignKey', requireAuth, requireProjectAccess, isProjectActive, async (req, res) => {
     const { proj_id, schema_table_id, child_col_id, parent_col_id, fk_constraint_name, on_dlt, on_upd } = req.body;
     if (child_col_id == parent_col_id) {
-        return res.status(400).json({ msg: "Child column id and parent column id can not be same" });
+        return res.status(400).json({ msg: "Child column and parent column  can not be same" });
     }
     const fk_name = fk_constraint_name.trim().toLowerCase();
     if (validateName(req, res, fk_name, 'fk_name', 'NULL').isResSent) return;
@@ -407,9 +407,16 @@ router.post('/addForeignKey', requireAuth, requireProjectAccess, isProjectActive
     if (on_update != 'CASCADE' && on_update != 'SET NULL' && on_update != 'RESTRICT' && on_update != 'NO ACTION') {
         return res.status(400).json({ msg: "on_update foreign key action must be either 'CASCADE', 'SET NULL' 'NO ACTION' or 'RESTRICT'" });
     }
+    
     const client = await pool.connect();
     try {
         await client.query("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;");
+        const isDuplicate = await client.query(`
+                                     SELECT 
+                                      1
+                                      FROM schema_foreign_keys fk
+                                      WHERE fk.child_col_id = $1`,[child_col_id]);
+        if(isDuplicate.rowCount > 0)   return res.status(400).json({ msg: "This column is already a foreign key"}); 
         const isExist = await client.query(`
                                     SELECT
                                         C.col_type AS child_col_type,
