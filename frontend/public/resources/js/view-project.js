@@ -17,6 +17,7 @@ const vpState = {
   apis: [],
   loaded: { tables: false, fk: false, apis: false, cors: false, collab: false, settings: false },
   settingsTags: [],
+  apisSearchBound: false,
 };
 
 const cabState = {
@@ -696,28 +697,54 @@ async function loadApis() {
     const apis = Array.isArray(data.apis) ? data.apis : [];
     vpState.apis = apis;
 
-    if (apis.length === 0) {
-      body.innerHTML = emptyState('No APIs defined yet. Click “+ API” to create your first endpoint.');
-      return;
+    if (!vpState.apisSearchBound) {
+      document.getElementById('vp-apis-search')?.addEventListener('input', applyApiSearch);
+      vpState.apisSearchBound = true;
     }
 
-    body.innerHTML = apis.map(apiCardHtml).join('');
-
-    body.querySelectorAll('.vp-api-copy').forEach(btn => {
-      btn.addEventListener('click', () => copyApiUrl(btn));
-    });
-    body.querySelectorAll('.vp-api-details').forEach(btn => {
-      btn.addEventListener('click', () => openApiDetailsModal(btn.getAttribute('data-api-id')));
-    });
-    body.querySelectorAll('.vp-api-edit').forEach(btn => {
-      btn.addEventListener('click', () => editApi(btn.getAttribute('data-api-id')));
-    });
-    body.querySelectorAll('.vp-api-delete').forEach(btn => {
-      btn.addEventListener('click', () => deleteApi(btn.getAttribute('data-api-id'), btn.getAttribute('data-api-name')));
-    });
+    renderApisList(vpState.apis);
+    applyApiSearch();
   } catch (_) {
     body.innerHTML = emptyState('Network error. Is the backend reachable?');
   }
+}
+
+function renderApisList(apis) {
+  const body = document.getElementById('vp-apis-body');
+  if (!body) return;
+
+  if (!apis || apis.length === 0) {
+    const noneAvailable = !vpState.apis || vpState.apis.length === 0;
+    body.innerHTML = emptyState(noneAvailable
+      ? 'No APIs defined yet. Click “+ API” to create your first endpoint.'
+      : 'No APIs match your search.');
+    return;
+  }
+
+  body.innerHTML = apis.map(apiCardHtml).join('');
+
+  body.querySelectorAll('.vp-api-copy').forEach(btn => {
+    btn.addEventListener('click', () => copyApiUrl(btn));
+  });
+  body.querySelectorAll('.vp-api-details').forEach(btn => {
+    btn.addEventListener('click', () => openApiDetailsModal(btn.getAttribute('data-api-id')));
+  });
+  body.querySelectorAll('.vp-api-edit').forEach(btn => {
+    btn.addEventListener('click', () => editApi(btn.getAttribute('data-api-id')));
+  });
+  body.querySelectorAll('.vp-api-delete').forEach(btn => {
+    btn.addEventListener('click', () => deleteApi(btn.getAttribute('data-api-id'), btn.getAttribute('data-api-name')));
+  });
+}
+
+function applyApiSearch() {
+  const q = (document.getElementById('vp-apis-search')?.value || '').trim().toLowerCase();
+  if (!q) { renderApisList(vpState.apis); return; }
+  const filtered = (vpState.apis || []).filter(a =>
+    (a.name || '').toLowerCase().includes(q) ||
+    String(a.method || '').toLowerCase().includes(q)
+  );
+  renderApisList(filtered);
 }
 
 /* Build the public call URL: BACKEND/api/:username/:projectname/:apiname */
@@ -1037,17 +1064,22 @@ function openApiDetailsModal(apiId) {
 }
 
 /* Build an example call URL: substitutes route params inline and appends query string. */
+function cabExampleSample(p) {
+  if (p.fallback !== undefined && p.fallback !== null) {
+    return encodeURIComponent(String(p.fallback)); // real value → encode
+  }
+  return `<${p.name}>`; // placeholder → keep literal, do NOT encode
+}
+
 function buildExampleCall(baseUrl, method, routeParams, queryParams) {
   let url = baseUrl;
   // Route params are appended as extra path segments (best-effort illustration).
   routeParams.forEach(p => {
-    const sample = p.fallback !== undefined && p.fallback !== null ? p.fallback : `<${p.name}>`;
-    url += `/${encodeURIComponent(String(sample))}`;
+    url += `/${cabExampleSample(p)}`;
   });
   if (queryParams.length) {
     const qs = queryParams.map(p => {
-      const sample = p.fallback !== undefined && p.fallback !== null ? p.fallback : `<${p.name}>`;
-      return `${encodeURIComponent(p.name)}=${encodeURIComponent(String(sample))}`;
+      return `${encodeURIComponent(p.name)}=${cabExampleSample(p)}`;
     }).join('&');
     url += `?${qs}`;
   }
@@ -1106,7 +1138,7 @@ const CAB_JOIN_TYPES = [
   { value: 'right', label: 'RIGHT JOIN' },
   { value: 'full', label: 'FULL OUTER JOIN' },
 ];
-const CAB_COMPARE_OPS = ['=', '!=', '<>', '<', '>', '<=', '>=', 'LIKE', 'NOT LIKE', 'IN', 'NOT IN', 'IS NULL', 'IS NOT NULL', 'BETWEEN'];
+const CAB_COMPARE_OPS = ['=', '!=', '<>', '<', '>', '<=', '>=', 'LIKE', 'NOT LIKE', 'IS NULL', 'IS NOT NULL', 'BETWEEN'];
 const CAB_HAVING_OPS = ['=', '!=', '<>', '<', '>', '<=', '>=', 'LIKE', 'NOT LIKE'];
 const CAB_JOIN_OPS = ['=', '!=', '<', '>', '<=', '>='];
 const CAB_CONNECTORS = [
@@ -1126,7 +1158,7 @@ function cabOptions(arr, selected) {
 
 function cabTableOptionsHtml() {
   return cabState.tables.map(t =>
-    `<option value="${t.id}">${escHtml(t.table_name)} (#${t.id})</option>`
+    `<option value="${t.id}">${escHtml(t.table_name)}</option>`
   ).join('');
 }
 
@@ -1136,7 +1168,7 @@ function cabTableColOptionsHtml(tableId) {
   const tId = table ? table.id : tableId;
   const cols = cabState.colsByTableId[tableId] || cabState.colsByTableId[String(tableId)] || [];
   return '<option value="">Select column</option>' + cols.map(c =>
-    `<option value="${c.id}">${escHtml(tName)}.${escHtml(c.col_name)} (table #${tId}, col #${c.id})</option>`
+    `<option value="${c.id}">${escHtml(tName)}.${escHtml(c.col_name)}</option>`
   ).join('');
 }
 
@@ -1147,7 +1179,7 @@ function cabScopedColOptionsHtml() {
     const cols = cabState.colsByTableId[t.tableId] || cabState.colsByTableId[String(t.tableId)] || [];
     cols.forEach(c => {
       opts.push(
-        `<option value="${escHtml(t.alias)}|${c.id}">${escHtml(t.alias)}.${escHtml(c.col_name)} — ${escHtml(t.tableName)}.${escHtml(c.col_name)} (table #${t.tableId}, col #${c.id})</option>`
+        `<option value="${escHtml(t.alias)}|${c.id}">${escHtml(t.alias)}.${escHtml(c.col_name)} — ${escHtml(t.tableName)}.${escHtml(c.col_name)}</option>`
       );
     });
   });
@@ -1361,8 +1393,8 @@ function cabRenderSelectAll() {
     const disabled = !alias;
     const checked = alias && prev.has(alias);
     const label = alias
-      ? `${alias}.* — ${t.tableName} (#${t.tableId})`
-      : `${t.tableName} (#${t.tableId}) — set alias first`;
+      ? `${alias}.* — ${t.tableName}`
+      : `${t.tableName} — set alias first`;
     return `<label class="cab-check${disabled ? ' ct-disabled' : ''}">
       <input type="checkbox" data-select-all data-alias="${escHtml(alias)}" data-table-id="${t.tableId}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''} />
       ${escHtml(label)}
@@ -1510,8 +1542,8 @@ function cabCreateGroupItem(container) {
       </div>
       <div class="cab-list cab-where-children"></div>
       <div class="cab-add-row">
-        <button type="button" class="cab-mini" data-action="add-cond">+ condition</button>
-        <button type="button" class="cab-mini" data-action="add-group">+ nested group</button>
+        <button type="button" class="cab-mini" data-action="add-cond">+ Add condition</button>
+        <button type="button" class="cab-mini" data-action="add-group">+ Add nested condition</button>
       </div>
     </div>`;
   const children = item.querySelector('.cab-where-children');
@@ -1963,7 +1995,8 @@ async function openCreateApiModal() {
           <div class="field" id="cab-alias-wrap">
             <label class="field__label" for="cab-from-alias" id="cab-alias-label">Table alias <span class="cab-star">*</span></label>
             <input class="modal-input" type="text" id="cab-from-alias" maxlength="63" placeholder="e.g. u1" />
-            <span class="field__hint">Required. Letters, digits, underscore. Must start with a letter or underscore.</span>
+            <span class="field__hint">Required. Letters, digits, underscore; must start with a letter or underscore.</span>
+            <span class="field__hint field__hint--warn">Columns only appear once the table has an alias.</span>
           </div>
         </div>
       </section>
@@ -1973,7 +2006,7 @@ async function openCreateApiModal() {
           <div class="cab-section-head">
             <span class="cab-label">Select columns</span>
           </div>
-          <p class="cab-hint">Select all (*) is per table — every FROM / JOIN table with an alias can be included.</p>
+          <p class="cab-hint">Select all (*) is per table — every FROM / JOIN table with an alias can be included. A table without an alias won't show any of its columns here.</p>
           <div class="cab-select-all-list" id="cab-select-all-list"></div>
           <div class="cab-col-head cab-select-grid">
             <div>Function</div><div>Column</div><div>Alias (AS)</div><div></div>
@@ -2009,10 +2042,11 @@ async function openCreateApiModal() {
           <span class="cab-label">Where (filters)</span>
           <span class="cab-note cab-note--warn cab-hidden" id="cab-where-required">Required for this method — prevents accidental full-table writes</span>
         </div>
+        <p class="cab-hint">Only columns of tables that have an alias are available here.</p>
         <div class="cab-list" id="cab-where-root"></div>
         <div class="cab-add-row">
           <button type="button" class="btn btn--ghost btn--sm" id="cab-add-where-cond">+ Add condition</button>
-          <button type="button" class="btn btn--ghost btn--sm" id="cab-add-where-group">+ Add group ( … )</button>
+          <button type="button" class="btn btn--ghost btn--sm" id="cab-add-where-group">+ Add nested condition</button>
         </div>
       </section>
 
