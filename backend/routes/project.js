@@ -765,6 +765,300 @@ router.delete('/deleteProject/:projectId', requireAuth, async (req, res) => {
     return res.status(200).json({ msg: "Project was deleted successfully" });
 });
 
+// ######################################################
+//  Schema table related routes (DDL driven by triggers)
+// ######################################################
+
+router.put('/renameTable', requireAuth, requireProjectAccess, isProjectActive, async (req, res) => {
+    const { proj_id, schema_table_id, name } = req.body;
+    if (!proj_id || !schema_table_id || !name) {
+        return res.status(400).json({ msg: "You should insert all necessary information" });
+    }
+    if (name == null || name.trim().length < 1) {
+        return res.status(400).json({ msg: "Please fill the table name" });
+    }
+    const table_name = name.trim().toLowerCase();
+    if (validateName(req, res, table_name, 'table', 'NULL').isResSent) return;
+
+    const isExist = await query('SELECT * FROM schema_tables WHERE project_id=$1 AND table_name=$2 AND id != $3', [proj_id, table_name, schema_table_id]);
+    if (isExist.rows.length > 0) {
+        return res.status(400).json({ msg: 'Your alredy have a table in the project in this name' });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query('SELECT set_config(\'app.current_user_id\', $1, true)', [String(req.loggedInUser.id)]);
+        await client.query('UPDATE schema_tables SET table_name=$1 WHERE id=$2 AND project_id=$3', [table_name, schema_table_id, proj_id]);
+        await client.query('COMMIT');
+        return res.status(200).json({ msg: 'Table successfully renamed' });
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error(e);
+        if (e.code === '23505') {
+            return res.status(400).json({ msg: 'Your alredy have a table in the project in this name' });
+        }
+        res.status(e.status || 500).json({ msg: e.status ? e.message : 'There was a server side error, please try again later' });
+    } finally {
+        client.release();
+    }
+});
+
+router.delete('/deleteTable', requireAuth, requireProjectAccess, isProjectActive, async (req, res) => {
+    const { proj_id, schema_table_id } = req.body;
+    if (!proj_id || !schema_table_id) {
+        return res.status(400).json({ msg: "You should insert a project id and a table id with your request" });
+    }
+    const tableCheck = await query('SELECT id FROM schema_tables WHERE id=$1 AND project_id=$2', [schema_table_id, proj_id]);
+    if (tableCheck.rows.length === 0) {
+        return res.status(404).json({ msg: "Table not found in this project" });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query('SELECT set_config(\'app.current_user_id\', $1, true)', [String(req.loggedInUser.id)]);
+        await client.query('DELETE FROM schema_tables WHERE id=$1 AND project_id=$2', [schema_table_id, proj_id]);
+        await client.query('COMMIT');
+        return res.status(200).json({ msg: 'Table successfully deleted' });
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error(e);
+        res.status(e.status || 500).json({ msg: e.status ? e.message : 'There was a server side error, please try again later' });
+    } finally {
+        client.release();
+    }
+});
+
+// ######################################################
+//  Schema column related routes (DDL driven by triggers)
+// ######################################################
+
+router.post('/addColumn', requireAuth, requireProjectAccess, isProjectActive, async (req, res) => {
+    const { proj_id, schema_table_id, col_name, col_type, default_value, col_length, is_primary_key, is_auto_increment, is_nullable, is_unique } = req.body;
+    if (!proj_id || !schema_table_id || !col_name || !col_type) {
+        return res.status(400).json({ msg: "You should insert all necessary information" });
+    }
+    const tableCheck = await query('SELECT id FROM schema_tables WHERE id=$1 AND project_id=$2', [schema_table_id, proj_id]);
+    if (tableCheck.rows.length === 0) {
+        return res.status(404).json({ msg: "Table not found in this project" });
+    }
+
+    const cname = col_name.trim().toLowerCase();
+    if (validateName(req, res, cname, 'column', 'NULL').isResSent) return;
+
+    const isColExist = await query('SELECT * FROM schema_columns WHERE schema_table_id=$1 AND col_name=$2', [schema_table_id, cname]);
+    if (isColExist.rows.length > 0) {
+        return res.status(400).json({ msg: 'You already have a column in this name in the table' });
+    }
+
+    let c_def = default_value == null ? null : default_value;
+    let c_len = col_length;
+    const c_type = col_type;
+    const c_pk = is_primary_key === true ? true : false;
+    const c_auto = is_auto_increment === true ? true : false;
+    const c_null = is_nullable === true ? true : false;
+    const c_uniq = is_unique === true ? true : false;
+
+    if (!(c_type === 'INTEGER' || c_type === 'TEXT' || c_type === 'NUMERIC' || c_type === 'BOOLEAN' || c_type === 'VARCHAR' || c_type === 'DATE' || c_type === 'TIMESTAMP')) {
+        return res.status(400).json({ msg: 'Your given data type is not valid' });
+    }
+    if (!await validateColumnDefault(pool, c_type, c_def)) {
+        return res.status(400).json({ msg: 'Your given default value does not match with the give data type' });
+    }
+    if (c_type === 'VARCHAR' || c_type === 'NUMERIC') {
+        if (c_len == null || c_len < 1) return res.status(400).json({ msg: 'Give valid length of the column' });
+    } else {
+        c_len = null;
+    }
+    if (c_type === 'NUMERIC') c_len = c_len == null ? null : (c_len < 6 ? c_len + 6 : c_len);
+    if (c_auto === true && (c_type != 'INTEGER' || (c_pk != true && c_uniq != true))) {
+        return res.status(409).json({ msg: "Auto increment is not possible for this key" });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query('SELECT set_config(\'app.current_user_id\', $1, true)', [String(req.loggedInUser.id)]);
+        await client.query(
+            `INSERT INTO schema_columns(schema_table_id, col_name, col_type, default_value, col_length, is_primary_key, is_auto_increment, is_nullable, is_unique)
+             VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [schema_table_id, cname, c_type, c_def, c_len, c_pk, c_auto, c_null, c_uniq]
+        );
+        await client.query('COMMIT');
+        return res.status(200).json({ msg: 'Column successfully added' });
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error(e);
+        if (e.code === '23505') {
+            return res.status(400).json({ msg: 'Your already have a column in this name in the table' });
+        }
+        res.status(e.status || 500).json({ msg: e.status ? e.message : 'There was a server side error, please try again later' });
+    } finally {
+        client.release();
+    }
+});
+
+router.put('/updateColumn', requireAuth, requireProjectAccess, isProjectActive, async (req, res) => {
+    const { proj_id, schema_table_id, col_id, col_name, col_type, default_value, col_length, is_primary_key, is_auto_increment, is_nullable, is_unique } = req.body;
+    if (!proj_id || !schema_table_id || !col_id || !col_name || !col_type) {
+        return res.status(400).json({ msg: "You should insert all necessary information" });
+    }
+    const tableCheck = await query('SELECT id FROM schema_tables WHERE id=$1 AND project_id=$2', [schema_table_id, proj_id]);
+    if (tableCheck.rows.length === 0) {
+        return res.status(404).json({ msg: "Table not found in this project" });
+    }
+    const colCheck = await query('SELECT * FROM schema_columns WHERE id=$1 AND schema_table_id=$2', [col_id, schema_table_id]);
+    if (colCheck.rows.length === 0) {
+        return res.status(404).json({ msg: "Column not found in this table" });
+    }
+
+    const cname = col_name.trim().toLowerCase();
+    if (validateName(req, res, cname, 'column', 'NULL').isResSent) return;
+
+    const isColExist = await query('SELECT * FROM schema_columns WHERE schema_table_id=$1 AND col_name=$2 AND id != $3', [schema_table_id, cname, col_id]);
+    if (isColExist.rows.length > 0) {
+        return res.status(400).json({ msg: 'Your already have a column in this name in the table' });
+    }
+
+    let c_def = default_value == null ? null : default_value;
+    let c_len = col_length;
+    const c_type = col_type;
+    const c_pk = is_primary_key === true ? true : false;
+    const c_auto = is_auto_increment === true ? true : false;
+    const c_null = is_nullable === true ? true : false;
+    const c_uniq = is_unique === true ? true : false;
+
+    if (!(c_type === 'INTEGER' || c_type === 'TEXT' || c_type === 'NUMERIC' || c_type === 'BOOLEAN' || c_type === 'VARCHAR' || c_type === 'DATE' || c_type === 'TIMESTAMP')) {
+        return res.status(400).json({ msg: 'Your given data type is not valid' });
+    }
+    if (!await validateColumnDefault(pool, c_type, c_def)) {
+        return res.status(400).json({ msg: 'Your given default value does not match with the give data type' });
+    }
+    if (c_type === 'VARCHAR' || c_type === 'NUMERIC') {
+        if (c_len == null || c_len < 1) return res.status(400).json({ msg: 'Give valid length of the column' });
+    } else {
+        c_len = null;
+    }
+    if (c_type === 'NUMERIC') c_len = c_len == null ? null : (c_len < 6 ? c_len + 6 : c_len);
+    if (c_auto === true && (c_type != 'INTEGER' || (c_pk != true && c_uniq != true))) {
+        return res.status(409).json({ msg: "Auto increment is not possible for this key" });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query('SELECT set_config(\'app.current_user_id\', $1, true)', [String(req.loggedInUser.id)]);
+        await client.query(
+            `UPDATE schema_columns
+             SET col_name=$1, col_type=$2, default_value=$3, col_length=$4, is_primary_key=$5, is_auto_increment=$6, is_nullable=$7, is_unique=$8
+             WHERE id=$9 AND schema_table_id=$10`,
+            [cname, c_type, c_def, c_len, c_pk, c_auto, c_null, c_uniq, col_id, schema_table_id]
+        );
+        await client.query('COMMIT');
+        return res.status(200).json({ msg: 'Column successfully updated' });
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error(e);
+        if (e.code === '23505') {
+            return res.status(400).json({ msg: 'Your already have a column in this name in the table' });
+        }
+        res.status(e.status || 500).json({ msg: e.status ? e.message : 'There was a server side error, please try again later' });
+    } finally {
+        client.release();
+    }
+});
+
+router.delete('/deleteColumn', requireAuth, requireProjectAccess, isProjectActive, async (req, res) => {
+    const { proj_id, schema_table_id, col_id } = req.body;
+    if (!proj_id || !schema_table_id || !col_id) {
+        return res.status(400).json({ msg: "You should insert all necessary information" });
+    }
+    const tableCheck = await query('SELECT id FROM schema_tables WHERE id=$1 AND project_id=$2', [schema_table_id, proj_id]);
+    if (tableCheck.rows.length === 0) {
+        return res.status(404).json({ msg: "Table not found in this project" });
+    }
+    const colCheck = await query('SELECT * FROM schema_columns WHERE id=$1 AND schema_table_id=$2', [col_id, schema_table_id]);
+    if (colCheck.rows.length === 0) {
+        return res.status(404).json({ msg: "Column not found in this table" });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query('SELECT set_config(\'app.current_user_id\', $1, true)', [String(req.loggedInUser.id)]);
+        await client.query('DELETE FROM schema_columns WHERE id=$1 AND schema_table_id=$2', [col_id, schema_table_id]);
+        await client.query('COMMIT');
+        return res.status(200).json({ msg: 'Column successfully deleted' });
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error(e);
+        res.status(e.status || 500).json({ msg: e.status ? e.message : 'There was a server side error, please try again later' });
+    } finally {
+        client.release();
+    }
+});
+
+// ######################################################
+//  Schema foreign key related routes
+// ######################################################
+
+router.put('/updateForeignKey', requireAuth, requireProjectAccess, isProjectActive, async (req, res) => {
+    const { proj_id, schema_table_id, child_col_id, fk_constraint_name, on_dlt, on_upd } = req.body;
+    if (!proj_id || !schema_table_id || !child_col_id) {
+        return res.status(400).json({ msg: "You should insert all necessary information" });
+    }
+    const fk_name = fk_constraint_name.trim().toLowerCase();
+    if (validateName(req, res, fk_name, 'fk_name', 'NULL').isResSent) return;
+    const on_delete = on_dlt == null ? 'NO ACTION' : on_dlt.toUpperCase();
+    const on_update = on_upd == null ? 'NO ACTION' : on_upd.toUpperCase();
+    if (on_delete != 'CASCADE' && on_delete != 'SET NULL' && on_delete != 'RESTRICT' && on_delete != 'NO ACTION') {
+        return res.status(400).json({ msg: "on_delete foreign key action must be either 'CASCADE', 'SET NULL' , 'RESTRICT' or 'NO ACTION'" });
+    }
+    if (on_update != 'CASCADE' && on_update != 'SET NULL' && on_update != 'RESTRICT' && on_update != 'NO ACTION') {
+        return res.status(400).json({ msg: "on_update foreign key action must be either 'CASCADE', 'SET NULL' 'NO ACTION' or 'RESTRICT'" });
+    }
+
+    const fkCheck = await query(`SELECT 1
+                                 FROM schema_foreign_keys fk
+                                 JOIN schema_columns c ON c.id = fk.child_col_id
+                                 JOIN schema_tables t ON t.id = c.schema_table_id
+                                 WHERE fk.child_col_id = $1 AND t.id = $2 AND t.project_id = $3`,
+        [child_col_id, schema_table_id, proj_id]);
+    if (fkCheck.rows.length === 0) {
+        return res.status(404).json({ msg: "Foreign key not found in this table" });
+    }
+
+    const FkName = await query(`SELECT 1
+                                FROM schema_foreign_keys fk
+                                JOIN schema_columns c ON c.id = fk.child_col_id
+                                JOIN schema_tables t ON t.id = c.schema_table_id
+                                WHERE t.id = $1 AND fk.fk_name = $2 AND fk.child_col_id != $3`,
+        [schema_table_id, fk_name, child_col_id]);
+    if (FkName.rows.length > 0) {
+        return res.status(400).json({ msg: "You already have a Foreign key constraint in this name in this table" });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query('SELECT set_config(\'app.current_user_id\', $1, true)', [String(req.loggedInUser.id)]);
+        await client.query(
+            `UPDATE schema_foreign_keys
+             SET fk_name = $1, on_delete = $2, on_update = $3
+             WHERE child_col_id = $4`,
+            [fk_name, on_delete, on_update, child_col_id]
+        );
+        await client.query('COMMIT');
+        return res.status(200).json({ msg: "Foreign key constraint successfully updated" });
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error(e);
+        res.status(e.status || 500).json({ msg: e.status ? e.message : 'There was a server side error, please try again later' });
+    } finally {
+        client.release();
+    }
+});
 
 module.exports = router;
 module.exports.requireProjectAuthor = requireProjectAuthor;
