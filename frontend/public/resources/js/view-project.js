@@ -103,6 +103,9 @@ async function loadProjectHeader() {
     if (inviteBtn)    inviteBtn.hidden    = !vpState.isAuthor;
     if (addCorsBtn)   addCorsBtn.hidden   = !vpState.isAuthor;
 
+    // Author-only: the "Clear" button per table is injected during loadTables()
+    // and toggled there based on vpState.isAuthor.
+
     if (titleEl) titleEl.textContent = p.name || 'Untitled project';
     if (crumbEl) crumbEl.textContent = p.name || 'Project';
 
@@ -236,6 +239,15 @@ async function loadTables() {
             </svg>
             View Data
           </button>
+          <button class="btn btn--ghost btn--sm vp-table-clear" type="button" data-table-id="${t.id}" data-table-name="${escHtml(t.table_name)}" title="Clear all data" style="color: var(--error); border-color: var(--error);">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+              <path d="M10 11v6M14 11v6"></path>
+              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+            </svg>
+            Clear
+          </button>
         </td>
         <td>
           <div class="vp-table-actions">
@@ -277,6 +289,17 @@ async function loadTables() {
 
     body.querySelectorAll('.vp-table-view-data').forEach(btn => {
       btn.addEventListener('click', () => toggleTableData(btn.getAttribute('data-table-id')));
+    });
+
+    body.querySelectorAll('.vp-table-clear').forEach(btn => {
+      // Hidden from collaborators (author-only action).
+      if (!vpState.isAuthor) {
+        btn.hidden = true;
+        return;
+      }
+      btn.addEventListener('click', () => {
+        clearTableData(btn.getAttribute('data-table-id'), btn.getAttribute('data-table-name'));
+      });
     });
 
     body.querySelectorAll('.vp-table-edit').forEach(btn => {
@@ -3687,6 +3710,51 @@ function removeTable(tableId, tableName) {
       } catch (_) {
         showToast('Network error', 'error');
       }
+    },
+  });
+}
+
+function clearTableData(tableId, tableName) {
+  const label = tableName ? `"${tableName}"` : 'this table';
+
+  // First confirmation
+  confirmModal({
+    title: 'Clear Table Data',
+    message: `This will permanently delete ALL rows stored in ${label}. The table structure (columns) stays intact, but the data cannot be recovered. Are you sure?`,
+    confirmLabel: 'Yes, continue',
+    danger: true,
+    onConfirm: () => {
+      // Second (final) confirmation
+      confirmModal({
+        title: 'Confirm Clear Table',
+        message: `Final confirmation: every row in ${label} will be erased. This action is irreversible. Do you really want to clear the table?`,
+        confirmLabel: 'Clear Table',
+        danger: true,
+        onConfirm: async () => {
+          try {
+            const res = await apiFetch('/project/clearTableData', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                proj_id: vpState.projectId,
+                schema_table_id: tableId,
+              }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) {
+              showToast(data.msg || 'Table data cleared', 'success');
+              // Refresh the data view if it is currently showing this table
+              if (_tableDataState.tableId === tableId) {
+                await renderTableData(tableId);
+              }
+            } else {
+              showToast(data.msg || 'Failed to clear table data', 'error');
+            }
+          } catch (_) {
+            showToast('Network error', 'error');
+          }
+        },
+      });
     },
   });
 }

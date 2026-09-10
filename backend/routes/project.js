@@ -1053,6 +1053,38 @@ router.delete('/deleteColumn', requireAuth, requireProjectAccess, isProjectActiv
 //  Schema foreign key related routes
 // ######################################################
 
+router.post('/clearTableData', requireAuth, requireProjectAuthor, isProjectActive, async (req, res) => {
+    const { proj_id, schema_table_id } = req.body;
+    if (!proj_id || !schema_table_id) {
+        return res.status(400).json({ msg: "You should insert a project id and a table id with your request" });
+    }
+    const tableCheck = await query(`
+                            SELECT S.id, UPPER('PROJ_'||P.id||'_'||P.author_id) AS schema_name, S.table_name
+                            FROM schema_tables S
+                            JOIN projects P ON P.id = S.project_id
+                            WHERE S.id = $1 AND S.project_id = $2`, [schema_table_id, proj_id]);
+    if (tableCheck.rows.length === 0) {
+        return res.status(404).json({ msg: "Table not found in this project" });
+    }
+    const schema = tableCheck.rows[0].schema_name;
+    const table_name = tableCheck.rows[0].table_name;
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query('SELECT set_config(\'app.current_user_id\', $1, true)', [String(req.loggedInUser.id)]);
+        await client.query(`TRUNCATE TABLE "${schema}".${table_name} RESTART IDENTITY CASCADE`);
+        await client.query('COMMIT');
+        return res.status(200).json({ msg: 'All data cleared from the table successfully' });
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error(e);
+        res.status(e.status || 500).json({ msg: e.status ? e.message : 'There was a server side error, please try again later' });
+    } finally {
+        client.release();
+    }
+});
+
 router.put('/updateForeignKey', requireAuth, requireProjectAccess, isProjectActive, async (req, res) => {
     const { proj_id, schema_table_id, child_col_id, fk_constraint_name, on_dlt, on_upd } = req.body;
     if (!proj_id || !schema_table_id || !child_col_id) {
