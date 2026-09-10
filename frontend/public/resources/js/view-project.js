@@ -3673,6 +3673,14 @@ function removeTable(tableId, tableName) {
           showToast(data.msg || 'Table successfully deleted', 'success');
           vpState.loaded.tables = false;
           loadTables();
+        } else if (res.status === 409) {
+          showModal(
+            'Cannot Delete Table',
+            `<p class="vp-confirm-msg">${escHtml(data.msg || 'The table you are trying to delete is being used in an API. You can not delete a table which is being used any of the api.')}</p>`,
+            `<button class="btn btn--primary btn--sm" id="cannot-delete-ok" type="button">OK</button>`
+          );
+          const okBtn = document.getElementById('cannot-delete-ok');
+          if (okBtn) okBtn.addEventListener('click', closeModal);
         } else {
           showToast(data.msg || 'Failed to delete table', 'error');
         }

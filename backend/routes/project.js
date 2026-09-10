@@ -823,6 +823,35 @@ router.delete('/deleteTable', requireAuth, requireProjectAccess, isProjectActive
         return res.status(200).json({ msg: 'Table successfully deleted' });
     } catch (e) {
         await client.query('ROLLBACK');
+        const constraint = e.constraint || '';
+        const message = typeof e.message === 'string' ? e.message : '';
+        const usedByApi = (e.code === '23001' || e.code === '23503') && (
+            constraint === 'fk_api_table_dependencies_api_schema_table_id'
+            || constraint === 'fk_api_column_dependencies_schema_col_id'
+            || message.includes('fk_api_table_dependencies_api_schema_table_id')
+            || message.includes('fk_api_column_dependencies_schema_col_id')
+        );
+        if (usedByApi) {
+            let apiList = 'an API';
+            try {
+                const used = await query(`
+                    SELECT DISTINCT ad.name
+                    FROM api_definitions ad
+                    WHERE ad.id IN (
+                        SELECT api_definition_id FROM api_table_dependencies WHERE schema_table_id = $1
+                        UNION
+                        SELECT acd.api_definition_id
+                        FROM api_column_dependencies acd
+                        JOIN schema_columns sc ON sc.id = acd.schema_col_id
+                        WHERE sc.schema_table_id = $1
+                    )
+                    ORDER BY ad.name`, [schema_table_id]);
+                if (used.rows.length) apiList = used.rows.map(r => r.name).join(', ');
+            } catch (_) { /* keep fallback apiList */ }
+            return res.status(409).json({
+                msg: `The table you are trying to delete is being used in ${apiList}. You can not delete a table which is being used any of the api.`
+            });
+        }
         console.error(e);
         res.status(e.status || 500).json({ msg: e.status ? e.message : 'There was a server side error, please try again later' });
     } finally {
@@ -992,6 +1021,27 @@ router.delete('/deleteColumn', requireAuth, requireProjectAccess, isProjectActiv
         return res.status(200).json({ msg: 'Column successfully deleted' });
     } catch (e) {
         await client.query('ROLLBACK');
+        const constraint = e.constraint || '';
+        const message = typeof e.message === 'string' ? e.message : '';
+        const usedByApi = (e.code === '23001' || e.code === '23503') && (
+            constraint === 'fk_api_column_dependencies_schema_col_id'
+            || message.includes('fk_api_column_dependencies_schema_col_id')
+        );
+        if (usedByApi) {
+            let apiList = 'an API';
+            try {
+                const used = await query(`
+                    SELECT DISTINCT ad.name
+                    FROM api_definitions ad
+                    JOIN api_column_dependencies acd ON acd.api_definition_id = ad.id
+                    WHERE acd.schema_col_id = $1
+                    ORDER BY ad.name`, [col_id]);
+                if (used.rows.length) apiList = used.rows.map(r => r.name).join(', ');
+            } catch (_) { /* keep fallback apiList */ }
+            return res.status(409).json({
+                msg: `The column you are trying to delete is being used in ${apiList}. You can not delete a column which is being used any of the api.`
+            });
+        }
         console.error(e);
         res.status(e.status || 500).json({ msg: e.status ? e.message : 'There was a server side error, please try again later' });
     } finally {

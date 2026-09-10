@@ -673,6 +673,109 @@ function validateDeletePayload(payload, catalog) {
   return errors;
 }
 
+function addFirst(map, id, context) {
+  if (id == null || map.has(id)) return;
+  map.set(id, context);
+}
+
+function collectWhereCols(nodes, columns) {
+  if (!Array.isArray(nodes)) return;
+  for (const node of nodes) {
+    if (!node || typeof node !== 'object') continue;
+    if (node.node_type === 'group') {
+      collectWhereCols(node.children, columns);
+      continue;
+    }
+    if (node.node_type === 'condition') {
+      addFirst(columns, node.col_id, 'where');
+    }
+  }
+}
+
+function collectApiDependencies(method, payload, catalog) {
+  const tables = new Map();
+  const columns = new Map();
+  if (!payload || typeof payload !== 'object') return { tables, columns };
+
+  if (method === 'GET') {
+    const select_obj = payload.select_obj || {};
+    addFirst(tables, select_obj.table_id, 'from');
+    const join_obj_array = Array.isArray(payload.join_obj_array) ? payload.join_obj_array : [];
+    for (const j of join_obj_array) {
+      if (j) addFirst(tables, j.table_id, 'join');
+    }
+
+    const aliasToTableId = new Map();
+    if (select_obj.table_alias != null) aliasToTableId.set(select_obj.table_alias, select_obj.table_id);
+    for (const j of join_obj_array) {
+      if (j && j.alias != null) aliasToTableId.set(j.alias, j.table_id);
+    }
+
+    const cols_obj_array = Array.isArray(select_obj.cols_obj_array) ? select_obj.cols_obj_array : [];
+    for (const c of cols_obj_array) {
+      if (!c) continue;
+      if (c.is_select_all) {
+        const tableId = aliasToTableId.get(c.table_alias);
+        if (tableId != null && catalog && catalog.colById) {
+          for (const col of catalog.colById.values()) {
+            if (col.schema_table_id === tableId) addFirst(columns, col.id, 'select');
+          }
+        }
+        continue;
+      }
+      addFirst(columns, c.col_id, 'select');
+    }
+    for (const j of join_obj_array) {
+      if (!j) continue;
+      if (j.left) addFirst(columns, j.left.col_id, 'join');
+      if (j.right) addFirst(columns, j.right.col_id, 'join');
+    }
+    collectWhereCols(payload.where, columns);
+    const group_by_cols_array = Array.isArray(payload.group_by_cols_array) ? payload.group_by_cols_array : [];
+    for (const g of group_by_cols_array) {
+      if (g) addFirst(columns, g.col_id, 'group_by');
+    }
+    const having = Array.isArray(payload.having) ? payload.having : [];
+    for (const h of having) {
+      if (h) addFirst(columns, h.col_id, 'having');
+    }
+    const order_by_array = Array.isArray(payload.order_by_array) ? payload.order_by_array : [];
+    for (const o of order_by_array) {
+      if (o) addFirst(columns, o.col_id, 'order_by');
+    }
+  } else if (method === 'POST') {
+    addFirst(tables, payload.table_id, 'target');
+    const column_id_array = Array.isArray(payload.column_id_array) ? payload.column_id_array : [];
+    for (const colId of column_id_array) {
+      addFirst(columns, colId, 'insert');
+    }
+    const returning_cols_id = Array.isArray(payload.returning_cols_id) ? payload.returning_cols_id : [];
+    for (const colId of returning_cols_id) {
+      addFirst(columns, colId, 'returning');
+    }
+  } else if (method === 'PUT') {
+    addFirst(tables, payload.table_id, 'target');
+    const value_obj_array = Array.isArray(payload.value_obj_array) ? payload.value_obj_array : [];
+    for (const v of value_obj_array) {
+      if (v) addFirst(columns, v.col_id, 'set');
+    }
+    collectWhereCols(payload.where, columns);
+    const returning_cols_id = Array.isArray(payload.returning_cols_id) ? payload.returning_cols_id : [];
+    for (const colId of returning_cols_id) {
+      addFirst(columns, colId, 'returning');
+    }
+  } else if (method === 'DELETE') {
+    addFirst(tables, payload.table_id, 'target');
+    collectWhereCols(payload.where, columns);
+    const returning_cols_id = Array.isArray(payload.returning_cols_id) ? payload.returning_cols_id : [];
+    for (const colId of returning_cols_id) {
+      addFirst(columns, colId, 'returning');
+    }
+  }
+
+  return { tables, columns };
+}
+
 router.post('/create', requireAuth, requireProjectAccess, isProjectActive, async (req, res) => {
   const proj_id = (req.params.projectId ? req.params.projectId : req.query.projectId);
   const api_name = (req.params.api_name ? req.params.api_name : req.query.api_name);
@@ -709,11 +812,30 @@ router.post('/create', requireAuth, requireProjectAccess, isProjectActive, async
       return res.status(422).json({ valid: false, errors });
     }
 
-    await client.query(`
+    const deps = collectApiDependencies(method_upper, req.body, projectCatalog);
+    const inserted = await client.query(`
       INSERT INTO api_definitions
           (name, project_id, method, query_definition, rate_limit_per_day)
       VALUES
-          ($1, $2, $3, $4, $5);`, [api_name, proj_id, method_upper, req.body, 1000])
+          ($1, $2, $3, $4, $5)
+      RETURNING id;`, [api_name, proj_id, method_upper, req.body, 1000]);
+    const apiId = inserted.rows[0].id;
+
+    if (deps.tables.size > 0) {
+      await client.query(`
+        INSERT INTO api_table_dependencies (api_definition_id, schema_table_id, usage_context)
+        SELECT $1, x.schema_table_id, x.usage_context
+        FROM unnest($2::int[], $3::text[]) AS x(schema_table_id, usage_context)
+      `, [apiId, [...deps.tables.keys()], [...deps.tables.values()]]);
+    }
+    if (deps.columns.size > 0) {
+      await client.query(`
+        INSERT INTO api_column_dependencies (api_definition_id, schema_col_id, usage_context)
+        SELECT $1, x.schema_col_id, x.usage_context
+        FROM unnest($2::int[], $3::text[]) AS x(schema_col_id, usage_context)
+      `, [apiId, [...deps.columns.keys()], [...deps.columns.values()]]);
+    }
+
     await client.query('COMMIT');
     return res.status(200).json({ valid: true, msg: "Api definition added successfully" });
   } catch (e) {
