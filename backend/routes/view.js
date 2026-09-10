@@ -268,16 +268,43 @@ router.get('/viewUserSessions', requireAuth, async (req, res) => {
     );
     res.status(200).json({ msg: "Successfully show user sessions", data: result.rows });
 });
-router.get('/viewTemplate/:templateId', async (req, res) => {
+
+router.get('/templateDetails/:templateId', async (req, res) => {
     const { templateId } = req.params;// ** I think ids  are not required to send to backend . Confirm me .
     const result = await query(`
                      SELECT 
-                    P.id , P.name , P.created_at , P.description ,P.auth_enabled , P.author_id , U.username , U.name ,
+                    P.id , P.name AS template_name , P.created_at , P.description ,P.auth_enabled , P.author_id , U.username , U.name AS author_name,
                     (SELECT COUNT(st.id) FROM schema_tables st WHERE st.project_id = P.id) AS total_tables,
                     (SELECT COUNT(ad.id) FROM api_definitions ad WHERE ad.project_id = P.id) AS total_apis,
                     (SELECT COUNT(*) FROM template_likes tl WHERE tl.template_id = P.id ) AS total_likes,
-                    (SELECT AVG(tr.rating)  FROM template_ratings tr WHERE tr.template_id = P.id ) AS avg_ratings ,
+                    COALESCE((SELECT AVG(tr.rating)  FROM template_ratings tr WHERE tr.template_id = P.id ) , 0 ) AS avg_ratings ,
                     (SELECT COUNT(*) FROM template_clones tc WHERE tc.template_id = P.id ) AS total_cloned ,
+                    COALESCE(
+                                 ( SELECT json_agg(
+                                  json_build_object (
+                                  'id' , t.id , 'tag_id' , pt.tag_id ,
+                                  'name' , t.name
+                                  ) ORDER BY t.name
+                                  ) AS tag
+                                  FROM project_tags pt
+                                  JOIN tags t ON t.id = pt.tag_id
+                                   WHERE pt.project_id = p.id
+                                 ) , '[]' :: json
+                                 ) AS template_tags ,
+                    COALESCE(
+                                 ( SELECT json_agg(
+                                  json_build_object (
+                                  'user_id' , tr.user_id , 'name' , u.name , 'username' , u.username ,
+                                  'rating' , tr.rating , 'created_at' , tr.created_at , 'updated_at' , tr.updated_at , 'review' , tr.review_text
+                                  ) ORDER BY tr.created_at
+                                  ) AS review
+                                  FROM template_ratings tr
+                                  JOIN users u ON u.id = tr.user_id
+                                  WHERE tr.template_id = p.id
+                                  LIMIT 10
+                                 ) , '[]' :: json
+                                 ) AS template_reviews ,
+                
                     COALESCE (
                      ( SELECT json_agg( 
                      json_build_object(
