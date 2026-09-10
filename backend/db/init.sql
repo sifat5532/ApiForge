@@ -966,20 +966,35 @@ CREATE TRIGGER tg_log_cors_origin
 AFTER INSERT OR DELETE ON project_cors_origin FOR EACH ROW
 EXECUTE FUNCTION tgfunc_log_cors_origin ();
 
--- project_collaborators : insert / remove (delete)
+-- project_collaborators : collaborator added (accept) / collaborator removed
+-- An invitation being sent (INSERT with status pending) is NOT logged. A log is only
+-- created once the invite is accepted (pending -> accepted) -> "collaborator added".
+-- A later removal deletes the row, but by then its status has already been flipped to
+-- 'rejected' (collaborator left on their own) or 'removed' (author removed them). Those
+-- two transitions are logged here in the UPDATE path. The DELETE path logs nothing because
+-- every deletion is either an already-logged removal or a rejected pending invite (which
+-- must not be logged).
 CREATE OR REPLACE FUNCTION tgfunc_log_collaborator () RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE
    v_name VARCHAR;
    v_username VARCHAR;
 BEGIN
    IF TG_OP = 'INSERT' THEN
-      SELECT name, username INTO v_name, v_username FROM users WHERE id = NEW.user_id;
-      PERFORM func_log_project_change(NEW.project_id, 'collaborator', NEW.user_id, 'insert',
-         NULL, jsonb_build_object('user_id', NEW.user_id, 'name', v_name, 'username', v_username, 'role', NEW.role, 'status', NEW.status));
+      -- Invitation sent: do not log. A log is only created once accepted.
+      NULL;
+   ELSIF TG_OP = 'UPDATE' THEN
+      IF NEW.status = 'accepted' AND OLD.status = 'pending' THEN
+         SELECT name, username INTO v_name, v_username FROM users WHERE id = NEW.user_id;
+         PERFORM func_log_project_change(NEW.project_id, 'collaborator', NEW.user_id, 'insert',
+            NULL, jsonb_build_object('user_id', NEW.user_id, 'name', v_name, 'username', v_username, 'role', NEW.role, 'status', NEW.status));
+      ELSIF OLD.status = 'accepted' AND NEW.status IN ('rejected', 'removed') THEN
+         SELECT name, username INTO v_name, v_username FROM users WHERE id = NEW.user_id;
+         PERFORM func_log_project_change(NEW.project_id, 'collaborator', NEW.user_id, 'delete',
+            jsonb_build_object('user_id', NEW.user_id, 'name', v_name, 'username', v_username, 'role', NEW.role, 'status', OLD.status), NULL);
+      END IF;
    ELSIF TG_OP = 'DELETE' THEN
-      SELECT name, username INTO v_name, v_username FROM users WHERE id = OLD.user_id;
-      PERFORM func_log_project_change(OLD.project_id, 'collaborator', OLD.user_id, 'delete',
-         jsonb_build_object('user_id', OLD.user_id, 'name', v_name, 'username', v_username, 'role', OLD.role, 'status', OLD.status), NULL);
+      -- Deletions are handled in the UPDATE path above; do not double-log here.
+      NULL;
    END IF;
    RETURN COALESCE(NEW, OLD);
 END;
@@ -988,7 +1003,7 @@ $$;
 DROP TRIGGER IF EXISTS tg_log_collaborator ON project_collaborators;
 
 CREATE TRIGGER tg_log_collaborator
-AFTER INSERT OR DELETE ON project_collaborators FOR EACH ROW
+AFTER INSERT OR UPDATE OR DELETE ON project_collaborators FOR EACH ROW
 EXECUTE FUNCTION tgfunc_log_collaborator ();
 
 -- schema_tables : create (insert) / update (rename) / delete

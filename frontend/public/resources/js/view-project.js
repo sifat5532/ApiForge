@@ -54,12 +54,6 @@ async function initViewProject() {
   bindGlobalActions();
   await loadProjectHeader();
 
-  // The Project Logs tab is the exception to the lazy per-visit fetch rule: its
-  // data is fetched ONCE here (on page load) so opening the tab never triggers a
-  // server request. All other tabs (Tables, FK, APIs, CORS, Collaborators) re-fetch
-  // their data every time the user opens them.
-  await loadProjectLogsOnce();
-
   // Load the default (active) tab's content on first paint
   const activeTabBtn = document.querySelector('.vp-tab.is-active');
   if (activeTabBtn) activeTabBtn.click();
@@ -190,9 +184,7 @@ function initTabs() {
         otherPanel.hidden = !active;
       });
 
-      // The Project Logs tab renders from a snapshot taken at page load
-      // (loadProjectLogsOnce), so it never fetches when opened. Every other tab
-      // re-fetches its data on each visit to stay in sync with the server.
+      // Re-fetch data on each visit to stay in sync with the server
       if (cfg.load) {
         cfg.load();
       }
@@ -2372,7 +2364,9 @@ const LOG_ENTITY_LABEL = {
   schema_column: 'Column',
   foreign_key: 'Foreign key',
   cors_origin: 'CORS origin',
+  api_definition: 'API',
   api: 'API',
+  collaborator: 'Collaborator',
   project: 'Project',
 };
 
@@ -2402,7 +2396,42 @@ function logDescription(log) {
   const newData = log.new_data || {};
   const oldData = log.old_data || {};
 
-  const nameFields = ['table_name', 'col_name', 'name', 'origin', 'fk_name', 'api_name', 'proj_name'];
+  // Collaborator special subject
+  if (log.entity_type === 'collaborator') {
+    const name = newData.name || oldData.name || '';
+    const username = newData.username || oldData.username || '';
+    const role = newData.role || oldData.role || 'collaborator';
+    const status = newData.status || oldData.status || '';
+
+    let userLabel = name || username || 'User';
+    let handleHtml = username ? ` <span class="vp-log-row__handle">@${escHtml(username)}</span>` : '';
+    let roleTag = role ? ` <span class="tag">${escHtml(role)}</span>` : '';
+    let statusTag = status && status !== 'accepted' ? ` <span class="tag">${escHtml(status)}</span>` : '';
+
+    return `${change} ${entity} <span class="vp-log__subject">${escHtml(userLabel)}</span>${handleHtml}${roleTag}${statusTag}`;
+  }
+
+  // API definition special subject
+  if (log.entity_type === 'api_definition' || log.entity_type === 'api') {
+    const method = String(newData.method || oldData.method || 'GET').toUpperCase();
+    const name = newData.name || oldData.name || newData.api_name || oldData.api_name || '';
+    const methodClass = `vp-api-method--${method.toLowerCase()}`;
+    const methodHtml = `<span class="vp-api-method ${methodClass}">${escHtml(method)}</span>`;
+    const subjectHtml = name ? ` <span class="vp-log__subject">${escHtml(name)}</span>` : '';
+    return `${change} ${entity} ${methodHtml}${subjectHtml}`;
+  }
+
+  // Schema column special subject (table_name.col_name)
+  if (log.entity_type === 'schema_column') {
+    const table = newData.table_name || oldData.table_name || '';
+    const col = newData.col_name || oldData.col_name || '';
+    const colFullName = table && col ? `${table}.${col}` : (col || table);
+    const subjectHtml = colFullName ? ` <span class="vp-log__subject">${escHtml(colFullName)}</span>` : '';
+    return `${change} ${entity}${subjectHtml}`;
+  }
+
+  // Default subject resolution (check col_name before table_name for other types)
+  const nameFields = ['col_name', 'table_name', 'name', 'origin', 'fk_name', 'api_name', 'proj_name'];
   let subject = '';
   for (const f of nameFields) {
     if (newData[f] != null) { subject = newData[f]; break; }
@@ -2427,6 +2456,132 @@ function logColumnsDetail(log) {
   const newData = log.new_data || {};
   const oldData = log.old_data || {};
   const parts = [];
+
+  // API definition details & diffing
+  if (log.entity_type === 'api_definition' || log.entity_type === 'api') {
+    if (log.change_type === 'update') {
+      const diffs = [];
+      if (oldData.name !== newData.name && (oldData.name != null || newData.name != null)) {
+        diffs.push({ label: 'Name', oldVal: oldData.name ?? '—', newVal: newData.name ?? '—' });
+      }
+      if (oldData.method !== newData.method && (oldData.method != null || newData.method != null)) {
+        diffs.push({ label: 'Method', oldVal: String(oldData.method || '').toUpperCase(), newVal: String(newData.method || '').toUpperCase() });
+      }
+      if (oldData.rate_limit_per_day !== newData.rate_limit_per_day && (oldData.rate_limit_per_day != null || newData.rate_limit_per_day != null)) {
+        const oldRl = oldData.rate_limit_per_day != null ? `${oldData.rate_limit_per_day}/day` : 'Unlimited';
+        const newRl = newData.rate_limit_per_day != null ? `${newData.rate_limit_per_day}/day` : 'Unlimited';
+        diffs.push({ label: 'Rate limit', oldVal: oldRl, newVal: newRl });
+      }
+      if (oldData.is_active !== newData.is_active && (oldData.is_active != null || newData.is_active != null)) {
+        const oldSt = oldData.is_active !== false ? 'Active' : 'Inactive';
+        const newSt = newData.is_active !== false ? 'Active' : 'Inactive';
+        diffs.push({ label: 'Status', oldVal: oldSt, newVal: newSt });
+      }
+
+      if (diffs.length > 0) {
+        const diffRows = diffs.map(d => `
+          <div class="vp-log-diff__item">
+            <span class="vp-log-diff__label">${escHtml(d.label)}:</span>
+            <span class="vp-log-diff__old">${escHtml(d.oldVal)}</span>
+            <span class="vp-log-diff__arrow">→</span>
+            <span class="vp-log-diff__new">${escHtml(d.newVal)}</span>
+          </div>
+        `).join('');
+        parts.push(`
+          <div class="vp-log__cols">
+            <span class="vp-log__cols-label">Changes</span>
+            <div class="vp-log-diff">${diffRows}</div>
+          </div>
+        `);
+      }
+    } else {
+      // Insert or Delete: display API summary attributes
+      const metaItems = [];
+      const data = log.change_type === 'delete' ? oldData : newData;
+      if (data.rate_limit_per_day != null) {
+        metaItems.push(`<span class="vp-log-meta__item"><span class="vp-log-meta__label">Rate limit:</span> ${escHtml(String(data.rate_limit_per_day))}/day</span>`);
+      } else {
+        metaItems.push(`<span class="vp-log-meta__item"><span class="vp-log-meta__label">Rate limit:</span> Unlimited</span>`);
+      }
+      if (data.is_active != null) {
+        const statusText = data.is_active !== false ? 'Active' : 'Inactive';
+        metaItems.push(`<span class="vp-log-meta__item"><span class="vp-log-meta__label">Status:</span> ${escHtml(statusText)}</span>`);
+      }
+      if (metaItems.length > 0) {
+        parts.push(`
+          <div class="vp-log__cols">
+            <div class="vp-log-meta-items">${metaItems.join('')}</div>
+          </div>
+        `);
+      }
+    }
+  }
+
+  // Schema column details for single column insert/update/delete
+  if (log.entity_type === 'schema_column') {
+    if (log.change_type === 'update') {
+      const diffs = [];
+      if (oldData.col_name !== newData.col_name && (oldData.col_name != null || newData.col_name != null)) {
+        diffs.push({ label: 'Column name', oldVal: oldData.col_name ?? '—', newVal: newData.col_name ?? '—' });
+      }
+      if (oldData.col_type !== newData.col_type && (oldData.col_type != null || newData.col_type != null)) {
+        diffs.push({ label: 'Data type', oldVal: oldData.col_type ?? '—', newVal: newData.col_type ?? '—' });
+      }
+      if (oldData.default_value !== newData.default_value && (oldData.default_value != null || newData.default_value != null)) {
+        diffs.push({ label: 'Default', oldVal: String(oldData.default_value ?? 'none'), newVal: String(newData.default_value ?? 'none') });
+      }
+      if (oldData.is_primary_key !== newData.is_primary_key && (oldData.is_primary_key != null || newData.is_primary_key != null)) {
+        diffs.push({ label: 'Primary key', oldVal: oldData.is_primary_key ? 'Yes' : 'No', newVal: newData.is_primary_key ? 'Yes' : 'No' });
+      }
+      if (oldData.is_nullable !== newData.is_nullable && (oldData.is_nullable != null || newData.is_nullable != null)) {
+        diffs.push({ label: 'Nullable', oldVal: oldData.is_nullable === false ? 'No' : 'Yes', newVal: newData.is_nullable === false ? 'No' : 'Yes' });
+      }
+      if (oldData.is_unique !== newData.is_unique && (oldData.is_unique != null || newData.is_unique != null)) {
+        diffs.push({ label: 'Unique', oldVal: oldData.is_unique ? 'Yes' : 'No', newVal: newData.is_unique ? 'Yes' : 'No' });
+      }
+      if (oldData.is_auto_increment !== newData.is_auto_increment && (oldData.is_auto_increment != null || newData.is_auto_increment != null)) {
+        diffs.push({ label: 'Auto increment', oldVal: oldData.is_auto_increment ? 'Yes' : 'No', newVal: newData.is_auto_increment ? 'Yes' : 'No' });
+      }
+
+      if (diffs.length > 0) {
+        const diffRows = diffs.map(d => `
+          <div class="vp-log-diff__item">
+            <span class="vp-log-diff__label">${escHtml(d.label)}:</span>
+            <span class="vp-log-diff__old">${escHtml(d.oldVal)}</span>
+            <span class="vp-log-diff__arrow">→</span>
+            <span class="vp-log-diff__new">${escHtml(d.newVal)}</span>
+          </div>
+        `).join('');
+        parts.push(`
+          <div class="vp-log__cols">
+            <span class="vp-log__cols-label">Changes</span>
+            <div class="vp-log-diff">${diffRows}</div>
+          </div>
+        `);
+      }
+    } else {
+      // Insert or Delete single column details
+      const c = log.change_type === 'delete' ? oldData : newData;
+      if (c.col_type || c.is_primary_key || c.is_unique || c.is_auto_increment || c.is_nullable === false || c.default_value != null) {
+        const typeStr = c.col_type ? (c.col_length ? `${c.col_type}(${c.col_length})` : c.col_type) : '';
+        parts.push(`
+          <div class="vp-log__cols">
+            <ul class="vp-log__cols-list">
+              <li class="vp-log__col">
+                <span class="vp-log__col-name">${escHtml(c.col_name || '?')}</span>
+                ${typeStr ? `<span class="vp-log__col-type">${escHtml(typeStr)}</span>` : ''}
+                ${c.is_primary_key ? '<span class="vp-log__badge vp-log__badge--pk">PK</span>' : ''}
+                ${c.is_unique ? '<span class="vp-log__badge vp-log__badge--uq">UQ</span>' : ''}
+                ${c.is_auto_increment ? '<span class="vp-log__badge vp-log__badge--ai">AI</span>' : ''}
+                ${c.is_nullable === false || c.is_nullable === 'false' ? '<span class="vp-log__badge vp-log__badge--nn">NN</span>' : ''}
+                ${c.default_value != null ? `<span class="vp-log__col-default">def: ${escHtml(String(c.default_value))}</span>` : ''}
+              </li>
+            </ul>
+          </div>
+        `);
+      }
+    }
+  }
 
   // Columns (table create / update / delete structure)
   const columns = Array.isArray(newData.columns) ? newData.columns : (Array.isArray(oldData.columns) ? oldData.columns : []);
@@ -2471,7 +2626,7 @@ function logColumnsDetail(log) {
     `);
   }
 
-  // API query definition (api create / update / delete structure)
+  // API query definition (legacy api create / update / delete structure)
   const qd = newData.query_definition != null ? newData.query_definition : (oldData.query_definition != null ? oldData.query_definition : null);
   if (qd != null) {
     let pretty = qd;
@@ -2516,39 +2671,35 @@ function logRowHtml(log) {
   `;
 }
 
-/* Fetches project logs ONCE at page load and caches them in vpState.logsSnapshot.
-   The logs tab then renders from this snapshot so opening the tab never hits the
-   server (unlike every other tab, which re-fetches on each visit). */
-async function loadProjectLogsOnce() {
-  vpState.logsSnapshot = [];
-  try {
-    const res = await apiFetch(`/view/projectLogs/${vpState.projectId}`);
-    if (res.status === 401) { window.location.href = '/login'; return; }
-    if (!res.ok) { vpState.logsSnapshot = null; return; }
-
-    const data = await res.json();
-    vpState.logsSnapshot = Array.isArray(data.logs) ? data.logs : [];
-  } catch (_) {
-    vpState.logsSnapshot = null;
-  }
-}
-
-/* Renders the project logs tab from the cached snapshot (no network call). */
-function loadProjectLogs() {
+/* Dynamically fetches project logs from backend and renders them.
+   Re-fetches on each tab visit or refresh button click to keep activity logs up to date. */
+async function loadProjectLogs() {
   const body = document.getElementById('vp-logs-body');
   if (!body) return;
 
-  const snapshot = vpState.logsSnapshot;
-  if (snapshot === null) {
-    body.innerHTML = emptyState('Could not load project logs');
-    return;
-  }
-  if (!Array.isArray(snapshot) || snapshot.length === 0) {
-    body.innerHTML = emptyState('No activity yet. Changes to this project will appear here.');
-    return;
-  }
+  renderShimmer(body, 4);
 
-  body.innerHTML = `<div class="vp-log-list">${snapshot.map(logRowHtml).join('')}</div>`;
+  try {
+    const res = await apiFetch(`/view/projectLogs/${vpState.projectId}`);
+    if (res.status === 401) { window.location.href = '/login'; return; }
+    if (!res.ok) {
+      body.innerHTML = emptyState('Could not load project logs');
+      return;
+    }
+
+    const data = await res.json();
+    const logs = Array.isArray(data.logs) ? data.logs : [];
+    vpState.logsSnapshot = logs;
+
+    if (logs.length === 0) {
+      body.innerHTML = emptyState('No activity yet. Changes to this project will appear here.');
+      return;
+    }
+
+    body.innerHTML = `<div class="vp-log-list">${logs.map(logRowHtml).join('')}</div>`;
+  } catch (_) {
+    body.innerHTML = emptyState('Could not load project logs');
+  }
 }
 
 async function searchUsers(queryStr, resultsEl) {
@@ -3296,6 +3447,9 @@ function bindGlobalActions() {
 
   const regenBtn = document.getElementById('vp-regen-key');
   if (regenBtn) regenBtn.addEventListener('click', regenerateApiKey);
+
+  const refreshLogsBtn = document.getElementById('btn-refresh-logs');
+  if (refreshLogsBtn) refreshLogsBtn.addEventListener('click', () => loadProjectLogs());
 }
 
 async function regenerateApiKey() {

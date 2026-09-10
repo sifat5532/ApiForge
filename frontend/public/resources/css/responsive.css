@@ -445,4 +445,8 @@
   .cab-icon-btn {
     justify-self: start;
   }
+
+  .vp-log-diff__item {
+    gap: 6px;
+  }
 }
