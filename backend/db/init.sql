@@ -574,9 +574,9 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS tg_insert_project ON projects;
+DROP TRIGGER IF EXISTS tg_ainsert_project ON projects;
 
-CREATE TRIGGER tg_insert_project
+CREATE TRIGGER tg_ainsert_project
 AFTER INSERT OR DELETE ON projects FOR EACH ROW
 EXECUTE FUNCTION tgfunc_create_schema ();
 
