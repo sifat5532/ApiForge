@@ -226,7 +226,6 @@
   function renderColumnGrid(cols) {
     if (!cols.length) return '<p class="vt-empty-inline">No columns.</p>';
     var rows = cols.map(function (c) {
-      var typeBadge = colTypeBadge(c);
       var nullable = c.is_nullable
         ? '<span class="vt-null vt-null--yes" title="Nullable">✓</span>'
         : '<span class="vt-null vt-null--no" title="Not nullable">✗</span>';
@@ -243,7 +242,8 @@
       }
       return '<tr>' +
         '<td class="vt-col-name">' + esc(c.name) + fk + '</td>' +
-        '<td>' + typeBadge + '</td>' +
+        '<td class="vt-col-type">' + esc(colTypeLabel(c)) + '</td>' +
+        '<td>' + colConstraintChips(c) + '</td>' +
         '<td class="vt-col-null">' + nullable + '</td>' +
         '<td>' + def + '</td>' +
       '</tr>';
@@ -251,20 +251,28 @@
 
     return '<div class="vt-grid-wrap">' +
       '<table class="vt-grid">' +
-        '<thead><tr><th>Name</th><th>Type</th><th>Null</th><th>Default</th></tr></thead>' +
+        '<thead><tr><th>Name</th><th>Type</th><th>Key</th><th>Null</th><th>Default</th></tr></thead>' +
         '<tbody>' + rows + '</tbody>' +
       '</table>' +
     '</div>';
   }
 
-  function colTypeBadge(c) {
-    var label = String(c.type || '');
-    if (c.column_length) label += '(' + c.column_length + ')';
-    var cls = 'vt-type';
-    if (c.is_primary_key) cls += ' vt-type--pk';
-    else if (c.is_unique) cls += ' vt-type--unique';
-    else if (c.parent_col_id) cls += ' vt-type--fk';
-    return '<span class="' + cls + '">' + esc(label) + '</span>';
+  function colTypeLabel(c) {
+    var label = String(c.type || '').toUpperCase();
+    var sized = label === 'VARCHAR' || label === 'NUMERIC';
+    if (sized && c.column_length != null && c.column_length !== '') {
+      label += '(' + c.column_length + ')';
+    }
+    return label;
+  }
+
+  function colConstraintChips(c) {
+    var chips = [];
+    if (c.is_primary_key) chips.push('<span class="vt-key vt-key--pk" title="Primary key">PK</span>');
+    if (c.is_unique) chips.push('<span class="vt-key vt-key--uq" title="Unique">UQ</span>');
+    if (c.is_auto_increment) chips.push('<span class="vt-key vt-key--ai" title="Auto increment">AI</span>');
+    if (!chips.length) return '<span class="vt-col-default vt-col-default--none">—</span>';
+    return '<div class="vt-keys">' + chips.join('') + '</div>';
   }
 
   function renderApis(apis) {

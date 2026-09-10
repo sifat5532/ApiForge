@@ -1051,59 +1051,135 @@ CREATE TRIGGER tg_remove_schema_fks
 AFTER DELETE ON schema_foreign_keys FOR EACH ROW
 EXECUTE FUNCTION tgfunc_remove_fks ();
 -- we need to insert a row into the project_logs table that a new table has been inserted, it will be implemented later
---------------------------------Clone Template------------------------------------
-CREATE OR REPLACE FUNCTION tgfunc_clone_template () RETURNS TRIGGER LANGUAGE plpgsql AS $$ 
-DECLARE 
-    rec RECORD ;
+-------------------------------Clone Template------------------------------------
+CREATE OR REPLACE FUNCTION tgfunc_clone_template () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+    rec RECORD;
     col_def RECORD;
-    table_id INTEGER ;
-    BEGIN 
-         INSERT INTO template_clones(user_id, template_id, cloned_project_id)  VALUES( NEW.author_id, NEW.id, NEW.cloned_from_id ) ;
-         FOR rec IN
-         SELECT id, project_id, table_name FROM schema_tables WHERE project_id = NEW.cloned_from_id
-         LOOP 
-         INSERT INTO schema_tables(project_id, table_name) VALUES (NEW.id, rec.table_name) RETURNING id INTO table_id;
-         FOR col_def IN
-         SELECT * FROM schema_columns WHERE schema_table_id = rec.id
-         LOOP
-         INSERT INTO schema_columns( schema_table_id, col_name, col_type, default_value, col_length, is_primary_key, is_auto_increment, is_nullable, is_unique)
-         VALUES (table_id, col_def.col_name,  col_def.col_type,  col_def.default_value,  col_def.col_length,  col_def.is_primary_key,  col_def.is_auto_increment,  col_def.is_nullable,  col_def.is_unique);
-         END LOOP ;
-         END LOOP;
+    fk_def RECORD;
+    api_def RECORD;
+    table_id INTEGER;
+    col_id INTEGER;
+BEGIN
+    INSERT INTO template_clones(user_id, template_id, cloned_project_id)
+    VALUES (NEW.author_id, NEW.cloned_from_id, NEW.id);
 
-       RETURN NEW;
-    END;
-    $$;
-CREATE TRIGGER tg_clone_templae
+    DROP TABLE IF EXISTS tmp_table_map;
+    CREATE TEMP TABLE tmp_table_map (
+        old_table_id INT,
+        new_table_id INT,
+        old_col_id INT,
+        new_col_id INT
+    ) ON COMMIT DROP;
+
+    FOR rec IN
+        SELECT id, project_id, table_name FROM schema_tables WHERE project_id = NEW.cloned_from_id
+    LOOP
+        INSERT INTO schema_tables(project_id, table_name) VALUES (NEW.id, rec.table_name) RETURNING id INTO table_id;
+
+        FOR col_def IN
+            SELECT * FROM schema_columns WHERE schema_table_id = rec.id
+        LOOP
+            INSERT INTO schema_columns(schema_table_id, col_name, col_type, default_value, col_length, is_primary_key, is_auto_increment, is_nullable, is_unique)
+            VALUES (table_id, col_def.col_name, col_def.col_type, col_def.default_value, col_def.col_length, col_def.is_primary_key, col_def.is_auto_increment, col_def.is_nullable, col_def.is_unique)
+            RETURNING id INTO col_id;
+
+            INSERT INTO tmp_table_map(old_table_id, new_table_id, old_col_id, new_col_id)
+            VALUES (rec.id, table_id, col_def.id, col_id);
+        END LOOP;
+    END LOOP;
+
+    FOR fk_def IN
+        SELECT tcc.new_col_id AS child_col, tpc.new_col_id AS parent_col, fk.fk_name, fk.on_delete, fk.on_update
+        FROM schema_foreign_keys fk
+        JOIN tmp_table_map tcc ON tcc.old_col_id = fk.child_col_id
+        JOIN tmp_table_map tpc ON tpc.old_col_id = fk.parent_col_id
+    LOOP
+        INSERT INTO schema_foreign_keys(child_col_id, parent_col_id, fk_name, on_delete, on_update)
+        VALUES (fk_def.child_col, fk_def.parent_col, fk_def.fk_name, fk_def.on_delete, fk_def.on_update);
+    END LOOP;
+
+    FOR api_def IN
+        SELECT * FROM api_definitions WHERE project_id = NEW.cloned_from_id
+    LOOP
+        INSERT INTO api_definitions(name, project_id, method, query_definition, is_active, rate_limit_per_day)
+        VALUES (api_def.name, NEW.id, api_def.method, api_def.query_definition, false, api_def.rate_limit_per_day);
+    END LOOP;
+
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER  tg_clone_template ON PROJECTS;
+CREATE TRIGGER tg_clone_template
 AFTER INSERT ON projects FOR EACH ROW
-WHEN is_clone = true
-EXECUTE FUNCTION tgfunc_clone_template  ();
+WHEN (NEW.is_clone = true)
+EXECUTE FUNCTION tgfunc_clone_template ();
+
 ------------------------------Create Template------------------------------------
-CREATE OR REPLACE FUNCTION tgfunc_create_template () RETURNS TRIGGER LANGUAGE plpgsql AS $$ 
-DECLARE 
-    rec RECORD ;
+CREATE OR REPLACE FUNCTION tgfunc_create_template () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+    rec RECORD;
     col_def RECORD;
-    table_id INTEGER ;
-    BEGIN 
-         FOR rec IN
-         SELECT id, project_id, table_name FROM schema_tables WHERE project_id = NEW.originates_from_id
-         LOOP 
-         INSERT INTO schema_tables(project_id, table_name) VALUES (NEW.id, rec.table_name) RETURNING id INTO table_id;
-         FOR col_def IN
-         SELECT * FROM schema_columns WHERE schema_table_id = rec.id
-         LOOP
-         INSERT INTO schema_columns( schema_table_id, col_name, col_type, default_value, col_length, is_primary_key, is_auto_increment, is_nullable, is_unique)
-         VALUES (table_id, col_def.col_name,  col_def.col_type,  col_def.default_value,  col_def.col_length,  col_def.is_primary_key,  col_def.is_auto_increment,  col_def.is_nullable,  col_def.is_unique);
-         END LOOP ;
-         END LOOP;
+    api_def RECORD;
+    fk_def RECORD;
+    table_id INTEGER;
+    col_id INTEGER;
+BEGIN
+    IF NEW.originates_from_id IS NULL THEN
+        RETURN NEW;
+    END IF;
 
-       RETURN NEW;
-    END;
-    $$;
-CREATE TRIGGER tg_create_templae
+    DROP TABLE IF EXISTS tmp_table_map;
+    CREATE TEMP TABLE tmp_table_map (
+        old_table_id INT,
+        new_table_id INT,
+        old_col_id INT,
+        new_col_id INT
+    ) ON COMMIT DROP;
+
+    FOR rec IN
+        SELECT id, project_id, table_name FROM schema_tables WHERE project_id = NEW.originates_from_id
+    LOOP
+        INSERT INTO schema_tables(project_id, table_name) VALUES (NEW.id, rec.table_name) RETURNING id INTO table_id;
+
+        FOR col_def IN
+            SELECT * FROM schema_columns WHERE schema_table_id = rec.id
+        LOOP
+            INSERT INTO schema_columns(schema_table_id, col_name, col_type, default_value, col_length, is_primary_key, is_auto_increment, is_nullable, is_unique)
+            VALUES (table_id, col_def.col_name, col_def.col_type, col_def.default_value, col_def.col_length, col_def.is_primary_key, col_def.is_auto_increment, col_def.is_nullable, col_def.is_unique)
+            RETURNING id INTO col_id;
+
+            INSERT INTO tmp_table_map(old_table_id, new_table_id, old_col_id, new_col_id)
+            VALUES (rec.id, table_id, col_def.id, col_id);
+        END LOOP;
+    END LOOP;
+
+    FOR fk_def IN
+        SELECT tcc.new_col_id AS child_col, tpc.new_col_id AS parent_col, fk.fk_name, fk.on_delete, fk.on_update
+        FROM schema_foreign_keys fk
+        JOIN tmp_table_map tcc ON tcc.old_col_id = fk.child_col_id
+        JOIN tmp_table_map tpc ON tpc.old_col_id = fk.parent_col_id
+    LOOP
+        INSERT INTO schema_foreign_keys(child_col_id, parent_col_id, fk_name, on_delete, on_update)
+        VALUES (fk_def.child_col, fk_def.parent_col, fk_def.fk_name, fk_def.on_delete, fk_def.on_update);
+    END LOOP;
+
+    FOR api_def IN
+        SELECT * FROM api_definitions WHERE project_id = NEW.originates_from_id
+    LOOP
+        INSERT INTO api_definitions(name, project_id, method, query_definition, is_active, rate_limit_per_day)
+        VALUES (api_def.name, NEW.id, api_def.method, api_def.query_definition, false, api_def.rate_limit_per_day);
+    END LOOP;
+
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER tg_create_template on PROJECTS;
+CREATE TRIGGER tg_create_template
 AFTER INSERT ON projects FOR EACH ROW
-WHEN is_clone = true
-EXECUTE FUNCTION tgfunc_create_template  ();
+WHEN (NEW.is_template = true)
+EXECUTE FUNCTION tgfunc_create_template ();
+
 ------------------------------Subscription trigger-----------------------------
 CREATE OR REPLACE FUNCTION tgfunc_add_free_subscription () RETURNS TRIGGER LANGUAGE plpgsql AS $$ 
   DECLARE 
