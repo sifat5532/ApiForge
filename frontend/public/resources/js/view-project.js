@@ -238,13 +238,18 @@ async function loadTables() {
           </button>
         </td>
         <td>
-          <button class="btn btn--ghost btn--sm vp-table-edit" type="button" data-table-id="${t.id}" title="Edit table (coming soon)" disabled style="opacity:0.5;cursor:not-allowed;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-            </svg>
-            Edit
-          </button>
+          <div class="vp-table-actions">
+            <button class="btn btn--ghost btn--sm vp-table-edit" type="button" data-table-id="${t.id}" title="Edit table">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+              </svg>
+              Edit
+            </button>
+            <button class="btn btn--ghost btn--sm vp-table-remove" type="button" data-table-id="${t.id}" data-table-name="${escHtml(t.table_name)}" title="Remove table" style="color: var(--error); border-color: var(--error);">
+              Remove
+            </button>
+          </div>
         </td>
       </tr>
     `).join('');
@@ -272,6 +277,16 @@ async function loadTables() {
 
     body.querySelectorAll('.vp-table-view-data').forEach(btn => {
       btn.addEventListener('click', () => toggleTableData(btn.getAttribute('data-table-id')));
+    });
+
+    body.querySelectorAll('.vp-table-edit').forEach(btn => {
+      btn.addEventListener('click', () => openEditTableModal(btn.getAttribute('data-table-id')));
+    });
+
+    body.querySelectorAll('.vp-table-remove').forEach(btn => {
+      btn.addEventListener('click', () => {
+        removeTable(btn.getAttribute('data-table-id'), btn.getAttribute('data-table-name'));
+      });
     });
   } catch (_) {
     body.innerHTML = emptyState('Network error. Is the backend reachable?');
@@ -3161,7 +3176,7 @@ function openCreateTableModal() {
   if (tableNameEl) tableNameEl.focus();
 }
 
-function ctAddColumn() {
+function ctAddColumn(prefill) {
   const list = document.getElementById('ct-col-list');
   if (!list) return;
 
@@ -3288,8 +3303,25 @@ function ctAddColumn() {
   uqEl.addEventListener('change', syncCheckboxControls);
   aiEl.addEventListener('change', syncTypeControls);
 
+  if (prefill) {
+    if (prefill.id != null) card.setAttribute('data-col-db-id', prefill.id);
+    card.querySelector('.ct-col-name').value = prefill.col_name || '';
+    typeEl.value = CT_TYPES.includes(prefill.col_type) ? prefill.col_type : 'INTEGER';
+    if (prefill.col_length != null && prefill.col_length !== '') {
+      const lenEl = card.querySelector('.ct-col-len');
+      if (lenEl) lenEl.value = prefill.col_length;
+    }
+    if (prefill.default_value != null && prefill.default_value !== '') {
+      defEl.value = prefill.default_value;
+    }
+    pkEl.checked = prefill.is_primary_key === true;
+    aiEl.checked = prefill.is_auto_increment === true;
+    uqEl.checked = prefill.is_unique === true;
+    nlEl.checked = prefill.is_nullable === true;
+  }
+
   /* Initialise */
-  syncTypeControls();
+  syncPkControls();
 }
 
 async function submitCreateTable() {
@@ -3413,6 +3445,323 @@ async function submitCreateTable() {
       }
       setLoading(submitBtn, false);
     }
+  } catch (_) {
+    showFormError('Network error. Is the backend reachable?');
+    setLoading(submitBtn, false);
+  }
+}
+
+/* -----------------------------------------------------------------------
+   Edit / Remove Table
+   ----------------------------------------------------------------------- */
+
+function ctCollectColumnFromCard(card) {
+  const colId = card.getAttribute('data-col-id');
+  const dbId = card.getAttribute('data-col-db-id');
+  const colName = card.querySelector('.ct-col-name').value.trim();
+  const colType = card.querySelector('.ct-col-type').value;
+  const colDefRaw = card.querySelector('.ct-def').value.trim();
+  const colDef = colDefRaw === '' ? null : colDefRaw;
+  const lenEl = card.querySelector('.ct-col-len');
+  const colLen = CT_NEEDS_LEN.has(colType) ? (lenEl ? parseInt(lenEl.value, 10) || null : null) : null;
+  const isPk = card.querySelector('.ct-pk').checked;
+  const isAi = card.querySelector('.ct-ai').checked;
+  const isNl = isPk ? false : card.querySelector('.ct-nl').checked;
+  const isUq = isPk ? false : card.querySelector('.ct-uq').checked;
+  return { colId, dbId, colName, colType, colDef, colLen, isPk, isAi, isNl, isUq };
+}
+
+function ctValidateColumnCard(card, showColError) {
+  const col = ctCollectColumnFromCard(card);
+  if (!col.colName) {
+    showColError(card, 'Column name is required.');
+    return null;
+  }
+  if (CT_NEEDS_LEN.has(col.colType)) {
+    if (!col.colLen || col.colLen < 1) {
+      showColError(card, `${col.colType} requires a valid length (≥ 1).`);
+      return null;
+    }
+  }
+  if (col.isAi && col.colType !== CT_AUTO_INC_TYPE) {
+    showColError(card, 'Auto Increment is only available for INTEGER columns.');
+    return null;
+  }
+  if (col.isAi && !col.isPk && !col.isUq) {
+    showColError(card, 'Auto Increment requires the column to be a Primary Key or Unique.');
+    return null;
+  }
+  return col;
+}
+
+function ctColumnPayload(col) {
+  return {
+    col_name: col.colName,
+    col_type: col.colType,
+    default_value: col.colDef,
+    col_length: col.colLen,
+    is_primary_key: col.isPk,
+    is_auto_increment: col.isAi,
+    is_nullable: col.isNl,
+    is_unique: col.isUq,
+  };
+}
+
+function ctBindFormErrors() {
+  const errorBanner = document.getElementById('ct-form-error');
+  function showFormError(msg) {
+    if (!errorBanner) return;
+    errorBanner.textContent = msg;
+    errorBanner.classList.add('is-visible');
+  }
+  function clearFormError() {
+    if (!errorBanner) return;
+    errorBanner.textContent = '';
+    errorBanner.classList.remove('is-visible');
+  }
+  function showColError(card, msg) {
+    card.classList.add('ct-col-card--error');
+    const errEl = card.querySelector('.ct-col-error');
+    if (errEl) { errEl.textContent = msg; errEl.classList.add('is-visible'); }
+  }
+  function clearColErrors() {
+    document.querySelectorAll('.ct-col-card').forEach(c => {
+      c.classList.remove('ct-col-card--error');
+      const e = c.querySelector('.ct-col-error');
+      if (e) { e.textContent = ''; e.classList.remove('is-visible'); }
+    });
+  }
+  return { showFormError, clearFormError, showColError, clearColErrors };
+}
+
+function removeTable(tableId, tableName) {
+  const label = tableName ? `"${tableName}"` : 'this table';
+  confirmModal({
+    title: 'Remove Table',
+    message: `Delete ${label} permanently? All columns and data will be lost. This cannot be undone.`,
+    confirmLabel: 'Delete',
+    danger: true,
+    onConfirm: async () => {
+      try {
+        const res = await apiFetch('/project/deleteTable', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            proj_id: vpState.projectId,
+            schema_table_id: tableId,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          showToast(data.msg || 'Table successfully deleted', 'success');
+          vpState.loaded.tables = false;
+          loadTables();
+        } else {
+          showToast(data.msg || 'Failed to delete table', 'error');
+        }
+      } catch (_) {
+        showToast('Network error', 'error');
+      }
+    },
+  });
+}
+
+async function openEditTableModal(tableId) {
+  const overlay = document.getElementById('vp-modal-overlay');
+  if (overlay) overlay.classList.add('vp-modal--wide');
+
+  showModal('Edit Table', '<p class="vp-empty__text">Loading table structure…</p>', '');
+
+  const tableMeta = (vpState.tables || []).find(t => String(t.id) === String(tableId));
+  const tableName = tableMeta ? tableMeta.table_name : '';
+
+  let cols = [];
+  try {
+    const res = await apiFetch(`/view/viewTableStructure/${tableId}`);
+    if (!res.ok) {
+      setModalBody('<p class="vp-empty__text">Could not load table structure.</p>');
+      return;
+    }
+    const data = await res.json();
+    cols = Array.isArray(data.coloumns) ? data.coloumns : [];
+  } catch (_) {
+    setModalBody('<p class="vp-empty__text">Network error.</p>');
+    return;
+  }
+
+  _ctColCounter = 0;
+
+  const bodyHtml = `
+    <div class="modal-form" id="ct-form">
+      <div class="field ct-name-row">
+        <label class="field__label" for="ct-table-name">Table name</label>
+        <input class="modal-input" type="text" id="ct-table-name" maxlength="30"
+          placeholder="e.g. orders" autocomplete="off" value="${escHtml(tableName)}" />
+        <span class="field__hint">Lowercase letters, digits and underscores only. Must start with a letter or underscore.</span>
+      </div>
+      <div class="ct-form-error" id="ct-form-error"></div>
+      <div class="ct-col-list" id="ct-col-list"></div>
+      <div class="ct-add-col-row">
+        <button class="btn btn--ghost btn--sm" id="ct-add-col" type="button">+ Add Column</button>
+      </div>
+    </div>
+  `;
+
+  const footHtml = `
+    <button class="btn btn--ghost btn--sm" id="ct-cancel" type="button">Cancel</button>
+    <button class="btn btn--primary btn--sm" id="ct-submit" type="button">Save Changes</button>
+  `;
+
+  setModalBody(bodyHtml);
+  setModalFoot(footHtml);
+
+  const titleEl = document.getElementById('vp-modal-title');
+  if (titleEl) titleEl.textContent = tableName ? `Edit Table — ${tableName}` : 'Edit Table';
+
+  cols.forEach(c => ctAddColumn(c));
+  if (cols.length === 0) ctAddColumn();
+
+  document.getElementById('ct-add-col').addEventListener('click', () => ctAddColumn());
+  document.getElementById('ct-cancel').addEventListener('click', closeModal);
+  document.getElementById('ct-submit').addEventListener('click', () => submitEditTable(tableId, tableName, cols));
+
+  const tableNameEl = document.getElementById('ct-table-name');
+  if (tableNameEl) tableNameEl.focus();
+}
+
+async function submitEditTable(tableId, originalName, originalCols) {
+  const nameEl = document.getElementById('ct-table-name');
+  const submitBtn = document.getElementById('ct-submit');
+  const { showFormError, clearFormError, showColError, clearColErrors } = ctBindFormErrors();
+
+  clearFormError();
+  clearColErrors();
+
+  const tableName = (nameEl ? nameEl.value : '').trim();
+  if (!tableName) {
+    showFormError('Please enter a table name.');
+    if (nameEl) nameEl.focus();
+    return;
+  }
+
+  const cards = Array.from(document.querySelectorAll('#ct-col-list .ct-col-card'));
+  if (cards.length === 0) {
+    showFormError('A table must have at least one column.');
+    return;
+  }
+
+  const collected = [];
+  for (const card of cards) {
+    const col = ctValidateColumnCard(card, showColError);
+    if (!col) return;
+    collected.push({ card, col });
+  }
+
+  const originalById = new Map((originalCols || []).map(c => [String(c.id), c]));
+  const keptIds = new Set(collected.filter(x => x.col.dbId).map(x => String(x.col.dbId)));
+  const toDelete = (originalCols || []).filter(c => !keptIds.has(String(c.id)));
+
+  function colChanged(orig, col) {
+    if (!orig) return true;
+    const origDef = orig.default_value == null || orig.default_value === '' ? null : String(orig.default_value);
+    const newDef = col.colDef == null ? null : String(col.colDef);
+    const origLen = orig.col_length == null ? null : Number(orig.col_length);
+    const newLen = col.colLen == null ? null : Number(col.colLen);
+    return (
+      orig.col_name !== col.colName ||
+      orig.col_type !== col.colType ||
+      origDef !== newDef ||
+      origLen !== newLen ||
+      Boolean(orig.is_primary_key) !== col.isPk ||
+      Boolean(orig.is_auto_increment) !== col.isAi ||
+      Boolean(orig.is_nullable) !== col.isNl ||
+      Boolean(orig.is_unique) !== col.isUq
+    );
+  }
+
+  setLoading(submitBtn, true);
+  try {
+    if (tableName.toLowerCase() !== String(originalName || '').toLowerCase()) {
+      const res = await apiFetch('/project/renameTable', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          proj_id: vpState.projectId,
+          schema_table_id: tableId,
+          name: tableName,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showFormError(data.msg || 'Failed to rename table.');
+        setLoading(submitBtn, false);
+        return;
+      }
+    }
+
+    for (const { card, col } of collected) {
+      if (col.dbId) continue;
+      const res = await apiFetch('/project/addColumn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          proj_id: vpState.projectId,
+          schema_table_id: tableId,
+          ...ctColumnPayload(col),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showColError(card, data.msg || 'Failed to add column.');
+        setLoading(submitBtn, false);
+        return;
+      }
+    }
+
+    for (const { card, col } of collected) {
+      if (!col.dbId) continue;
+      const orig = originalById.get(String(col.dbId));
+      if (!colChanged(orig, col)) continue;
+      const res = await apiFetch('/project/updateColumn', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          proj_id: vpState.projectId,
+          schema_table_id: tableId,
+          col_id: col.dbId,
+          ...ctColumnPayload(col),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showColError(card, data.msg || 'Failed to update column.');
+        setLoading(submitBtn, false);
+        return;
+      }
+    }
+
+    for (const orig of toDelete) {
+      const res = await apiFetch('/project/deleteColumn', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          proj_id: vpState.projectId,
+          schema_table_id: tableId,
+          col_id: orig.id,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showFormError(data.msg || `Failed to delete column "${orig.col_name}".`);
+        setLoading(submitBtn, false);
+        return;
+      }
+    }
+
+    closeModal();
+    showToast('Table updated successfully', 'success');
+    vpState.loaded.tables = false;
+    loadTables();
   } catch (_) {
     showFormError('Network error. Is the backend reachable?');
     setLoading(submitBtn, false);

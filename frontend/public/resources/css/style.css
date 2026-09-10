@@ -4330,6 +4330,14 @@ html.onboarding-dismissed .onboarding-card,
   margin: 0 0 14px;
 }
 
+.vp-table-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .vp-struct-panel {
   margin-top: 14px;
   background: var(--surface);
