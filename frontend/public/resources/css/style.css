@@ -2729,6 +2729,22 @@ html.onboarding-dismissed .onboarding-card,
   color: var(--accent-light);
   letter-spacing: 0.05em;
 }
+.notif-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.notif-rating-value {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1px 8px;
+}
 
 /* Review / feedback blockquote */
 .notif-review {

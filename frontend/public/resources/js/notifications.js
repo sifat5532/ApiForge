@@ -369,6 +369,20 @@ function buildBodyHtml(n) {
           <blockquote class="notif-review">"${esc(p.message)}"</blockquote>`;
       }
 
+      if (n.subtype === 'rating') {
+        const hasText = p.reviewText && String(p.reviewText).trim().length > 0;
+        return actorLine + `
+          <p class="notif-text">
+            Rated
+            <a href="${esc(p.templateHref)}" class="notif-link" data-stub="view-project">${esc(p.templateName)}</a>
+          </p>
+          <div class="notif-rating">
+            ${buildStarsHtml(p.rating)}
+            <span class="notif-rating-value">${esc(Number(p.rating) || 0)}/5</span>
+          </div>
+          ${hasText ? `<blockquote class="notif-review">"${esc(p.reviewText)}"</blockquote>` : ''}`;
+      }
+
       return `<p class="notif-text">Activity notification</p>`;
     }
 
