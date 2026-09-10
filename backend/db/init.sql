@@ -560,7 +560,16 @@ EXECUTE FUNCTION tgfunc_delete_notification_by_project ();
 ------------------------Create schema table trigger--------------------------------
 CREATE OR REPLACE FUNCTION tgfunc_create_schema () RETURNS TRIGGER LANGUAGE plpgsql AS $$ 
 BEGIN
-   EXECUTE FORMAT ('CREATE SCHEMA IF NOT EXISTS %I', 'PROJ'||'_'||NEW.id||'_'||NEW.author_id);
+   IF TG_OP = 'INSERT' THEN
+      IF NOT NEW.is_template THEN
+         EXECUTE FORMAT ('CREATE SCHEMA IF NOT EXISTS %I', 'PROJ'||'_'||NEW.id||'_'||NEW.author_id);
+      END IF;
+   ELSIF TG_OP = 'DELETE' THEN
+      IF NOT OLD.is_template THEN
+         EXECUTE FORMAT ('DROP SCHEMA IF EXISTS %I CASCADE', 'PROJ'||'_'||OLD.id||'_'||OLD.author_id);
+      END IF;
+      RETURN OLD;
+   END IF;
    RETURN NEW;
 END;
 $$;
@@ -568,7 +577,7 @@ $$;
 DROP TRIGGER IF EXISTS tg_insert_project ON projects;
 
 CREATE TRIGGER tg_insert_project
-AFTER INSERT ON projects FOR EACH ROW WHEN (NEW.is_template = FALSE)
+AFTER INSERT OR DELETE ON projects FOR EACH ROW
 EXECUTE FUNCTION tgfunc_create_schema ();
 
 DROP TRIGGER IF EXISTS tg_insert_project_clone ON projects;
@@ -939,6 +948,14 @@ CREATE OR REPLACE FUNCTION func_log_project_change (
 DECLARE
    v_changed_by INTEGER;
 BEGIN
+   -- If the project is already gone (e.g. this is being called from a cascade
+   -- delete of one of its child rows), skip: project_logs rows for this project
+   -- are removed by ON DELETE CASCADE anyway, and inserting would violate
+   -- fk_project_logs_project.
+   IF NOT EXISTS (SELECT 1 FROM projects WHERE id = p_project_id) THEN
+      RETURN;
+   END IF;
+
    v_changed_by := NULLIF(current_setting('app.current_user_id', true), '')::INTEGER;
 
    INSERT INTO project_logs (project_id, changed_by, created_at, entity_type, entity_id, change_type, old_data, new_data)
@@ -949,11 +966,11 @@ $$;
 -- project_cors_origin : insert / delete
 CREATE OR REPLACE FUNCTION tgfunc_log_cors_origin () RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
-   IF TG_OP = 'INSERT' THEN
-      PERFORM func_log_project_change(NEW.project_id, 'cors_origin', NULL, 'insert',
-         NULL, jsonb_build_object('origin', NEW.origin));
-   ELSIF TG_OP = 'DELETE' THEN
-      PERFORM func_log_project_change(OLD.project_id, 'cors_origin', NULL, 'delete',
+    IF TG_OP = 'INSERT' THEN
+       PERFORM func_log_project_change(NEW.project_id, 'cors_origin', NULL, 'insert',
+          NULL, jsonb_build_object('origin', NEW.origin));
+    ELSIF TG_OP = 'DELETE' THEN
+       PERFORM func_log_project_change(OLD.project_id, 'cors_origin', NULL, 'delete',
          jsonb_build_object('origin', OLD.origin), NULL);
    END IF;
    RETURN COALESCE(NEW, OLD);
@@ -1044,13 +1061,13 @@ BEGIN
             jsonb_build_object('table_name', OLD.table_name, 'columns', v_columns),
             jsonb_build_object('table_name', NEW.table_name, 'columns', v_columns));
       END IF;
-   ELSIF TG_OP = 'DELETE' THEN
-      v_dropped := NULL;
-      IF to_regclass('pg_temp._log_dropped_tables') IS NOT NULL THEN
-         SELECT * INTO v_dropped FROM _log_dropped_tables WHERE schema_table_id = OLD.id;
-      END IF;
+    ELSIF TG_OP = 'DELETE' THEN
+       v_dropped := NULL;
+       IF to_regclass('pg_temp._log_dropped_tables') IS NOT NULL THEN
+          SELECT * INTO v_dropped FROM _log_dropped_tables WHERE schema_table_id = OLD.id;
+       END IF;
 
-      PERFORM func_log_project_change(OLD.project_id, 'schema_table', OLD.id, 'delete',
+       PERFORM func_log_project_change(OLD.project_id, 'schema_table', OLD.id, 'delete',
          CASE
             WHEN v_dropped IS NULL THEN
                jsonb_build_object('table_name', OLD.table_name)
@@ -1337,14 +1354,14 @@ BEGIN
             'on_delete', NEW.on_delete,
             'on_update', NEW.on_update));
 
-   ELSIF TG_OP = 'DELETE' THEN
-      SELECT p.id INTO v_project_id
-      FROM schema_columns c
-      JOIN schema_tables st ON st.id = c.schema_table_id
-      JOIN projects p ON p.id = st.project_id
-      WHERE c.id = OLD.child_col_id;
+    ELSIF TG_OP = 'DELETE' THEN
+       SELECT p.id INTO v_project_id
+       FROM schema_columns c
+       JOIN schema_tables st ON st.id = c.schema_table_id
+       JOIN projects p ON p.id = st.project_id
+       WHERE c.id = OLD.child_col_id;
 
-      PERFORM func_log_project_change(v_project_id, 'foreign_key', OLD.child_col_id, 'delete',
+       PERFORM func_log_project_change(v_project_id, 'foreign_key', OLD.child_col_id, 'delete',
          jsonb_build_object(
             'fk_name', OLD.fk_name,
             'child_table', (SELECT table_name FROM schema_tables st JOIN schema_columns c ON c.schema_table_id = st.id WHERE c.id = OLD.child_col_id),
@@ -1382,8 +1399,8 @@ BEGIN
             jsonb_build_object('name', NEW.name, 'method', NEW.method, 'rate_limit_per_day', NEW.rate_limit_per_day, 'is_active', NEW.is_active));
       END IF;
 
-   ELSIF TG_OP = 'DELETE' THEN
-      PERFORM func_log_project_change(OLD.project_id, 'api_definition', OLD.id, 'delete',
+    ELSIF TG_OP = 'DELETE' THEN
+       PERFORM func_log_project_change(OLD.project_id, 'api_definition', OLD.id, 'delete',
          jsonb_build_object('name', OLD.name, 'method', OLD.method, 'rate_limit_per_day', OLD.rate_limit_per_day, 'is_active', OLD.is_active), NULL);
    END IF;
    RETURN COALESCE(NEW, OLD);

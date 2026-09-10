@@ -709,12 +709,7 @@ router.put('/updateProject/:projectId', requireAuth, requireProjectAuthor, async
             if (t.length < 2 || t.length > 20) return res.status(400).json({ msg: 'Tag length must be between 2 to 20 characters' });
             if (!(t[0] >= 'a' && t[0] <= 'z')) return res.status(400).json({ msg: 'Tag name must start with an alphabet(a-z or A-Z)' });
         }
-        // const tag_count = await query(`
-        //                             SELECT 
-        //                             COUNT(*) AS total
-        //                             FROM project_tags 
-        //                             WHERE project_id = $1 `, [req.params.projectId]);
-        // const total_tags = parseInt(tag_count.rows[0].total);
+        
         if (tags.length > 10) {
             return res.status(400).json({ msg: 'Adding more than 10 tags is not allowed!' });
         }
