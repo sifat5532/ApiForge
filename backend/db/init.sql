@@ -582,9 +582,6 @@ EXECUTE FUNCTION tgfunc_create_schema ();
 
 DROP TRIGGER IF EXISTS tg_insert_project_clone ON projects;
 
-CREATE TRIGGER tg_insert_project_clone
-AFTER INSERT ON projects FOR EACH ROW WHEN (NEW.is_clone = TRUE)
-EXECUTE FUNCTION tgfunc_clone_template ();
 
 CREATE OR REPLACE FUNCTION tgfunc_create_schema_table () RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE
@@ -1061,11 +1058,14 @@ DECLARE
     table_id INTEGER;
     col_id INTEGER;
 BEGIN
+    IF NEW.is_clone = FALSE OR NEW.cloned_from_id IS NULL THEN
+        RETURN NEW;
+    END IF;
     INSERT INTO template_clones(user_id, template_id, cloned_project_id)
     VALUES (NEW.author_id, NEW.cloned_from_id, NEW.id);
 
     DROP TABLE IF EXISTS tmp_table_map;
-    CREATE TEMP TABLE tmp_table_map (
+    CREATE TEMP TABLE IF NOT EXISTS tmp_table_map (
         old_table_id INT,
         new_table_id INT,
         old_col_id INT,
@@ -1109,10 +1109,9 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-DROP TRIGGER  tg_clone_template ON PROJECTS;
+DROP TRIGGER  IF EXISTS tg_clone_template ON PROJECTS;
 CREATE TRIGGER tg_clone_template
 AFTER INSERT ON projects FOR EACH ROW
-WHEN (NEW.is_clone = true)
 EXECUTE FUNCTION tgfunc_clone_template ();
 
 ------------------------------Create Template------------------------------------
@@ -1125,7 +1124,7 @@ DECLARE
     table_id INTEGER;
     col_id INTEGER;
 BEGIN
-    IF NEW.originates_from_id IS NULL THEN
+    IF NEW.is_template = FALSE OR NEW.originates_from_id IS NULL THEN
         RETURN NEW;
     END IF;
 
@@ -1174,10 +1173,9 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-DROP TRIGGER tg_create_template on PROJECTS;
-CREATE TRIGGER tg_create_template
+DROP TRIGGER IF EXISTS tg_create_template on PROJECTS;
+CREATE TRIGGER  tg_create_template
 AFTER INSERT ON projects FOR EACH ROW
-WHEN (NEW.is_template = true)
 EXECUTE FUNCTION tgfunc_create_template ();
 
 ------------------------------Subscription trigger-----------------------------
