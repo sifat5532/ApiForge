@@ -470,6 +470,16 @@ async function loadForeignKeys() {
         <td>${escHtml(fk.on_update)}</td>
         <td>${escHtml(formatDate(fk.created_at))}</td>
         <td>
+          <button class="btn btn--ghost btn--sm vp-fk-update" type="button"
+            data-child-col-id="${fk.child_col_id}"
+            data-schema-table-id="${fk.child_table_id}"
+            data-fk-name="${escHtml(fk.fk_name)}"
+            data-on-delete="${escHtml(fk.on_delete)}"
+            data-on-update="${escHtml(fk.on_update)}"
+            data-child-table="${escHtml(fk.child_table_name)}"
+            data-child-col="${escHtml(fk.child_col_name)}"
+            data-parent-table="${escHtml(fk.parent_table_name)}"
+            data-parent-col="${escHtml(fk.parent_col_name)}">Update</button>
           <button class="btn btn--ghost btn--sm vp-fk-remove" type="button"
             data-child-col-id="${fk.child_col_id}" data-schema-table-id="${fk.child_table_id}">Remove</button>
         </td>
@@ -485,6 +495,22 @@ async function loadForeignKeys() {
         </thead>
         <tbody>${rows}</tbody>
       </table>`;
+
+    body.querySelectorAll('.vp-fk-update').forEach(btn => {
+      btn.addEventListener('click', () => {
+        openUpdateFkModal({
+          child_col_id: btn.getAttribute('data-child-col-id'),
+          child_table_id: btn.getAttribute('data-schema-table-id'),
+          fk_name: btn.getAttribute('data-fk-name') || '',
+          on_delete: btn.getAttribute('data-on-delete') || 'NO ACTION',
+          on_update: btn.getAttribute('data-on-update') || 'NO ACTION',
+          child_table_name: btn.getAttribute('data-child-table') || '',
+          child_col_name: btn.getAttribute('data-child-col') || '',
+          parent_table_name: btn.getAttribute('data-parent-table') || '',
+          parent_col_name: btn.getAttribute('data-parent-col') || '',
+        });
+      });
+    });
 
     body.querySelectorAll('.vp-fk-remove').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -528,6 +554,97 @@ function removeFk(childColId, schemaTableId) {
       }
     },
   });
+}
+
+function fkActionOptions(selected) {
+  const actions = ['CASCADE', 'SET NULL', 'RESTRICT', 'NO ACTION'];
+  const current = (selected || 'NO ACTION').toUpperCase();
+  return actions.map(a => `<option${a === current ? ' selected' : ''}>${a}</option>`).join('');
+}
+
+function openUpdateFkModal(fk) {
+  const relationship = `${fk.child_table_name}.${fk.child_col_name} → ${fk.parent_table_name}.${fk.parent_col_name}`;
+
+  const bodyHtml = `
+    <div class="modal-form">
+      <div class="field">
+        <label class="field__label">Relationship</label>
+        <input class="modal-input" type="text" value="${escHtml(relationship)}" disabled />
+      </div>
+      <div class="field">
+        <label class="field__label" for="fk-upd-name">Constraint name</label>
+        <input class="modal-input" type="text" id="fk-upd-name" maxlength="30"
+          value="${escHtml(fk.fk_name)}" placeholder="e.g. fk_order_user" autocomplete="off" />
+        <span class="field__hint">Lowercase letters, digits and underscores only.</span>
+      </div>
+      <div class="modal-form__row">
+        <div class="field">
+          <label class="field__label" for="fk-upd-on-delete">On Delete</label>
+          <select id="fk-upd-on-delete" class="modal-select">${fkActionOptions(fk.on_delete)}</select>
+        </div>
+        <div class="field">
+          <label class="field__label" for="fk-upd-on-update">On Update</label>
+          <select id="fk-upd-on-update" class="modal-select">${fkActionOptions(fk.on_update)}</select>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const footHtml = `
+    <button class="btn btn--ghost btn--sm" id="fk-upd-cancel" type="button">Cancel</button>
+    <button class="btn btn--primary btn--sm" id="fk-upd-submit" type="button">Update Foreign Key</button>
+  `;
+
+  showModal('Update Foreign Key', bodyHtml, footHtml);
+
+  document.getElementById('fk-upd-cancel').addEventListener('click', closeModal);
+  document.getElementById('fk-upd-submit').addEventListener('click', () => submitUpdateFk(fk));
+
+  const nameEl = document.getElementById('fk-upd-name');
+  if (nameEl) nameEl.focus();
+}
+
+async function submitUpdateFk(fk) {
+  const nameEl = document.getElementById('fk-upd-name');
+  const onDeleteEl = document.getElementById('fk-upd-on-delete');
+  const onUpdateEl = document.getElementById('fk-upd-on-update');
+  const submitBtn = document.getElementById('fk-upd-submit');
+
+  if (!nameEl.value.trim()) {
+    showToast('Enter a foreign key constraint name', 'error');
+    return;
+  }
+
+  const payload = {
+    proj_id: vpState.projectId,
+    schema_table_id: fk.child_table_id,
+    child_col_id: fk.child_col_id,
+    fk_constraint_name: nameEl.value.trim(),
+    on_dlt: onDeleteEl.value,
+    on_upd: onUpdateEl.value,
+  };
+
+  setLoading(submitBtn, true);
+  try {
+    const res = await apiFetch('/project/updateForeignKey', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      showToast(data.msg || 'Foreign key updated', 'success');
+      closeModal();
+      vpState.loaded.fk = false;
+      loadForeignKeys();
+    } else {
+      showToast(data.msg || 'Failed to update foreign key', 'error');
+      setLoading(submitBtn, false);
+    }
+  } catch (_) {
+    showToast('Network error', 'error');
+    setLoading(submitBtn, false);
+  }
 }
 
 async function openAddFkModal() {
