@@ -1074,7 +1074,36 @@ DECLARE
        RETURN NEW;
     END;
     $$;
+CREATE TRIGGER tg_clone_templae
+AFTER INSERT ON projects FOR EACH ROW
+WHEN is_clone = true
+EXECUTE FUNCTION tgfunc_clone_template  ();
+------------------------------Create Template------------------------------------
+CREATE OR REPLACE FUNCTION tgfunc_create_template () RETURNS TRIGGER LANGUAGE plpgsql AS $$ 
+DECLARE 
+    rec RECORD ;
+    col_def RECORD;
+    table_id INTEGER ;
+    BEGIN 
+         FOR rec IN
+         SELECT id, project_id, table_name FROM schema_tables WHERE project_id = NEW.originates_from_id
+         LOOP 
+         INSERT INTO schema_tables(project_id, table_name) VALUES (NEW.id, rec.table_name) RETURNING id INTO table_id;
+         FOR col_def IN
+         SELECT * FROM schema_columns WHERE schema_table_id = rec.id
+         LOOP
+         INSERT INTO schema_columns( schema_table_id, col_name, col_type, default_value, col_length, is_primary_key, is_auto_increment, is_nullable, is_unique)
+         VALUES (table_id, col_def.col_name,  col_def.col_type,  col_def.default_value,  col_def.col_length,  col_def.is_primary_key,  col_def.is_auto_increment,  col_def.is_nullable,  col_def.is_unique);
+         END LOOP ;
+         END LOOP;
 
+       RETURN NEW;
+    END;
+    $$;
+CREATE TRIGGER tg_create_templae
+AFTER INSERT ON projects FOR EACH ROW
+WHEN is_clone = true
+EXECUTE FUNCTION tgfunc_create_template  ();
 ------------------------------Subscription trigger-----------------------------
 CREATE OR REPLACE FUNCTION tgfunc_add_free_subscription () RETURNS TRIGGER LANGUAGE plpgsql AS $$ 
   DECLARE 

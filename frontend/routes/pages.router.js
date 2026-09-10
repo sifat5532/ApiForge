@@ -13,6 +13,7 @@ router.get('/new-project',   (req, res) => res.sendFile(path.join(pages, 'new-pr
 router.get('/liked',         (req, res) => res.sendFile(path.join(pages, 'liked.html')));
 router.get('/notifications', (req, res) => res.sendFile(path.join(pages, 'notifications.html')));
 router.get('/templates',     (req, res) => res.sendFile(path.join(pages, 'templates.html')));
+router.get('/template/:templateId', (req, res) => res.sendFile(path.join(pages, 'view-template.html')));
 router.get('/leaderboard',   (req, res) => res.sendFile(path.join(pages, 'leaderboard.html')));
 router.get('/project/:projectId', (req, res) => res.sendFile(path.join(pages, 'view-project.html')));
 router.get('/logout',        async (req, res) => {

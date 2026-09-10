@@ -394,6 +394,9 @@
   .vp-tab {
     white-space: nowrap;
   }
+  .vt-stats {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 @media (max-width: 640px) {
@@ -448,5 +451,26 @@
 
   .vp-log-diff__item {
     gap: 6px;
+  }
+
+  .vt-hero__top {
+    flex-direction: column;
+  }
+  .vt-hero__title {
+    font-size: 1.6rem;
+  }
+  .vt-stats {
+    grid-template-columns: 1fr 1fr;
+  }
+  .vt-review__time {
+    margin-left: 0;
+    width: 100%;
+  }
+  .vt-compose-grid {
+    grid-template-columns: 1fr;
+  }
+  .vt-hero__actions {
+    width: 100%;
+    flex-wrap: wrap;
   }
 }

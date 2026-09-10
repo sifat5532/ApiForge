@@ -423,7 +423,7 @@ function createLikedCardHtml(t) {
       <!-- Template name (link to view-project) -->
       <div>
         <h3 class="project-card__title liked-card__title">
-          <a href="/view-project?id=${escapeHtml(t.id)}">${escapeHtml(t.name)}</a>
+          <a href="/template/${escapeHtml(t.id)}">${escapeHtml(t.name)}</a>
         </h3>
       </div>
 
@@ -445,7 +445,7 @@ function createLikedCardHtml(t) {
           ${escapeHtml(t.createdAt)}
         </span>
         ${starsHtml}
-        <a href="/view-project?id=${escapeHtml(t.id)}" class="btn btn--ghost btn--sm liked-card__open-btn">View →</a>
+        <a href="/template/${escapeHtml(t.id)}" class="btn btn--ghost btn--sm liked-card__open-btn">View →</a>
       </div>
 
     </article>
