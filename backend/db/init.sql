@@ -590,6 +590,19 @@ CREATE OR REPLACE FUNCTION tgfunc_create_schema_table () RETURNS TRIGGER LANGUAG
 DECLARE
 rec RECORD;
 BEGIN
+  IF TG_OP = 'DELETE' THEN
+    SELECT
+      P.is_template, p.author_id INTO rec
+    FROM
+      projects P
+    WHERE
+      P.id = OLD.project_ID;
+    IF NOT rec.is_template THEN
+      EXECUTE FORMAT ('DROP TABLE IF EXISTS %I.%I CASCADE', 'PROJ'||'_'||OLD.project_id||'_'||rec.author_id, OLD.TABLE_NAME);
+    END IF;
+    RETURN OLD;
+  END IF;
+
   SELECT
     P.is_template, p.author_id INTO rec
   FROM
@@ -608,7 +621,7 @@ $$;
 DROP TRIGGER IF EXISTS tg_insert_schema_table ON schema_tables;
 
 CREATE TRIGGER tg_insert_schema_table
-AFTER INSERT OR UPDATE ON schema_tables FOR EACH ROW
+AFTER INSERT OR UPDATE OR DELETE ON schema_tables FOR EACH ROW
 EXECUTE FUNCTION tgfunc_create_schema_table ();
 
 -- we need to insert a row into the project_logs table that a new table has been inserted, it will be implemented later
@@ -627,6 +640,12 @@ BEGIN
     WHERE S.id = COALESCE(NEW.schema_table_id, OLD.schema_table_id);
 
     IF NOT FOUND THEN
+        -- The parent schema_tables row is already gone (this column is being removed
+        -- by a cascade delete from its table). The physical table is dropped anyway, so
+        -- there is nothing to alter. Skip silently instead of raising.
+        IF TG_OP = 'DELETE' THEN
+            RETURN OLD;
+        END IF;
         RAISE EXCEPTION 'schema_table % not found', COALESCE(NEW.schema_table_id, OLD.schema_table_id);
     END IF;
 
@@ -767,7 +786,9 @@ BEGIN
         -- primary key automatically removes it from the PK constraint, but if any
         -- PK columns remain we must rebuild the PK constraint, and if the dropped
         -- column was the sole/last PK column the PK constraint must be dropped.
-        IF NOT rec.is_template THEN
+        -- Skip if the whole table is already gone (e.g. its parent schema_tables
+        -- row was deleted and DROP TABLE already removed everything).
+        IF NOT rec.is_template AND to_regclass(v_schema || '.' || rec.TABLE_NAME) IS NOT NULL THEN
             EXECUTE FORMAT('ALTER TABLE %I.%I DROP COLUMN IF EXISTS %I', v_schema, rec.TABLE_NAME, OLD.col_name);
             PERFORM tgfunc_rebuild_pk_for_table(rec.table_id, v_schema, rec.TABLE_NAME);
         END IF;
@@ -918,18 +939,110 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION tgfunc_update_fks () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+   rec RECORD;
+   schema_name TEXT;
+   fk_def TEXT;
+BEGIN
+   -- child_col_id / parent_col_id are immutable (the PK), so only fk_name,
+   -- on_delete and on_update can change. Rebuild the constraint accordingly:
+   -- drop the old one and add the new one.
+   IF NEW.fk_name IS NOT DISTINCT FROM OLD.fk_name
+      AND NEW.on_delete IS NOT DISTINCT FROM OLD.on_delete
+      AND NEW.on_update IS NOT DISTINCT FROM OLD.on_update THEN
+      RETURN NEW;
+   END IF;
+
+   SELECT
+     P.is_template,
+     P.id,
+     P.author_id,
+     S1.TABLE_NAME AS child_table,
+     S2.TABLE_NAME AS parent_table,
+     Ch.col_name AS child_name,
+     Pa.col_name AS parent_name
+   INTO rec
+   FROM schema_columns Ch
+   JOIN schema_tables S1 ON S1.id = Ch.schema_table_id
+   JOIN projects P ON P.id = S1.project_id
+   CROSS JOIN schema_columns Pa
+   JOIN schema_tables S2 ON S2.id = Pa.schema_table_id
+   WHERE Ch.id = NEW.child_col_id
+     AND Pa.id = NEW.parent_col_id;
+
+   IF NOT FOUND OR rec.is_template THEN
+      RETURN NEW;
+   END IF;
+
+   schema_name := 'PROJ_' || rec.id || '_' || rec.author_id;
+
+   -- The child table may already be gone (cascade drop of the parent table); skip.
+   IF to_regclass(schema_name || '.' || rec.child_table) IS NULL THEN
+      RETURN NEW;
+   END IF;
+
+   fk_def := FORMAT(
+     'FOREIGN KEY (%I) REFERENCES %I.%I( %I ) ON DELETE %s ON UPDATE %s',
+     rec.child_name, schema_name, rec.parent_table, rec.parent_name, NEW.on_delete, NEW.on_update
+   );
+
+   EXECUTE FORMAT('ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I',
+      schema_name, rec.child_table, OLD.fk_name);
+
+   EXECUTE FORMAT('ALTER TABLE %I.%I ADD CONSTRAINT %I %s',
+      schema_name, rec.child_table, NEW.fk_name, fk_def);
+
+   RETURN NEW;
+END;
+$$;
+
 DROP TRIGGER IF EXISTS tg_insert_schema_fks ON schema_foreign_keys;
 
 CREATE TRIGGER tg_insert_schema_fks
 AFTER INSERT ON schema_foreign_keys FOR EACH ROW
 EXECUTE FUNCTION tgfunc_add_fks ();
 
+DROP TRIGGER IF EXISTS tg_update_schema_fks ON schema_foreign_keys;
+
+CREATE TRIGGER tg_update_schema_fks
+AFTER UPDATE ON schema_foreign_keys FOR EACH ROW
+EXECUTE FUNCTION tgfunc_update_fks ();
+
 CREATE OR REPLACE FUNCTION tgfunc_remove_fks () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+   rec RECORD;
+   v_schema TEXT;
 BEGIN
+   -- On DELETE only OLD is populated; resolve the child table and schema from the
+   -- deleted FK's child column.
+   SELECT
+      P.is_template, P.id, P.author_id, S.TABLE_NAME AS child_table
+   INTO rec
+   FROM schema_columns C
+   JOIN schema_tables S ON S.id = C.schema_table_id
+   JOIN projects P ON P.id = S.project_id
+   WHERE C.id = OLD.child_col_id;
+
+   IF NOT FOUND OR rec.is_template THEN
+      RETURN OLD;
+   END IF;
+
+   v_schema := 'PROJ_' || rec.id || '_' || rec.author_id;
+
+   -- The child table (or its whole schema) may already be gone via a CASCADE drop
+   -- triggered by a parent schema_tables delete, in which case the constraint is
+   -- already removed; skip to avoid "relation does not exist".
+   IF to_regclass(v_schema || '.' || rec.child_table) IS NULL THEN
+      RETURN OLD;
+   END IF;
+
    EXECUTE FORMAT(
       'ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I ',
-      schema_name, rec.child_table, NEW.fk_name
-    );
+      v_schema, rec.child_table, OLD.fk_name
+   );
+
+   RETURN OLD;
 END;
 $$;
 
@@ -1003,10 +1116,53 @@ BEGIN
 
    v_changed_by := NULLIF(current_setting('app.current_user_id', true), '')::INTEGER;
 
-   INSERT INTO project_logs (project_id, changed_by, created_at, entity_type, entity_id, change_type, old_data, new_data)
-   VALUES (p_project_id, v_changed_by, now(), p_entity_type, p_entity_id, p_change_type, p_old_data, p_new_data);
+    INSERT INTO project_logs (project_id, changed_by, created_at, entity_type, entity_id, change_type, old_data, new_data)
+    VALUES (p_project_id, v_changed_by, now(), p_entity_type, p_entity_id, p_change_type, p_old_data, p_new_data);
 END;
 $$;
+
+-- projects : create (insert) / update (rename, description, status, auth, flags)
+-- Note: project DELETE is intentionally NOT logged here. project_logs rows are
+-- removed together with the project by ON DELETE CASCADE (fk_project_logs_project),
+-- so a delete-log would be cascade-deleted immediately. If project-deletion auditing
+-- is ever required, that FK must be changed to ON DELETE SET NULL (and changed_by is
+-- already nullable, so the log row can survive referencing a now-absent project).
+CREATE OR REPLACE FUNCTION tgfunc_log_project () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        PERFORM func_log_project_change(NEW.id, 'project', NEW.id, 'create',
+            NULL, jsonb_build_object(
+                'name', NEW.name, 'description', NEW.description,
+                'subscription_status', NEW.subscription_status, 'auth_enabled', NEW.auth_enabled,
+                'is_template', NEW.is_template, 'is_clone', NEW.is_clone));
+
+    ELSIF TG_OP = 'UPDATE' THEN
+        IF NEW.name IS DISTINCT FROM OLD.name
+           OR NEW.description IS DISTINCT FROM OLD.description
+           OR NEW.subscription_status IS DISTINCT FROM OLD.subscription_status
+           OR NEW.auth_enabled IS DISTINCT FROM OLD.auth_enabled
+           OR NEW.is_template IS DISTINCT FROM OLD.is_template
+           OR NEW.is_clone IS DISTINCT FROM OLD.is_clone THEN
+            PERFORM func_log_project_change(NEW.id, 'project', NEW.id, 'update',
+                jsonb_build_object(
+                    'name', OLD.name, 'description', OLD.description,
+                    'subscription_status', OLD.subscription_status, 'auth_enabled', OLD.auth_enabled,
+                    'is_template', OLD.is_template, 'is_clone', OLD.is_clone),
+                jsonb_build_object(
+                    'name', NEW.name, 'description', NEW.description,
+                    'subscription_status', NEW.subscription_status, 'auth_enabled', NEW.auth_enabled,
+                    'is_template', NEW.is_template, 'is_clone', NEW.is_clone));
+        END IF;
+    END IF;
+    RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
+DROP TRIGGER IF EXISTS tg_log_project ON projects;
+
+CREATE TRIGGER tg_log_project
+AFTER INSERT OR UPDATE ON projects FOR EACH ROW
+EXECUTE FUNCTION tgfunc_log_project ();
 
 -- project_cors_origin : insert / delete
 CREATE OR REPLACE FUNCTION tgfunc_log_cors_origin () RETURNS TRIGGER LANGUAGE plpgsql AS $$
