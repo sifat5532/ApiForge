@@ -785,7 +785,7 @@ BEGIN
         -- column was the sole/last PK column the PK constraint must be dropped.
         -- Skip if the whole table is already gone (e.g. its parent schema_tables
         -- row was deleted and DROP TABLE already removed everything).
-        IF NOT rec.is_template AND to_regclass(v_schema || '.' || rec.TABLE_NAME) IS NOT NULL THEN
+        IF NOT rec.is_template AND to_regclass(format('%I.%I', v_schema, rec.TABLE_NAME)) IS NOT NULL THEN
             EXECUTE FORMAT('ALTER TABLE %I.%I DROP COLUMN IF EXISTS %I', v_schema, rec.TABLE_NAME, OLD.col_name);
             PERFORM tgfunc_rebuild_pk_for_table(rec.table_id, v_schema, rec.TABLE_NAME);
         END IF;
@@ -810,6 +810,7 @@ CREATE OR REPLACE FUNCTION tgfunc_rebuild_pk_for_table (
 ) RETURNS void LANGUAGE plpgsql AS $$
 DECLARE
     v_pk_cols TEXT;
+    v_existing_pk TEXT;
 BEGIN
     SELECT string_agg(format('%I', col_name), ',' ORDER BY id)
     INTO v_pk_cols
@@ -817,10 +818,24 @@ BEGIN
     WHERE schema_table_id = p_table_id
       AND is_primary_key = TRUE;
 
-    EXECUTE format(
-        'ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I',
-        p_schema, p_table_name, 'pk_' || p_table_id
-    );
+    -- Drop whatever primary key currently exists on the table, regardless of its
+    -- name (it may be the expected 'pk_<id>' or a system-generated name). Guessing
+    -- the name with DROP CONSTRAINT IF EXISTS silently no-ops on a mismatch and then
+    -- ADD CONSTRAINT would try to create a second PK -> "multiple primary keys".
+    SELECT c.conname INTO v_existing_pk
+    FROM pg_constraint c
+    JOIN pg_class t ON t.oid = c.conrelid
+    JOIN pg_namespace n ON n.oid = t.relnamespace
+    WHERE c.contype = 'p'
+      AND n.nspname = p_schema
+      AND t.relname = p_table_name;
+
+    IF v_existing_pk IS NOT NULL THEN
+        EXECUTE format(
+            'ALTER TABLE %I.%I DROP CONSTRAINT %I',
+            p_schema, p_table_name, v_existing_pk
+        );
+    END IF;
 
     IF v_pk_cols IS NOT NULL THEN
         EXECUTE format(
@@ -837,6 +852,7 @@ DECLARE
    r RECORD;
    v_schema TEXT;
    v_pk_cols TEXT;
+   v_existing_pk TEXT;
 
 BEGIN
    FOR r IN
@@ -861,12 +877,25 @@ BEGIN
         FROM schema_columns
         WHERE schema_table_id = r.table_id
           AND is_primary_key = TRUE;
-        EXECUTE format(
-            'ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I',
-            v_schema,
-            r.table_name,
-            'pk_' || r.table_id
-        );
+
+        -- Drop whatever primary key currently exists (name-agnostic), so we don't
+        -- attempt to add a second PK when the existing one isn't named 'pk_<id>'.
+        SELECT c.conname INTO v_existing_pk
+        FROM pg_constraint c
+        JOIN pg_class t ON t.oid = c.conrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        WHERE c.contype = 'p'
+          AND n.nspname = v_schema
+          AND t.relname = r.table_name;
+
+        IF v_existing_pk IS NOT NULL THEN
+            EXECUTE format(
+                'ALTER TABLE %I.%I DROP CONSTRAINT %I',
+                v_schema,
+                r.table_name,
+                v_existing_pk
+            );
+        END IF;
 
         IF v_pk_cols IS NOT NULL THEN
             EXECUTE format(
@@ -975,8 +1004,8 @@ BEGIN
    schema_name := 'PROJ_' || rec.id || '_' || rec.author_id;
 
    -- The child table may already be gone (cascade drop of the parent table); skip.
-   IF to_regclass(schema_name || '.' || rec.child_table) IS NULL THEN
-      RETURN NEW;
+    IF to_regclass(format('%I.%I', schema_name, rec.child_table)) IS NULL THEN
+       RETURN NEW;
    END IF;
 
    fk_def := FORMAT(
@@ -1030,8 +1059,8 @@ BEGIN
    -- The child table (or its whole schema) may already be gone via a CASCADE drop
    -- triggered by a parent schema_tables delete, in which case the constraint is
    -- already removed; skip to avoid "relation does not exist".
-   IF to_regclass(v_schema || '.' || rec.child_table) IS NULL THEN
-      RETURN OLD;
+    IF to_regclass(format('%I.%I', v_schema, rec.child_table)) IS NULL THEN
+       RETURN OLD;
    END IF;
 
    EXECUTE FORMAT(
