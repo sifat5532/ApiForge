@@ -968,13 +968,18 @@ EXECUTE FUNCTION tgfunc_log_cors_origin ();
 
 -- project_collaborators : insert / remove (delete)
 CREATE OR REPLACE FUNCTION tgfunc_log_collaborator () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+   v_name VARCHAR;
+   v_username VARCHAR;
 BEGIN
    IF TG_OP = 'INSERT' THEN
+      SELECT name, username INTO v_name, v_username FROM users WHERE id = NEW.user_id;
       PERFORM func_log_project_change(NEW.project_id, 'collaborator', NEW.user_id, 'insert',
-         NULL, jsonb_build_object('user_id', NEW.user_id, 'role', NEW.role, 'status', NEW.status));
+         NULL, jsonb_build_object('user_id', NEW.user_id, 'name', v_name, 'username', v_username, 'role', NEW.role, 'status', NEW.status));
    ELSIF TG_OP = 'DELETE' THEN
+      SELECT name, username INTO v_name, v_username FROM users WHERE id = OLD.user_id;
       PERFORM func_log_project_change(OLD.project_id, 'collaborator', OLD.user_id, 'delete',
-         jsonb_build_object('user_id', OLD.user_id, 'role', OLD.role, 'status', OLD.status), NULL);
+         jsonb_build_object('user_id', OLD.user_id, 'name', v_name, 'username', v_username, 'role', OLD.role, 'status', OLD.status), NULL);
    END IF;
    RETURN COALESCE(NEW, OLD);
 END;
@@ -1349,7 +1354,7 @@ CREATE OR REPLACE FUNCTION tgfunc_log_api_definition () RETURNS TRIGGER LANGUAGE
 BEGIN
    IF TG_OP = 'INSERT' THEN
       PERFORM func_log_project_change(NEW.project_id, 'api_definition', NEW.id, 'insert',
-         NULL, jsonb_build_object('name', NEW.name, 'method', NEW.method, 'rate_limit_per_day', NEW.rate_limit_per_day, 'is_active', NEW.is_active, 'query_definition', NEW.query_definition));
+         NULL, jsonb_build_object('name', NEW.name, 'method', NEW.method, 'rate_limit_per_day', NEW.rate_limit_per_day, 'is_active', NEW.is_active));
 
    ELSIF TG_OP = 'UPDATE' THEN
       IF NEW.name IS DISTINCT FROM OLD.name
@@ -1358,13 +1363,13 @@ BEGIN
          OR NEW.rate_limit_per_day IS DISTINCT FROM OLD.rate_limit_per_day
          OR NEW.is_active IS DISTINCT FROM OLD.is_active THEN
          PERFORM func_log_project_change(NEW.project_id, 'api_definition', NEW.id, 'update',
-            jsonb_build_object('name', OLD.name, 'method', OLD.method, 'rate_limit_per_day', OLD.rate_limit_per_day, 'is_active', OLD.is_active, 'query_definition', OLD.query_definition),
-            jsonb_build_object('name', NEW.name, 'method', NEW.method, 'rate_limit_per_day', NEW.rate_limit_per_day, 'is_active', NEW.is_active, 'query_definition', NEW.query_definition));
+            jsonb_build_object('name', OLD.name, 'method', OLD.method, 'rate_limit_per_day', OLD.rate_limit_per_day, 'is_active', OLD.is_active),
+            jsonb_build_object('name', NEW.name, 'method', NEW.method, 'rate_limit_per_day', NEW.rate_limit_per_day, 'is_active', NEW.is_active));
       END IF;
 
    ELSIF TG_OP = 'DELETE' THEN
       PERFORM func_log_project_change(OLD.project_id, 'api_definition', OLD.id, 'delete',
-         jsonb_build_object('name', OLD.name, 'method', OLD.method, 'rate_limit_per_day', OLD.rate_limit_per_day, 'is_active', OLD.is_active, 'query_definition', OLD.query_definition), NULL);
+         jsonb_build_object('name', OLD.name, 'method', OLD.method, 'rate_limit_per_day', OLD.rate_limit_per_day, 'is_active', OLD.is_active), NULL);
    END IF;
    RETURN COALESCE(NEW, OLD);
 END;
