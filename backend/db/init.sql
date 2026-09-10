@@ -624,10 +624,10 @@ BEGIN
     INTO rec
     FROM schema_tables S
     JOIN projects P ON P.id = S.project_id
-    WHERE S.id = NEW.schema_table_id;
+    WHERE S.id = COALESCE(NEW.schema_table_id, OLD.schema_table_id);
 
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'schema_table % not found', NEW.schema_table_id;
+        RAISE EXCEPTION 'schema_table % not found', COALESCE(NEW.schema_table_id, OLD.schema_table_id);
     END IF;
 
     v_schema := 'PROJ' || '_' || rec.id || '_' || rec.author_id;
@@ -756,17 +756,62 @@ BEGIN
         IF NOT rec.is_template AND v_actions IS NOT NULL THEN
             EXECUTE FORMAT('ALTER TABLE %I.%I %s', v_schema, rec.TABLE_NAME, v_actions);
         END IF;
+
+        -- Rebuild the primary key when a column's PK status changed, since the
+        -- set of PK columns for the table is now different.
+        IF NEW.is_primary_key IS DISTINCT FROM OLD.is_primary_key AND NOT rec.is_template THEN
+            PERFORM tgfunc_rebuild_pk_for_table(rec.table_id, v_schema, rec.TABLE_NAME);
+        END IF;
+    ELSIF TG_OP = 'DELETE' THEN
+        -- Drop the physical column. Note: dropping a column that is part of the
+        -- primary key automatically removes it from the PK constraint, but if any
+        -- PK columns remain we must rebuild the PK constraint, and if the dropped
+        -- column was the sole/last PK column the PK constraint must be dropped.
+        IF NOT rec.is_template THEN
+            EXECUTE FORMAT('ALTER TABLE %I.%I DROP COLUMN IF EXISTS %I', v_schema, rec.TABLE_NAME, OLD.col_name);
+            PERFORM tgfunc_rebuild_pk_for_table(rec.table_id, v_schema, rec.TABLE_NAME);
+        END IF;
     END IF;
 
-  
-    RETURN NEW;
+    RETURN COALESCE(NEW, OLD);
 END;
 $$;
 DROP TRIGGER IF EXISTS tg_insert_schema_column ON schema_columns;
 
 CREATE TRIGGER tg_insert_schema_column
-AFTER INSERT OR UPDATE ON schema_columns FOR EACH ROW
+AFTER INSERT OR UPDATE OR DELETE ON schema_columns FOR EACH ROW
 EXECUTE FUNCTION tgfunc_add_columns ();
+
+-- Rebuild (or drop) the PRIMARY KEY constraint for a single schema table based on
+-- the current set of primary-key columns. Used by tgfunc_add_columns on column
+-- delete (the dropped column may have been a PK) and on PK-status change in update.
+CREATE OR REPLACE FUNCTION tgfunc_rebuild_pk_for_table (
+    p_table_id INTEGER,
+    p_schema TEXT,
+    p_table_name VARCHAR
+) RETURNS void LANGUAGE plpgsql AS $$
+DECLARE
+    v_pk_cols TEXT;
+BEGIN
+    SELECT string_agg(format('%I', col_name), ',' ORDER BY id)
+    INTO v_pk_cols
+    FROM schema_columns
+    WHERE schema_table_id = p_table_id
+      AND is_primary_key = TRUE;
+
+    EXECUTE format(
+        'ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I',
+        p_schema, p_table_name, 'pk_' || p_table_id
+    );
+
+    IF v_pk_cols IS NOT NULL THEN
+        EXECUTE format(
+            'ALTER TABLE %I.%I ADD CONSTRAINT %I PRIMARY KEY (%s)',
+            p_schema, p_table_name, 'pk_' || p_table_id, v_pk_cols
+        );
+    END IF;
+END;
+$$;
 
 
 CREATE OR REPLACE FUNCTION  tgfunc_rebuild_pk() RETURNS TRIGGER LANGUAGE plpgsql AS $$
