@@ -104,6 +104,21 @@ async function validateApiRoute(req, res, next) {
             return res.status(402).json({ error: 'Project subscription is not active' });
         }
 
+        const corsResult = await query(`
+            SELECT origin
+            FROM project_cors_origin
+            WHERE project_id = $1`,
+            [apiDefinition.project_id]
+        );
+        const allowedOrigins = corsResult.rows.map(row => row.origin);
+
+        if (allowedOrigins.length > 0) {
+            const requestOrigin = req.headers.origin;
+            if (requestOrigin && !allowedOrigins.includes(requestOrigin)) {
+                return res.status(403).json({ error: 'Origin not allowed' });
+            }
+        }
+
         if (apiDefinition.auth_enabled) {
             const providedKey = req.header('x-api-key');
 
