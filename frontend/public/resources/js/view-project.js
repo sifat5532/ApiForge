@@ -91,8 +91,10 @@ async function loadProjectHeader() {
 
     const leaveBtn = document.getElementById('vp-leave-project');
     const regenBtn = document.getElementById('vp-regen-key');
+    const createTemplateBtn = document.getElementById('vp-create-template');
     if (leaveBtn) leaveBtn.hidden = vpState.isAuthor;
     if (regenBtn) regenBtn.hidden = !vpState.isAuthor;
+    if (createTemplateBtn) createTemplateBtn.hidden = !vpState.isAuthor;
 
     // Apply all author-only action button visibility immediately after role is known.
     // These buttons live in the panel action bars and should not wait for lazy tab load.
@@ -3990,8 +3992,81 @@ function bindGlobalActions() {
   const regenBtn = document.getElementById('vp-regen-key');
   if (regenBtn) regenBtn.addEventListener('click', regenerateApiKey);
 
+  const createTemplateBtn = document.getElementById('vp-create-template');
+  if (createTemplateBtn) createTemplateBtn.addEventListener('click', openCreateTemplateModal);
+
   const refreshLogsBtn = document.getElementById('btn-refresh-logs');
   if (refreshLogsBtn) refreshLogsBtn.addEventListener('click', () => loadProjectLogs());
+}
+
+function openCreateTemplateModal() {
+  if (!vpState.isAuthor) return;
+
+  const bodyHtml = `
+    <div class="modal-form">
+      <div class="field">
+        <label class="field__label" for="tpl-name-input">Template name</label>
+        <input class="modal-input" type="text" id="tpl-name-input" maxlength="30"
+          placeholder="e.g. BlogStarter" autocomplete="off" />
+        <span class="field__hint">Letters, digits and underscores only. Must start with a letter. Max 30 characters.</span>
+      </div>
+    </div>
+  `;
+  const footHtml = `
+    <button class="btn btn--ghost btn--sm" id="tpl-cancel" type="button">Cancel</button>
+    <button class="btn btn--primary btn--sm" id="tpl-submit" type="button">Create Template</button>
+  `;
+  showModal('Create Template', bodyHtml, footHtml);
+
+  const input = document.getElementById('tpl-name-input');
+  if (input) input.focus();
+  document.getElementById('tpl-cancel').addEventListener('click', closeModal);
+  document.getElementById('tpl-submit').addEventListener('click', submitCreateTemplate);
+  if (input) {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submitCreateTemplate();
+    });
+  }
+}
+
+async function submitCreateTemplate() {
+  if (!vpState.isAuthor) return;
+
+  const input = document.getElementById('tpl-name-input');
+  const submitBtn = document.getElementById('tpl-submit');
+  const templateName = input ? input.value.trim() : '';
+
+  if (!templateName) {
+    showToast('Please fill in template name', 'error');
+    return;
+  }
+  if (!/^[A-Za-z][a-zA-Z0-9_]{0,29}$/.test(templateName)) {
+    showToast('Please give template name within 30 characters using a-z, 0-9 or _ only and first letter within a-z', 'error');
+    return;
+  }
+
+  setLoading(submitBtn, true);
+  try {
+    const res = await apiFetch('/project/createTemplate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        template_name: templateName,
+        proj_id: vpState.projectId,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      showToast(data.msg || 'Template created successfully', 'success');
+      closeModal();
+    } else {
+      showToast(data.msg || 'Failed to create template', 'error');
+      setLoading(submitBtn, false);
+    }
+  } catch (_) {
+    showToast('Network error', 'error');
+    setLoading(submitBtn, false);
+  }
 }
 
 async function regenerateApiKey() {

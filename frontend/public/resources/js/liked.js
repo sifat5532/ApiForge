@@ -1,156 +1,12 @@
 /* ===================================================================
    ApiForge — liked.js
-   Handles search, sort, shimmer loading, dynamic card rendering,
-   pagination, and unlike actions for liked.html.
+   Loads the user's liked templates from the backend (/view/likedTemplates),
+   sending page + limit so the server paginates. Search and sort are applied
+   client-side on the current page; pagination, page size and navigation
+   re-fetch from the backend. Clicking a template name or the "View" button
+   navigates to /template/:id (view-template.html). Unliking calls the
+   backend and removes the card from the current page.
    =================================================================== */
-
-// ─── Mock dataset ──────────────────────────────────────────────────────────────
-const MOCK_LIKED_TEMPLATES = [
-  {
-    id: 'lt1',
-    name: 'Inventory Manager Pro',
-    description: 'A full-featured inventory API with SKU tracking, low-stock alerts, multi-warehouse support, and automated reorder triggers.',
-    author: { name: 'Alex Rivera', username: 'alexr', initials: 'AR', color: '#6366f1' },
-    tags: ['inventory', 'e-commerce', 'REST', 'alerts'],
-    createdAt: 'Jul 14, 2026',
-    createdTimestamp: 1752537600000,
-    likedAt: 'Jul 31, 2026',
-    likedTimestamp: 1753920000000,
-    stars: 218
-  },
-  {
-    id: 'lt2',
-    name: 'Auth & Permissions Starter',
-    description: 'JWT-based authentication with role-based access control (RBAC), refresh token rotation, and audit log endpoints.',
-    author: { name: 'Sarah Okafor', username: 'sarahokafor', initials: 'SO', color: '#ec4899' },
-    tags: ['auth', 'JWT', 'RBAC', 'security'],
-    createdAt: 'Jun 22, 2026',
-    createdTimestamp: 1750550400000,
-    likedAt: 'Jul 30, 2026',
-    likedTimestamp: 1753833600000,
-    stars: 504
-  },
-  {
-    id: 'lt3',
-    name: 'Blog CMS API',
-    description: 'Headless CMS REST API with markdown parsing, media asset management, category taxonomy, and nested comment threads.',
-    author: { name: 'Sifat Hossain', username: 'sifat5532', initials: 'SH', color: '#f97316' },
-    tags: ['CMS', 'blog', 'headless', 'media'],
-    createdAt: 'Jun 10, 2026',
-    createdTimestamp: 1749513600000,
-    likedAt: 'Jul 29, 2026',
-    likedTimestamp: 1753747200000,
-    stars: 381
-  },
-  {
-    id: 'lt4',
-    name: 'E-Commerce Checkout API',
-    description: 'Cart, coupon, and checkout pipeline with Stripe & PayPal webhook handlers, tax calculation engine, and order state machine.',
-    author: { name: 'Dave Kim', username: 'davekim', initials: 'DK', color: '#14b8a6' },
-    tags: ['e-commerce', 'payments', 'Stripe', 'webhooks'],
-    createdAt: 'May 28, 2026',
-    createdTimestamp: 1748390400000,
-    likedAt: 'Jul 28, 2026',
-    likedTimestamp: 1753660800000,
-    stars: 763
-  },
-  {
-    id: 'lt5',
-    name: 'Real-Time Chat Backend',
-    description: 'WebSocket-based messaging API with rooms, typing indicators, read receipts, message history, and file attachment endpoints.',
-    author: { name: 'Julian Moreno', username: 'julianm', initials: 'JM', color: '#8b5cf6' },
-    tags: ['WebSocket', 'chat', 'real-time', 'messaging'],
-    createdAt: 'May 15, 2026',
-    createdTimestamp: 1747267200000,
-    likedAt: 'Jul 27, 2026',
-    likedTimestamp: 1753574400000,
-    stars: 612
-  },
-  {
-    id: 'lt6',
-    name: 'Analytics & Reporting Engine',
-    description: 'Clickstream event collector, funnel aggregation, custom report builder, and automated CSV/JSON export pipeline.',
-    author: { name: 'Laura Chen', username: 'laurachen', initials: 'LC', color: '#22c55e' },
-    tags: ['analytics', 'reporting', 'metrics', 'export'],
-    createdAt: 'Apr 30, 2026',
-    createdTimestamp: 1746057600000,
-    likedAt: 'Jul 25, 2026',
-    likedTimestamp: 1753401600000,
-    stars: 299
-  },
-  {
-    id: 'lt7',
-    name: 'Multi-Tenant SaaS Scaffold',
-    description: 'Workspace isolation, per-tenant plan enforcement, usage metering API, and team member invitation system.',
-    author: { name: 'Ryan Patel', username: 'ryanp', initials: 'RP', color: '#f43f5e' },
-    tags: ['SaaS', 'multi-tenant', 'billing', 'teams'],
-    createdAt: 'Apr 12, 2026',
-    createdTimestamp: 1744416000000,
-    likedAt: 'Jul 20, 2026',
-    likedTimestamp: 1752969600000,
-    stars: 447
-  },
-  {
-    id: 'lt8',
-    name: 'Notification Hub',
-    description: 'Omnichannel router for FCM push notifications, Twilio SMS, and SendGrid email with template engine and delivery tracking.',
-    author: { name: 'Julian Moreno', username: 'julianm', initials: 'JM', color: '#8b5cf6' },
-    tags: ['notifications', 'FCM', 'SMS', 'email'],
-    createdAt: 'Mar 25, 2026',
-    createdTimestamp: 1742860800000,
-    likedAt: 'Jul 18, 2026',
-    likedTimestamp: 1752796800000,
-    stars: 183
-  },
-  {
-    id: 'lt9',
-    name: 'CRM & Lead Pipeline',
-    description: 'Customer relations tracker with lead scoring, interaction timeline, deal stages, and automated follow-up reminders.',
-    author: { name: 'Alex Rivera', username: 'alexr', initials: 'AR', color: '#6366f1' },
-    tags: ['CRM', 'leads', 'sales', 'automation'],
-    createdAt: 'Mar 8, 2026',
-    createdTimestamp: 1741392000000,
-    likedAt: 'Jul 15, 2026',
-    likedTimestamp: 1752537600000,
-    stars: 326
-  },
-  {
-    id: 'lt10',
-    name: 'AI Prompt Store',
-    description: 'Vector database wrapper for storing prompt templates, embedding cache management, and token usage analytics endpoints.',
-    author: { name: 'Sifat Hossain', username: 'sifat5532', initials: 'SH', color: '#f97316' },
-    tags: ['AI', 'LLM', 'embeddings', 'vector-db'],
-    createdAt: 'Feb 18, 2026',
-    createdTimestamp: 1739836800000,
-    likedAt: 'Jul 10, 2026',
-    likedTimestamp: 1752105600000,
-    stars: 591
-  },
-  {
-    id: 'lt11',
-    name: 'File Upload & CDN Manager',
-    description: 'S3-compatible storage API with presigned URL generation, image resizing pipeline, folder management, and access policies.',
-    author: { name: 'Sarah Okafor', username: 'sarahokafor', initials: 'SO', color: '#ec4899' },
-    tags: ['storage', 'S3', 'CDN', 'uploads'],
-    createdAt: 'Jan 30, 2026',
-    createdTimestamp: 1738195200000,
-    likedAt: 'Jul 5, 2026',
-    likedTimestamp: 1751673600000,
-    stars: 254
-  },
-  {
-    id: 'lt12',
-    name: 'Support Ticket System',
-    description: 'Helpdesk API with SLA escalation rules, auto-assignment engine, priority queuing, and agent performance metrics.',
-    author: { name: 'Ryan Patel', username: 'ryanp', initials: 'RP', color: '#f43f5e' },
-    tags: ['support', 'helpdesk', 'SLA', 'tickets'],
-    createdAt: 'Jan 12, 2026',
-    createdTimestamp: 1736640000000,
-    likedAt: 'Jun 28, 2026',
-    likedTimestamp: 1751068800000,
-    stars: 138
-  }
-];
 
 // ─── App state ──────────────────────────────────────────────────────────────────
 const likedState = {
@@ -159,11 +15,13 @@ const likedState = {
   sortDir: 'desc',
   currentPage: 1,
   pageSize: 10,
+  total: 0,         // total liked templates from the backend (ignores local search)
   isLoading: false,
-  data: [...MOCK_LIKED_TEMPLATES],
-  // Track which templates have been unliked in this session
-  unlikedIds: new Set()
+  data: [],         // normalized templates for the current page (from backend)
+  error: null
 };
+
+const likedApiBase = window.BACKEND_URL || 'http://localhost:3000';
 
 // ─── Entry point ────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -180,12 +38,12 @@ function initLikedPage() {
 
 // ─── Event bindings ─────────────────────────────────────────────────────────────
 function bindLikedEvents() {
-  // Search input
+  // Search input — server still returns the full (paginated) set, so we
+  // filter the current page locally and reset to page 1.
   const searchInput = document.getElementById('liked-search');
   if (searchInput) {
     searchInput.addEventListener('input', (e) => {
       likedState.searchQuery = e.target.value.trim().toLowerCase();
-      likedState.currentPage = 1;
       renderLiked();
     });
   }
@@ -195,7 +53,6 @@ function bindLikedEvents() {
   if (sortSelect) {
     sortSelect.addEventListener('change', (e) => {
       likedState.sortOption = e.target.value;
-      likedState.currentPage = 1;
       renderLiked();
     });
   }
@@ -214,18 +71,17 @@ function bindLikedEvents() {
         if (iconDesc) iconDesc.style.display = 'none';
         if (iconAsc)  iconAsc.style.display  = 'block';
       }
-      likedState.currentPage = 1;
       renderLiked();
     });
   }
 
-  // Items per page
+  // Items per page — re-fetch from backend with new page size
   const pageSizeSelect = document.getElementById('liked-items-per-page');
   if (pageSizeSelect) {
     pageSizeSelect.addEventListener('change', (e) => {
       likedState.pageSize = parseInt(e.target.value, 10);
       likedState.currentPage = 1;
-      renderLiked();
+      renderLikedWithShimmer();
     });
   }
 
@@ -237,27 +93,83 @@ function bindLikedEvents() {
     btnPrev.addEventListener('click', () => {
       if (likedState.currentPage > 1) {
         likedState.currentPage--;
-        renderLiked();
+        renderLikedWithShimmer();
       }
     });
   }
 
   if (btnNext) {
     btnNext.addEventListener('click', () => {
-      const filtered   = getFilteredLiked();
-      const totalPages = Math.ceil(filtered.length / likedState.pageSize) || 1;
+      const totalPages = Math.ceil(likedState.total / likedState.pageSize) || 1;
       if (likedState.currentPage < totalPages) {
         likedState.currentPage++;
-        renderLiked();
+        renderLikedWithShimmer();
       }
     });
   }
 }
 
-// ─── Data helpers ────────────────────────────────────────────────────────────────
+// ─── Backend fetch ───────────────────────────────────────────────────────────────
+async function fetchLikedTemplates() {
+  const params = new URLSearchParams({
+    page: String(likedState.currentPage),
+    limit: String(likedState.pageSize)
+  });
+  const res = await fetch(`${likedApiBase}/view/likedTemplates?${params.toString()}`, {
+    method: 'GET',
+    credentials: 'include'
+  });
+  if (res.status === 401) {
+    window.location.href = '/login';
+    return null;
+  }
+  const payload = await res.json();
+  if (!res.ok) {
+    throw new Error((payload && payload.msg) || 'Failed to load liked templates');
+  }
+  return {
+    rows: Array.isArray(payload.templates) ? payload.templates : [],
+    total: Number(payload.total) || 0
+  };
+}
+
+function normalizeTemplate(raw) {
+  const tags = Array.isArray(raw.template_tags)
+    ? raw.template_tags.map(t => (t && t.name) || t)
+    : [];
+  const createdTs = raw.created_at ? new Date(raw.created_at).getTime() : 0;
+  const likedTs   = raw.liked_at   ? new Date(raw.liked_at).getTime()   : 0;
+  return {
+    id: raw.id,
+    name: raw.template_name || raw.name || 'Untitled template',
+    description: raw.description || '',
+    author: {
+      name: raw.author_name || raw.author || 'Unknown',
+      username: raw.author_username || '',
+      initials: getInitials(raw.author_name || raw.author || '?')
+    },
+    tags,
+    createdAt: formatDate(raw.created_at),
+    createdTimestamp: isNaN(createdTs) ? 0 : createdTs,
+    likedAt: formatDate(raw.liked_at),
+    likedTimestamp: isNaN(likedTs) ? 0 : likedTs,
+    stars: Number(raw.avg_ratings) || 0,
+    authEnabled: !!raw.auth_enabled
+  };
+}
+
+function getInitials(name) {
+  return String(name || '?')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part.charAt(0).toUpperCase())
+    .join('') || '?';
+}
+
+// ─── Data helpers (local search + sort on the current page) ───────────────────────
 function getFilteredLiked() {
-  // Exclude items the user has unliked in this session
-  let items = likedState.data.filter(t => !likedState.unlikedIds.has(t.id));
+  let items = [...likedState.data];
 
   // Search filter — name, tags, author name
   if (likedState.searchQuery) {
@@ -295,7 +207,7 @@ function getFilteredLiked() {
   return items;
 }
 
-// ─── Shimmer loader ──────────────────────────────────────────────────────────────
+// ─── Shimmer loader (fetches a server page) ───────────────────────────────────────
 function renderLikedWithShimmer() {
   const container = document.getElementById('liked-container');
   if (!container) return;
@@ -316,10 +228,21 @@ function renderLikedWithShimmer() {
   }
   container.innerHTML = shimmerHtml;
 
-  setTimeout(() => {
-    likedState.isLoading = false;
-    renderLiked();
-  }, 400);
+  fetchLikedTemplates()
+    .then(payload => {
+      if (payload == null) return; // redirect already handled
+      likedState.data = payload.rows.map(normalizeTemplate);
+      likedState.total = payload.total;
+      likedState.error = null;
+    })
+    .catch(err => {
+      likedState.error = err.message || 'Failed to load liked templates';
+      likedState.data = [];
+    })
+    .finally(() => {
+      likedState.isLoading = false;
+      renderLiked();
+    });
 }
 
 // ─── Main render ─────────────────────────────────────────────────────────────────
@@ -328,23 +251,52 @@ function renderLiked() {
   if (!container || likedState.isLoading) return;
 
   const filtered    = getFilteredLiked();
-  const totalCount  = filtered.length;
-  const totalPages  = Math.ceil(totalCount / likedState.pageSize) || 1;
+  const totalCount  = filtered.length; // items on the current page after local search
+  const totalPages  = Math.ceil(likedState.total / likedState.pageSize) || 1;
 
-  if (likedState.currentPage > totalPages) likedState.currentPage = totalPages;
-
-  const startIndex        = (likedState.currentPage - 1) * likedState.pageSize;
-  const endIndex          = Math.min(startIndex + likedState.pageSize, totalCount);
-  const paginatedItems    = filtered.slice(startIndex, endIndex);
-
-  // Update header count badge
-  const countEl = document.getElementById('liked-total-count');
-  if (countEl) {
-    const allActive = likedState.data.length - likedState.unlikedIds.size;
-    countEl.textContent = allActive === 1 ? '1 template liked' : `${allActive} templates liked`;
+  // Clamp current page to valid range
+  if (likedState.total > 0 && likedState.currentPage > totalPages) {
+    likedState.currentPage = totalPages;
   }
 
-  if (totalCount === 0) {
+  // "Showing X–Y of Z" is based on the backend total for accurate pagination,
+  // but if a local search is active we reflect the filtered page count instead.
+  let startIndex = (likedState.currentPage - 1) * likedState.pageSize;
+  let endIndex   = Math.min(startIndex + likedState.pageSize, likedState.total);
+  let pageItems  = likedState.data;
+
+  if (likedState.searchQuery) {
+    startIndex = 0;
+    endIndex   = totalCount;
+    pageItems  = filtered;
+  } else {
+    // When no search, the server page is already sorted; honor local sort.
+    pageItems  = filtered;
+  }
+
+  // Update header count badge (total liked across all pages)
+  const countEl = document.getElementById('liked-total-count');
+  if (countEl) {
+    const n = likedState.total;
+    countEl.textContent = n === 1 ? '1 template liked' : `${n} templates liked`;
+  }
+
+  if (likedState.error) {
+    container.innerHTML = `
+      <div class="projects-empty" style="grid-column: 1 / -1;">
+        <h3 class="projects-empty__title">Couldn't load liked templates</h3>
+        <p class="projects-empty__text">${escapeHtml(likedState.error)}</p>
+        <button class="btn btn--ghost btn--sm" id="liked-retry" type="button">Try again</button>
+      </div>
+    `;
+    const retryBtn = document.getElementById('liked-retry');
+    if (retryBtn) {
+      retryBtn.addEventListener('click', () => {
+        likedState.error = null;
+        renderLikedWithShimmer();
+      });
+    }
+  } else if (totalCount === 0) {
     container.innerHTML = `
       <div class="projects-empty" style="grid-column: 1 / -1;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="projects-empty__icon">
@@ -370,16 +322,15 @@ function renderLiked() {
         likedState.searchQuery = '';
         const searchInput = document.getElementById('liked-search');
         if (searchInput) searchInput.value = '';
-        likedState.currentPage = 1;
         renderLiked();
       });
     }
   } else {
-    container.innerHTML = paginatedItems.map(t => createLikedCardHtml(t)).join('');
+    container.innerHTML = pageItems.map(t => createLikedCardHtml(t)).join('');
     bindLikedCardActions();
   }
 
-  updateLikedPaginationUI(startIndex, endIndex, totalCount, totalPages);
+  updateLikedPaginationUI(startIndex, endIndex, likedState.total, totalPages);
 }
 
 // ─── Card HTML builder ───────────────────────────────────────────────────────────
@@ -388,14 +339,16 @@ function createLikedCardHtml(t) {
     .map(tag => `<span class="tag liked-tag">${escapeHtml(tag)}</span>`)
     .join('');
 
-  const starsHtml = `
-    <span class="liked-card__stars">
-      <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" style="width:13px;height:13px;color:var(--accent-light);">
-        <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
-      </svg>
-      ${t.stars.toLocaleString()}
-    </span>
-  `;
+  const starsHtml = t.stars
+    ? `
+      <span class="liked-card__stars">
+        <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" style="width:13px;height:13px;color:var(--accent-light);">
+          <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+        </svg>
+        ${t.stars.toFixed(1)}
+      </span>
+    `
+    : '';
 
   return `
     <article class="project-card liked-card" id="liked-card-${escapeHtml(t.id)}">
@@ -420,7 +373,7 @@ function createLikedCardHtml(t) {
         </button>
       </div>
 
-      <!-- Template name (link to view-project) -->
+      <!-- Template name (link to view-template.html) -->
       <div>
         <h3 class="project-card__title liked-card__title">
           <a href="/template/${escapeHtml(t.id)}">${escapeHtml(t.name)}</a>
@@ -435,7 +388,7 @@ function createLikedCardHtml(t) {
         ${tagsHtml}
       </div>
 
-      <!-- Footer: created date + stars -->
+      <!-- Footer: created date + stars + view link -->
       <div class="project-card__footer liked-card__footer">
         <span class="liked-card__date">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;">
@@ -452,14 +405,13 @@ function createLikedCardHtml(t) {
   `;
 }
 
-// ─── Card action bindings ────────────────────────────────────────────────────────
+// ─── Card action bindings ─────────────────────────────────────────────────────────
 function bindLikedCardActions() {
   document.querySelectorAll('.liked-card__unlike-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', async (e) => {
       e.preventDefault();
       const id   = btn.getAttribute('data-id');
       const card = document.getElementById(`liked-card-${id}`);
-
       if (!id || !card) return;
 
       // Animate out
@@ -467,10 +419,19 @@ function bindLikedCardActions() {
       card.style.opacity    = '0';
       card.style.transform  = 'scale(0.96)';
 
-      setTimeout(() => {
-        likedState.unlikedIds.add(id);
-        renderLiked();
-      }, 260);
+      try {
+        await fetch(`${likedApiBase}/template/like`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ template_id: id })
+        });
+      } catch (_) { /* swallow — optimistic removal */ }
+
+      // Remove from the current page and refresh counts, then re-render.
+      likedState.data = likedState.data.filter(t => String(t.id) !== String(id));
+      likedState.total = Math.max(0, likedState.total - 1);
+      setTimeout(() => renderLiked(), 200);
     });
   });
 }
@@ -509,14 +470,21 @@ function updateLikedPaginationUI(startIndex, endIndex, totalCount, totalPages) {
         const targetPage = parseInt(btn.getAttribute('data-page'), 10);
         if (targetPage !== likedState.currentPage) {
           likedState.currentPage = targetPage;
-          renderLiked();
+          renderLikedWithShimmer();
         }
       });
     });
   }
 }
 
-// ─── XSS helper ─────────────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────────
+function formatDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 function escapeHtml(str) {
   if (!str) return '';
   return String(str)

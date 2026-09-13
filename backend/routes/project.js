@@ -68,6 +68,30 @@ const requireProjectAuthor = async (req, res, next) => {
     next();
 };
 
+const requireOwner = async (req, res, next) => {
+    const proj_id = req.body?.proj_id || req.params?.projectId || req.params?.templateId || req.query?.projectId;
+    if (!proj_id) return res.status(400).json({ msg: "You should insert a project id with your request" });
+
+    const result = await query('SELECT id FROM projects WHERE id=$1 AND author_id=$2', [proj_id, req.loggedInUser.id]);
+    if (result.rows.length === 0) {
+        return res.status(403).json({ msg: "You don't have access to make any change to this project" });
+    }
+    req.projectAuthorId = req.loggedInUser.id;
+    next();
+};
+
+const requireTemplateAuthor = async (req, res, next) => {
+    const templateId = req.params.templateId || req.body.template_id || req.query.templateId;
+    if (!templateId) return res.status(400).json({ msg: "You should insert a project id with your request" });
+
+    const result = await query('SELECT id FROM projects WHERE id=$1 AND author_id=$2 AND is_template=$3', [templateId, req.loggedInUser.id, true]);
+    if (result.rows.length === 0) {
+        return res.status(403).json({ msg: "You don't have access to make any change to this project" });
+    }
+    req.projectAuthorId = req.loggedInUser.id;
+    next();
+};
+
 //it also chk is if the proj is not a template 
 const requireProjectAccess = async (req, res, next) => {
     const proj_id = req.body?.proj_id || req.params?.projectId || req.query?.projectId;
@@ -651,6 +675,10 @@ router.post('/cloneTemplate', requireAuth, async (req, res) => {
     if (result.rows.length > 0) {
         return res.status(400).json({ msg: 'You already have a project in this name' });
     }
+        
+    const api_key = crypto.randomBytes(32).toString('hex');
+    const api_key_prefix = api_key.substring(0, 6);
+    const api_key_hashed = crypto.createHash('sha256').update(api_key).digest('hex');
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
@@ -667,10 +695,11 @@ router.post('/cloneTemplate', requireAuth, async (req, res) => {
         await checkPlanLimit(client, author_id, 'project');
         const clone = await client.query(`
             INSERT INTO projects
-            (author_id, name, description, auth_enabled, is_clone, cloned_from_id )
-            VALUES($1, $2, $3, $4, $5, $6)
+            (author_id, name, description, auth_enabled, is_clone, cloned_from_id ,  api_key_hashed, api_key_prefix)
+            VALUES($1, $2, $3, $4, $5, $6 , $7 , $8)
             RETURNING id`,
-            [author_id, clone_name, template.rows[0].description, (auth_enabled === true ? true : false), true, cloned_from_id]
+            [author_id, clone_name, template.rows[0].description, (auth_enabled === true ? true : false), 
+            true, cloned_from_id , api_key_hashed , api_key_prefix]
         );
         const tags = await client.query(`
                         INSERT INTO project_tags 
@@ -680,7 +709,7 @@ router.post('/cloneTemplate', requireAuth, async (req, res) => {
                          WHERE project_id = $2 `,
             [clone.rows[0].id, cloned_from_id]);
         await client.query('COMMIT');
-        res.status(201).json({ msg: 'Template cloned successfully' });
+        res.status(201).json({ msg: 'Template cloned successfully' , api_key : api_key});
     } catch (e) {
         await client.query('ROLLBACK');
         console.error(e);
@@ -688,9 +717,9 @@ router.post('/cloneTemplate', requireAuth, async (req, res) => {
     } finally {
         client.release();
     }
-})
+});
 
-router.put('/updateProject/:projectId', requireAuth, requireProjectAuthor, async (req, res) => {
+router.put('/updateProject/:projectId', requireAuth, requireOwner, async (req, res) => {
     const { proj_name, description, enable_auth, tags } = req.body;
     const author_id = req.loggedInUser.id;
     if (!proj_name && !description && enable_auth == null && !tags) {
@@ -764,7 +793,6 @@ router.delete('/deleteProject/:projectId', requireAuth, async (req, res) => {
     if (result.rowCount === 0) return res.status(400).json({ msg: "You don't have access to delete the project or the project doesn't exist." });
     return res.status(200).json({ msg: "Project was deleted successfully" });
 });
-
 // ######################################################
 //  Schema table related routes (DDL driven by triggers)
 // ######################################################
@@ -1145,4 +1173,6 @@ router.put('/updateForeignKey', requireAuth, requireProjectAccess, isProjectActi
 module.exports = router;
 module.exports.requireProjectAuthor = requireProjectAuthor;
 module.exports.requireProjectAccess = requireProjectAccess;
+module.exports.requireOwner = requireOwner;
+module.exports.requireTemplateAuthor = requireTemplateAuthor;
 module.exports.isProjectActive = isProjectActive;

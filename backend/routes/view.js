@@ -2,8 +2,9 @@ const express = require('express');
 const query = require('./../db/query');
 const pool = require('./../db/connection');
 const { requireAuth } = require('./auth');
-const { requireProjectAuthor }= require('./project');
 const { requireProjectAccess }= require('./project');
+const { requireTemplateAuthor }= require('./project');
+const { template } = require('lodash');
 const router = express.Router();
 
 router.get('/allProjects', requireAuth, async (req, res) => {
@@ -363,6 +364,27 @@ router.get('/templateDetails/:templateId', async (req, res) => {
     res.status(200).json({ msg: "Successfully show template details ", data: result.rows[0] })
 
 });
+router.get('/viewFeedback/:templateId' , requireAuth , requireTemplateAuthor , async (req , res)=>{
+   const { templateId } = req.params;
+   const result = await query(`
+       SELECT
+           tf.id,
+           tf.user_id,
+           tf.message,
+           tf.created_at,
+           u.name,
+           u.username
+       FROM template_feedback tf
+       JOIN users u ON u.id = tf.user_id
+       WHERE tf.template_id = $1
+       ORDER BY tf.created_at DESC
+                 ` ,[templateId]);
+     if (result.rows.length === 0) return res.status(404).json({ msg: "No feedback yet" });
+    res.status(200).json({ data: result.rows });
+
+
+
+});
 router.get('/viewAllForeignkeys/:projectId', requireAuth, async (req, res) => {
     const { projectId } = req.params;
     const projAccess = await query(`
@@ -510,5 +532,51 @@ router.post('/notifications/dismiss', requireAuth, async (req, res) => {
     if (result.rowCount === 0) return res.status(404).json({ msg: 'Notification not found' });
     res.status(200).json({ msg: 'Notification dismissed' });
 });
+router.get('/likedTemplates' , requireAuth , async( req ,res )=>{
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.max(1, Number(req.query.limit) || 10);
 
+    const offset = (page - 1) * limit;
+    const result = await query(`
+                                SELECT
+                                    P.id,
+                                    P.name AS template_name,
+                                    P.description,
+                                    P.auth_enabled,
+                                    P.created_at,
+                                    U.name AS author_name,
+                                    U.username AS author_username,
+                                    T.created_at AS liked_at,
+                                    COALESCE((SELECT AVG(tr.rating) FROM template_ratings tr WHERE tr.template_id = P.id ), 0 ) AS avg_ratings,
+                                    COALESCE(
+                                        ( SELECT json_agg(
+                                            json_build_object (
+                                                'id' , t.id , 'tag_id' , pt.tag_id ,
+                                                'name' , t.name
+                                            ) ORDER BY t.name
+                                        )
+                                        FROM project_tags pt
+                                        JOIN tags t ON t.id = pt.tag_id
+                                        WHERE pt.project_id = p.id
+                                        ) , '[]' :: json
+                                    ) AS template_tags
+                                FROM
+                                    template_likes T
+                                    JOIN projects P ON P.id = T.template_id
+                                    JOIN users U ON U.id = P.author_id
+                                WHERE
+                                    T.user_id = $1
+                                ORDER BY T.created_at DESC
+                                LIMIT $2 
+                                OFFSET $3 ` , [req.loggedInUser.id , limit , offset]);
+
+    const countResult = await query(`
+                                SELECT COUNT(*) AS total
+                                FROM template_likes T
+                                WHERE T.user_id = $1` , [req.loggedInUser.id]);
+
+    const total = parseInt(countResult.rows[0] && countResult.rows[0].total, 10) || 0;
+
+   return res.status(200).json({ templates : result.rows , total });
+});
 module.exports = router;

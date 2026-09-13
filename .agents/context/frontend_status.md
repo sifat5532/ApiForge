@@ -178,13 +178,18 @@ Self-executing script that checks session status (`/auth/me`). Redirects to `/lo
 |---|---|
 | `initLikedPage()` | Main entrypoint — guards to liked.html, binds events, triggers shimmer loading |
 | `bindLikedEvents()` | Event listeners for search input, sort dropdown, sort direction toggle, page size select, and pagination prev/next |
-| `getFilteredLiked()` | Filters out unliked items, applies search query (name/tag/author/desc), then sorts by selected option and direction |
-| `renderLikedWithShimmer()` | Shows 6 skeleton shimmer cards with 400ms delay before rendering real cards |
-| `renderLiked()` | Paginates filtered results, renders liked template cards or empty-state, updates header count badge |
-| `createLikedCardHtml(t)` | Returns HTML string for one liked-template card — author avatar, name, description, tags, created date, stars, unlike button |
-| `bindLikedCardActions()` | Binds unlike button — animates card out (opacity + scale), then removes it from rendered set |
+| `fetchLikedTemplates()` | `GET /view/likedTemplates?page=&limit=` (credentials included) → returns `{ templates, total }`; 401 → redirect `/login` |
+| `normalizeTemplate(raw)` | Maps a backend row (`id`, `template_name`, `author_name`, `author_username`, `template_tags`, `created_at`, `liked_at`, `avg_ratings`, `auth_enabled`) to the card model |
+| `getFilteredLiked()` | Applies local search query (name/tag/author/desc) on the current server page, then sorts by selected option and direction |
+| `renderLikedWithShimmer()` | Shows 6 skeleton shimmer cards, fetches the current page from the backend (`page`/`limit`), then renders real cards (with retry on error) |
+| `renderLiked()` | Renders the current server page, applies local search/sort, updates header count badge + pagination UI from `total` |
+| `createLikedCardHtml(t)` | Returns HTML string for one liked-template card — author avatar, name (link → `/template/:id`), description, tags, created date, avg rating, view button, unlike button |
+| `bindLikedCardActions()` | Binds unlike button — animates card out, then `POST /template/like` and removes it from the list |
 | `updateLikedPaginationUI(...)` | Updates pagination info text, prev/next button states, and page number buttons |
+| `formatDate(iso)` | Formats ISO date to `Mon DD, YYYY` |
 | `escapeHtml(str)` | XSS helper escaping HTML characters in dynamic template data |
+
+> **Liked → view wiring (2026-09-13)**: `liked.html` now loads real data from the fixed `/view/likedTemplates` backend route. The `likedTemplates` route in `backend/routes/view.js` was corrected — it previously referenced a non-existent `templates_likes` table / `loggedInUser.ID`, and returned `400` when empty. It now joins the real `template_likes` table (`T.template_id`), uses `req.loggedInUser.id`, aliases columns to match `view-template.js` expectations (`template_name`, `author_name`, `author_username`, `liked_at`, `template_tags`, `avg_ratings`), always returns `200` with `{ templates, total }`, and accepts `page`/`limit` query params for server-side pagination (returns only the requested slice plus a `total` count). Clicking a template name or the "View →" button navigates to `/template/:id` (→ `view-template.html`, route already exists in `pages.router.js`). Unliking calls `POST /template/like` and removes the card from the current page. Search/sort are applied client-side on the current server page; page navigation, page-size change, and page-number clicks re-fetch from the backend.
 
 ### `js/templates.js` — templates feed page only
 
