@@ -1076,6 +1076,48 @@ DROP TRIGGER IF EXISTS tg_remove_schema_fks ON schema_foreign_keys;
 CREATE TRIGGER tg_remove_schema_fks
 AFTER DELETE ON schema_foreign_keys FOR EACH ROW
 EXECUTE FUNCTION tgfunc_remove_fks ();
+
+----FUNCTION to remap table id , column id in api_definition of colne and template project--------------------
+ CREATE OR REPLACE FUNCTION remap_query_ids( input jsonb , table_map jsonb , col_map jsonb)
+ RETURNS jsonb LANGUAGE plpgsql AS $$
+ DECLARE 
+     result jsonb;
+     k text ;
+     v jsonb;
+     elem jsonb;
+     arr jsonb := '[]'::jsonb;
+BEGIN 
+     IF input IS NULL THEN 
+        RETURN NULL;
+     END IF;
+     IF jsonb_typeof(input) = 'object'  THEN 
+       result := '{}'::jsonb;
+       FOR k , v IN SELECT * FROM jsonb_each(input) LOOP 
+         IF k = 'table_id' AND jsonb_typeof(v) = 'number'  THEN 
+               result := result || jsonb_build_object(k , COALESCE(table_map -> (v #>> '{}'), v));        
+         ELSIF k = 'col_id' AND jsonb_typeof(v) = 'number'  THEN 
+               result := result || jsonb_build_object(k , COALESCE(table_map -> (v #>> '{}'), v));
+         ELSE 
+               result := result || jsonb_build_object(k , remap_query_ids( v , table_map , col_map ));        
+         END IF;
+         END LOOP;
+         RETURN result;
+     ELSIF jsonb_typeof(input) = 'array' THEN 
+        FOR elem IN SELECT * FROM jsonb_array_elements(input)  LOOP 
+               arr := arr || jsonb_build_object(remap_query_ids(elem , table_map , col_map));        
+         END LOOP;
+         RETURN arr;
+     ELSE 
+         RETURN input;
+     END IF;
+END ;
+$$;                      
+         
+   
+
+
+
+
 -- we need to insert a row into the project_logs table that a new table has been inserted, it will be implemented later
 -------------------------------Clone Template------------------------------------
 CREATE OR REPLACE FUNCTION tgfunc_clone_template () RETURNS TRIGGER LANGUAGE plpgsql AS $$
@@ -1086,6 +1128,8 @@ DECLARE
     api_def RECORD;
     table_id INTEGER;
     col_id INTEGER;
+    v_table_map jsonb;
+    v_col_map jsonb;
 BEGIN
     IF NEW.is_clone = FALSE OR NEW.cloned_from_id IS NULL THEN
         RETURN NEW;
@@ -1127,12 +1171,25 @@ BEGIN
         INSERT INTO schema_foreign_keys(child_col_id, parent_col_id, fk_name, on_delete, on_update)
         VALUES (fk_def.child_col, fk_def.parent_col, fk_def.fk_name, fk_def.on_delete, fk_def.on_update);
     END LOOP;
+    
+    SELECT COALESCE(jsonb_build_object( DISTINCT old_table_id :: text , new_table_id) , '{}'::jsonb)
+    INTO v_table_map
+    FROM tmp_table_map;
 
+    SELECT COALESCE(jsonb_build_object( DISTINCT old_col_id :: text , new_col_id) , '{}'::jsonb)
+    INTO v_col_map
+    FROM tmp_table_map;
     FOR api_def IN
         SELECT * FROM api_definitions WHERE project_id = NEW.cloned_from_id
     LOOP
         INSERT INTO api_definitions(name, project_id, method, query_definition, is_active, rate_limit_per_day)
-        VALUES (api_def.name, NEW.id, api_def.method, api_def.query_definition, false, api_def.rate_limit_per_day);
+        VALUES (
+         api_def.name,
+         NEW.id, 
+         api_def.method,
+         remap_query_ids(api_def.query_definition , v_table_map , v_col_map), 
+         false, 
+         api_def.rate_limit_per_day);
     END LOOP;
 
     RETURN NEW;
@@ -1152,6 +1209,8 @@ DECLARE
     fk_def RECORD;
     table_id INTEGER;
     col_id INTEGER;
+    v_table_map jsonb;
+    v_col_map jsonb;
 BEGIN
     IF NEW.is_template = FALSE OR NEW.originates_from_id IS NULL THEN
         RETURN NEW;
@@ -1192,11 +1251,25 @@ BEGIN
         VALUES (fk_def.child_col, fk_def.parent_col, fk_def.fk_name, fk_def.on_delete, fk_def.on_update);
     END LOOP;
 
+      
+    SELECT COALESCE(jsonb_build_object( DISTINCT old_table_id :: text , new_table_id) , '{}'::jsonb)
+    INTO v_table_map
+    FROM tmp_table_map;
+
+    SELECT COALESCE(jsonb_build_object( DISTINCT old_col_id :: text , new_col_id) , '{}'::jsonb)
+    INTO v_col_map
+    FROM tmp_table_map;
+
     FOR api_def IN
         SELECT * FROM api_definitions WHERE project_id = NEW.originates_from_id
     LOOP
         INSERT INTO api_definitions(name, project_id, method, query_definition, is_active, rate_limit_per_day)
-        VALUES (api_def.name, NEW.id, api_def.method, api_def.query_definition, false, api_def.rate_limit_per_day);
+        VALUES (api_def.name, 
+          NEW.id, 
+          api_def.method, 
+          remap_query_ids(api_def.query_definition , v_table_map , v_col_map),
+          false, 
+          api_def.rate_limit_per_day);
     END LOOP;
 
     RETURN NEW;

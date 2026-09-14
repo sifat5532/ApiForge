@@ -205,7 +205,7 @@
             <div class="vt-hero__author" id="vt-author"></div>
             <div class="vt-hero__tags" id="vt-tags"></div>
           </div>
-          <div class="vt-hero__actions">
+          <div class="vt-hero__actions" id="vt-hero-actions">
             <button class="vt-like-btn" id="vt-like-btn" type="button" aria-pressed="false" title="Like this template">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l8.78-8.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
@@ -223,6 +223,8 @@
         <button class="vp-tab is-active" id="tab-tables" type="button" role="tab" aria-selected="true" aria-controls="panel-tables">Tables</button>
         <button class="vp-tab" id="tab-apis" type="button" role="tab" aria-selected="false" aria-controls="panel-apis">APIs</button>
         <button class="vp-tab" id="tab-reviews" type="button" role="tab" aria-selected="false" aria-controls="panel-reviews">Reviews</button>
+        <button class="vp-tab" id="tab-feedback" type="button" role="tab" aria-selected="false" aria-controls="panel-feedback" hidden>Feedback</button>
+        <button class="vp-tab" id="tab-settings" type="button" role="tab" aria-selected="false" aria-controls="panel-settings" hidden>Settings</button>
       </nav>
 
       <section class="vp-tab-panels">
@@ -267,6 +269,52 @@
           </div>
           <div id="vt-reviews-body" class="vt-review-list" aria-live="polite"></div>
         </div>
+
+        <div class="vp-panel" id="panel-feedback" role="tabpanel" aria-labelledby="tab-feedback" hidden>
+          <div id="vt-feedback-body" class="vt-review-list" aria-live="polite"></div>
+        </div>
+
+        <div class="vp-panel" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
+          <div class="vp-settings-wrap">
+            <h2 class="panel__title">Settings</h2>
+            <form class="vp-settings-form" id="vt-settings-form">
+              <div class="field">
+                <label for="vt-settings-name">Template name</label>
+                <input type="text" id="vt-settings-name" name="proj_name" maxlength="30" />
+              </div>
+              <div class="field">
+                <label for="vt-settings-desc">Description</label>
+                <textarea id="vt-settings-desc" name="description" class="form-textarea" maxlength="500" rows="4"></textarea>
+              </div>
+              <div class="field toggle-field">
+                <label for="vt-settings-auth">Auth enabled</label>
+                <label class="switch">
+                  <input type="checkbox" id="vt-settings-auth" name="enable_auth" />
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+              <div class="field">
+                <label for="vt-settings-tag-input">Tags</label>
+                <div class="selected-tags-container" id="vt-settings-tags"></div>
+                <div class="tag-input-group">
+                  <input type="text" id="vt-settings-tag-input" placeholder="Add a tag (a–z, 2–20 chars)…" maxlength="20" />
+                  <button class="btn btn--ghost btn--sm" id="vt-btn-add-tag" type="button">Add</button>
+                </div>
+                <span class="field__hint">Tags must start with a–z and be 2–20 characters. Max 10 tags total.</span>
+              </div>
+              <p class="form__error" id="vt-settings-error" role="alert"></p>
+              <div class="vp-settings-actions">
+                <button class="btn btn--primary" id="vt-btn-save-settings" type="submit">Save changes</button>
+              </div>
+            </form>
+
+            <div class="vp-danger-zone" id="vt-danger-zone">
+              <h3 class="vp-danger-zone__title">Danger zone</h3>
+              <p class="vp-danger-zone__hint">Deleting a template is permanent and cannot be undone.</p>
+              <button class="btn btn--ghost" id="vt-btn-delete-template" type="button" style="color: var(--error); border-color: var(--error);">Delete Template</button>
+            </div>
+          </div>
+        </div>
       </section>
 
     </main>
@@ -302,6 +350,17 @@
           <button class="btn btn--primary" type="submit">Clone template</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <div class="vp-modal-overlay" id="vt-modal-overlay" hidden>
+    <div class="vp-modal" role="dialog" aria-modal="true" aria-labelledby="vt-modal-title">
+      <div class="vp-modal__head">
+        <h3 class="vp-modal__title" id="vt-modal-title">Modal</h3>
+        <button class="vp-modal__close" id="vt-modal-close" type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="vp-modal__body" id="vt-modal-body"></div>
+      <div class="vp-modal__foot" id="vt-modal-foot"></div>
     </div>
   </div>
 

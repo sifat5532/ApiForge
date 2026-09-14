@@ -1,135 +1,93 @@
 /**
  * leaderboard.js — Page-specific logic for leaderboard.html
- * Renders top templates in four categories using liked-card style cards.
+ * Pulls top templates from the backend (/view/highratedTemplates,
+ * /view/mostClonedTemplates, /view/mostLikedTemplates, /view/popularTags)
+ * and renders them using liked-card style cards.
  * Follows the same guard pattern as other page JS modules.
  */
+
+const LEADERBOARD_API = window.BACKEND_URL || 'http://localhost:3000';
 
 document.addEventListener('DOMContentLoaded', () => {
   initLeaderboard();
 });
 
-/* ─── Mock Data ─────────────────────────────────────────────────────────── */
+/* ─── State ───────────────────────────────────────────────────────────── */
 
-const MOCK_TEMPLATES = [
-  {
-    id: 1,
-    title: 'E-Commerce REST API',
-    description: 'Full-featured store schema with products, orders, cart, and user management endpoints.',
-    author: 'alex_dev',
-    authorInitial: 'A',
-    rating: 4.9,
-    clones: 3812,
-    likes: 2940,
-    tags: ['e-commerce', 'REST', 'orders'],
-    createdAt: '2025-01-14',
-  },
-  {
-    id: 2,
-    title: 'Auth & JWT Starter',
-    description: 'Secure authentication with refresh tokens, role-based access, and session management.',
-    author: 'marina_k',
-    authorInitial: 'M',
-    rating: 4.8,
-    clones: 2994,
-    likes: 2105,
-    tags: ['auth', 'JWT', 'security'],
-    createdAt: '2025-02-03',
-  },
-  {
-    id: 3,
-    title: 'Blog & CMS API',
-    description: 'Posts, categories, tags, comments, and media upload endpoints ready to use.',
-    author: 'codesmith',
-    authorInitial: 'C',
-    rating: 4.7,
-    clones: 2148,
-    likes: 1870,
-    tags: ['blog', 'CMS', 'media'],
-    createdAt: '2025-01-28',
-  },
-  {
-    id: 4,
-    title: 'SaaS Multi-Tenant',
-    description: 'Organisation, workspace, and member management for multi-tenant SaaS applications.',
-    author: 'saascraft',
-    authorInitial: 'S',
-    rating: 4.7,
-    clones: 1734,
-    likes: 1564,
-    tags: ['SaaS', 'multi-tenant', 'teams'],
-    createdAt: '2025-03-10',
-  },
-  {
-    id: 5,
-    title: 'Inventory Manager',
-    description: 'Warehouse stock tracking with suppliers, purchase orders, and barcode scanning.',
-    author: 'devtanya',
-    authorInitial: 'D',
-    rating: 4.6,
-    clones: 1590,
-    likes: 1340,
-    tags: ['inventory', 'warehouse', 'REST'],
-    createdAt: '2025-02-18',
-  },
-  {
-    id: 6,
-    title: 'Real-time Chat API',
-    description: 'WebSocket-ready messaging schema with rooms, threads, reactions, and moderation.',
-    author: 'bytewolf',
-    authorInitial: 'B',
-    rating: 4.6,
-    clones: 1403,
-    likes: 1290,
-    tags: ['chat', 'real-time', 'WebSocket'],
-    createdAt: '2025-04-02',
-  },
-  {
-    id: 7,
-    title: 'Analytics Dashboard API',
-    description: 'Event tracking, funnels, and aggregation endpoints for product analytics.',
-    author: 'dataflow',
-    authorInitial: 'D',
-    rating: 4.5,
-    clones: 1205,
-    likes: 1120,
-    tags: ['analytics', 'events', 'reporting'],
-    createdAt: '2025-03-22',
-  },
-  {
-    id: 8,
-    title: 'Booking & Scheduling',
-    description: 'Appointment slots, availability, cancellations, and reminders for service businesses.',
-    author: 'calendarx',
-    authorInitial: 'C',
-    rating: 4.5,
-    clones: 1180,
-    likes: 1050,
-    tags: ['booking', 'scheduling', 'calendar'],
-    createdAt: '2025-05-01',
-  },
-];
+const leaderboardState = {
+  rated: [],
+  cloned: [],
+  liked: [],
+  tags: [],
+  error: null,
+  isLoading: false,
+};
 
-const POPULAR_TAGS = [
-  { name: 'REST', count: 214 },
-  { name: 'auth', count: 187 },
-  { name: 'e-commerce', count: 143 },
-  { name: 'SaaS', count: 131 },
-  { name: 'real-time', count: 98 },
-  { name: 'analytics', count: 87 },
-  { name: 'blog', count: 76 },
-  { name: 'inventory', count: 61 },
-];
+/* ─── Helpers ──────────────────────────────────────────────────────────── */
 
-/* ─── Helpers ────────────────────────────────────────────────────────────── */
+function getInitials(name) {
+  return String(name || '?')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part.charAt(0).toUpperCase())
+    .join('') || '?';
+}
+
+function formatDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function formatNum(n) {
+  const num = Number(n) || 0;
+  if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+  return String(num);
+}
+
+/**
+ * Normalize a raw template row from the backend into the shape the card
+ * builder expects.
+ */
+function normalizeTemplate(raw) {
+  const tags = Array.isArray(raw.template_tags)
+    ? raw.template_tags.map(t => (t && t.name) || t)
+    : [];
+  return {
+    id: raw.id,
+    name: raw.template_name || raw.name || 'Untitled template',
+    description: raw.description || '',
+    author: {
+      name: raw.name || raw.author_name || 'Unknown',
+      username: raw.username || raw.author_username || '',
+      initials: getInitials(raw.name || raw.author_name || '?'),
+    },
+    tags,
+    createdAt: formatDate(raw.created_at),
+    rating: Number(raw.avg_ratings) || 0,
+    clones: Number(raw.clone_count) || 0,
+    likes: Number(raw.like_count) || 0,
+  };
+}
 
 function starsHtml(rating) {
   const full = Math.floor(rating);
   const half = rating - full >= 0.5;
   let html = '';
   for (let i = 0; i < 5; i++) {
-    if (i < full) {
-      html += '<span class="ldb-star ldb-star--full" aria-hidden="true">&#9733;</span>';
-    } else if (i === full && half) {
+    if (i < full || (i === full && half)) {
       html += '<span class="ldb-star ldb-star--full" aria-hidden="true">&#9733;</span>';
     } else {
       html += '<span class="ldb-star ldb-star--empty" aria-hidden="true">&#9733;</span>';
@@ -138,13 +96,8 @@ function starsHtml(rating) {
   return html;
 }
 
-function formatNum(n) {
-  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
-  return String(n);
-}
-
 function buildCard(tpl, badge) {
-  const tags = tpl.tags.map(t => `<span class="liked-tag">${t}</span>`).join('');
+  const tags = tpl.tags.map(t => `<span class="liked-tag">${escapeHtml(t)}</span>`).join('');
   const badgeHtml = badge
     ? `<span class="ldb-rank-badge">${badge}</span>`
     : '';
@@ -152,26 +105,26 @@ function buildCard(tpl, badge) {
   return `
     <article class="liked-card ldb-card">
       <div class="liked-card__author">
-        <span class="liked-card__avatar">${tpl.authorInitial}</span>
+        <span class="liked-card__avatar">${escapeHtml(tpl.author.initials)}</span>
         <div class="liked-card__author-info">
-          <span class="liked-card__author-name">${tpl.author}</span>
-          <span class="liked-card__author-handle">@${tpl.author.toLowerCase().replace(/\s+/g, '_')}</span>
+          <span class="liked-card__author-name">${escapeHtml(tpl.author.name)}</span>
+          <span class="liked-card__author-handle">@${escapeHtml(tpl.author.username.toLowerCase())}</span>
         </div>
         ${badgeHtml}
       </div>
 
       <div class="liked-card__title">
-        <a href="/templates#${tpl.id}" class="liked-card__title-link">${tpl.title}</a>
+        <a href="/template/${escapeHtml(tpl.id)}" class="liked-card__title-link">${escapeHtml(tpl.name)}</a>
       </div>
 
-      <p class="liked-card__desc">${tpl.description}</p>
+      <p class="liked-card__desc">${escapeHtml(tpl.description)}</p>
 
       <div class="liked-card__tags">${tags}</div>
 
       <div class="liked-card__footer">
         <div class="liked-card__stars">
           ${starsHtml(tpl.rating)}
-          <span class="ldb-rating-val">${tpl.rating}</span>
+          <span class="ldb-rating-val">${tpl.rating.toFixed(1)}</span>
         </div>
         <div class="ldb-card-meta">
           <span class="ldb-meta-item" title="Clones">
@@ -188,37 +141,58 @@ function buildCard(tpl, badge) {
   `;
 }
 
-/**
- * Render the top-3 cards for a leaderboard section.
- *
- * @param {string} gridId   - DOM id of the grid container
- * @param {Array}  templates - templates in display order (may be sorted by date)
- * @param {string} metric   - the section's primary metric ('rating'|'clones'|'likes')
- *                            used to pre-compute each template's default rank so the
- *                            rank badge always reflects standing in the default sort,
- *                            not the current display order.
- */
-function renderSection(gridId, templates, metric) {
+/* ─── Backend fetch ────────────────────────────────────────────────────── */
+
+async function fetchRated() {
+  const payload = await fetchJson('/view/highratedTemplates');
+  return payload.templates || [];
+}
+
+async function fetchJson(path) {
+  const res = await fetch(`${LEADERBOARD_API}${path}`, {
+    method: 'GET',
+    credentials: 'include',
+  });
+  if (res.status === 401) {
+    window.location.href = '/login';
+    return null;
+  }
+  let payload = {};
+  try { payload = await res.json(); } catch (_) { /* non-JSON body */ }
+  if (!res.ok) {
+    throw new Error(payload.msg || `Request to ${path} failed`);
+  }
+  return payload;
+}
+
+async function fetchMostCloned() {
+  return (await fetchJson('/view/mostClonedTemplates')).templates || [];
+}
+
+async function fetchMostLiked() {
+  return (await fetchJson('/view/mostLikedTemplates')).templates || [];
+}
+
+async function fetchPopularTags() {
+  return (await fetchJson('/view/popularTags')).tags || [];
+}
+
+/* ─── Render ───────────────────────────────────────────────────────────── */
+
+function renderTopThree(gridId, templates) {
   const grid = document.getElementById(gridId);
   if (!grid) return;
-
-  // Build a default-sorted index once so rank badges are always stable.
-  // defaultRankOf[id] = 1-based rank in the by-metric (default) order.
-  const defaultOrder = [...MOCK_TEMPLATES].sort((a, b) => b[metric] - a[metric]);
-  const defaultRankOf = {};
-  defaultOrder.forEach((t, i) => { defaultRankOf[t.id] = i + 1; });
-
   grid.innerHTML = templates
     .slice(0, 3)
-    .map(t => {
-      const rank = defaultRankOf[t.id];
-      const badge = rank <= 3 ? `#${rank}` : null;
-      return buildCard(t, badge);
-    })
+    .map((t, i) => buildCard(t, ['#1', '#2', '#3'][i] || null))
     .join('');
 }
 
-/* ─── Tag Section ─────────────────────────────────────────────────────────── */
+function renderSectionGrids() {
+  renderTopThree('ldb-rated-grid', leaderboardState.rated);
+  renderTopThree('ldb-cloned-grid', leaderboardState.cloned);
+  renderTopThree('ldb-liked-grid', leaderboardState.liked);
+}
 
 let activeTag = null;
 
@@ -226,16 +200,16 @@ function renderTagPills() {
   const container = document.getElementById('ldb-tag-pills');
   if (!container) return;
 
-  container.innerHTML = POPULAR_TAGS.map(tag => `
+  container.innerHTML = leaderboardState.tags.map(tag => `
     <button
       class="ldb-tag-pill${activeTag === tag.name ? ' ldb-tag-pill--active' : ''}"
       type="button"
-      data-tag="${tag.name}"
+      data-tag="${escapeHtml(tag.name)}"
       role="listitem"
       aria-pressed="${activeTag === tag.name}"
     >
-      ${tag.name}
-      <span class="ldb-tag-count">${tag.count}</span>
+      ${escapeHtml(tag.name)}
+      <span class="ldb-tag-count">${formatNum(tag.tag_used)}</span>
     </button>
   `).join('');
 
@@ -249,6 +223,10 @@ function renderTagPills() {
   });
 }
 
+function findTagData(name) {
+  return leaderboardState.tags.find(t => t.name === name) || null;
+}
+
 function renderTagTemplates() {
   const container = document.getElementById('ldb-tag-templates');
   if (!container) return;
@@ -258,67 +236,75 @@ function renderTagTemplates() {
     return;
   }
 
-  const matched = MOCK_TEMPLATES.filter(t =>
-    t.tags.some(tag => tag.toLowerCase() === activeTag.toLowerCase())
-  );
+  const tagData = findTagData(activeTag);
+  const matched = (tagData && Array.isArray(tagData.tag_template))
+    ? tagData.tag_template.map(normalizeTemplate)
+    : [];
 
   if (matched.length === 0) {
-    container.innerHTML = `<p class="ldb-tag-hint">No templates found for <strong>${activeTag}</strong>.</p>`;
+    container.innerHTML = `<p class="ldb-tag-hint">No templates found for <strong>${escapeHtml(activeTag)}</strong>.</p>`;
     return;
   }
 
   container.innerHTML = `
-    <p class="ldb-tag-subhead">Top templates tagged <span class="ldb-tag-name">${activeTag}</span></p>
+    <p class="ldb-tag-subhead">Top templates tagged <span class="ldb-tag-name">${escapeHtml(activeTag)}</span></p>
     <div class="liked-grid ldb-grid">
       ${matched.slice(0, 3).map((t, i) => buildCard(t, ['#1', '#2', '#3'][i] || null)).join('')}
     </div>
   `;
 }
 
-/* ─── Sort ────────────────────────────────────────────────────────────────── */
-
-function initSort() {
-  const select = document.getElementById('ldb-sort');
-  if (!select) return;
-  select.addEventListener('change', () => {
-    renderAll();
-  });
+function renderError() {
+  const root = document.getElementById('ldb-sections');
+  if (!root) return;
+  root.innerHTML = `
+    <div class="projects-empty" style="grid-column: 1 / -1;">
+      <h3 class="projects-empty__title">Couldn't load the leaderboard</h3>
+      <p class="projects-empty__text">${escapeHtml(leaderboardState.error || 'Something went wrong')}</p>
+      <button class="btn btn--ghost btn--sm" id="ldb-retry" type="button">Try again</button>
+    </div>
+  `;
+  const retry = document.getElementById('ldb-retry');
+  if (retry) retry.addEventListener('click', loadLeaderboard);
 }
 
-/** Returns templates sorted by category metric (default) or by created date. */
-function getSortedFor(metric) {
-  const select = document.getElementById('ldb-sort');
-  const mode = select ? select.value : 'default';
+/* ─── Load orchestration ───────────────────────────────────────────────── */
 
-  if (mode === 'created') {
-    // newest first, then secondary-sort by metric so ties are stable
-    return [...MOCK_TEMPLATES].sort((a, b) => {
-      const dateDiff = new Date(b.createdAt) - new Date(a.createdAt);
-      if (dateDiff !== 0) return dateDiff;
-      return b[metric] - a[metric];
-    });
+async function loadLeaderboard() {
+  leaderboardState.isLoading = true;
+  leaderboardState.error = null;
+
+  try {
+    const [rated, cloned, liked, tags] = await Promise.all([
+      fetchRated(),
+      fetchMostCloned(),
+      fetchMostLiked(),
+      fetchPopularTags(),
+    ]);
+
+    if (rated == null) return; // 401 redirect already handled
+
+    leaderboardState.rated = rated.map(normalizeTemplate);
+    leaderboardState.cloned = cloned.map(normalizeTemplate);
+    leaderboardState.liked = liked.map(normalizeTemplate);
+    leaderboardState.tags = tags;
+
+    activeTag = null;
+    renderSectionGrids();
+    renderTagPills();
+    renderTagTemplates();
+  } catch (err) {
+    leaderboardState.error = err.message || 'Failed to load leaderboard';
+    renderError();
+  } finally {
+    leaderboardState.isLoading = false;
   }
-
-  // default: sort by the section's own metric (rating / clones / likes)
-  return [...MOCK_TEMPLATES].sort((a, b) => b[metric] - a[metric]);
 }
 
-/* ─── Init ────────────────────────────────────────────────────────────────── */
-
-function renderAll() {
-  renderSection('ldb-rated-grid',  getSortedFor('rating'),  'rating');
-  renderSection('ldb-cloned-grid', getSortedFor('clones'),  'clones');
-  renderSection('ldb-liked-grid',  getSortedFor('likes'),   'likes');
-  renderTagPills();
-  renderTagTemplates();
-}
+/* ─── Init ─────────────────────────────────────────────────────────────── */
 
 function initLeaderboard() {
   const root = document.getElementById('ldb-sections');
   if (!root) return;
-
-  // default: show hint for tags
-  activeTag = null;
-  renderAll();
-  initSort();
+  loadLeaderboard();
 }

@@ -2,8 +2,8 @@ const express = require('express');
 const query = require('./../db/query');
 const pool = require('./../db/connection');
 const { requireAuth } = require('./auth');
-const { requireProjectAccess }= require('./project');
-const { requireTemplateAuthor }= require('./project');
+const { requireProjectAccess } = require('./project');
+const { requireTemplateAuthor } = require('./project');
 const { template } = require('lodash');
 const router = express.Router();
 
@@ -77,12 +77,12 @@ router.get('/allContributingProjects', requireAuth, async (req, res) => {
 });
 
 async function resolveProjectIdParam(req, res, next) {
-  const raw = req.params.projectId;
-  if (raw == null) return next();
-  if (/^\d+$/.test(raw)) return next();
+    const raw = req.params.projectId;
+    if (raw == null) return next();
+    if (/^\d+$/.test(raw)) return next();
 
-  const result = await query(
-    `SELECT p.id
+    const result = await query(
+        `SELECT p.id
        FROM projects p
       WHERE p.name = $1
         AND p.is_template = $2
@@ -91,16 +91,16 @@ async function resolveProjectIdParam(req, res, next) {
                WHERE pc.user_id = $3 AND pc.status = $4 AND pc.project_id = p.id
              ))
       LIMIT 1`,
-    [raw, false, req.loggedInUser.id, 'accepted']
-  );
-  if (result.rows.length === 0) {
-    return res.status(404).json({ msg: 'Project not found' });
-  }
-  req.params.projectId = String(result.rows[0].id);
-  next();
+        [raw, false, req.loggedInUser.id, 'accepted']
+    );
+    if (result.rows.length === 0) {
+        return res.status(404).json({ msg: 'Project not found' });
+    }
+    req.params.projectId = String(result.rows[0].id);
+    next();
 }
 
-router.get('/viewProject/:projectId', requireAuth, resolveProjectIdParam, requireProjectAccess , async (req, res) => {
+router.get('/viewProject/:projectId', requireAuth, resolveProjectIdParam, requireProjectAccess, async (req, res) => {
     const result = await query(`SELECT
                                  p.* ,
                                  COALESCE(
@@ -119,12 +119,12 @@ router.get('/viewProject/:projectId', requireAuth, resolveProjectIdParam, requir
                                 FROM projects p
                                 WHERE p.id = $1
                                 `, [req.params.projectId]);
-                    if(result.rows.length < 1)   return res.status(404).json({msg : "Project not found"});
-                    return res.status(200).json({msg : "Successfully show project" , project : result.rows[0]});
-                               
+    if (result.rows.length < 1) return res.status(404).json({ msg: "Project not found" });
+    return res.status(200).json({ msg: "Successfully show project", project: result.rows[0] });
+
 });
-router.get('/collaborators/:projectId', requireAuth , requireProjectAccess , async(req , res)=>{
-   const result = await query(`SELECT 
+router.get('/collaborators/:projectId', requireAuth, requireProjectAccess, async (req, res) => {
+    const result = await query(`SELECT 
                                 cp.* ,  u.username , u.name
                                 FROM project_collaborators cp
                                 JOIN users u ON u.id = cp.user_id
@@ -132,21 +132,21 @@ router.get('/collaborators/:projectId', requireAuth , requireProjectAccess , asy
                                 cp.status = 'accepted' OR cp.status = 'pending')
                                 ORDER BY cp.created_at DESC
                                 `, [req.params.projectId]);
-        if(result.rows.length === 0)   return res.status(404).json({msg : "No collaborato has been added yet "});
-        return res.status(200).json({collaborators : result.rows});
+    if (result.rows.length === 0) return res.status(404).json({ msg: "No collaborato has been added yet " });
+    return res.status(200).json({ collaborators: result.rows });
 });
-router.get('/corsOrigin/:projectId' , requireAuth , requireProjectAccess , async(req , res)=>{
-   const result = await query(`SELECT
+router.get('/corsOrigin/:projectId', requireAuth, requireProjectAccess, async (req, res) => {
+    const result = await query(`SELECT
                                o.*
                                FROM project_cors_origin o
                                JOIN projects p ON p.id = o.project_id
                                 WHERE o.project_id = $1
                                 ORDER BY o.created_at DESC 
                                 `, [req.params.projectId]);
-        if(result.rows.length === 0) return res.status(400).json({msg : "No cors origin has been added yet"});
-        return res.status(200).json({cors_origins : result.rows});
+    if (result.rows.length === 0) return res.status(400).json({ msg: "No cors origin has been added yet" });
+    return res.status(200).json({ cors_origins: result.rows });
 });
-router.get('/allTables/:projectId', requireAuth , requireProjectAccess , async (req, res) => {
+router.get('/allTables/:projectId', requireAuth, requireProjectAccess, async (req, res) => {
     const result = await query(`SELECT 
                                    t.id,
                                    t.project_id,
@@ -156,14 +156,14 @@ router.get('/allTables/:projectId', requireAuth , requireProjectAccess , async (
                                     FROM schema_tables t
                                     WHERE t.project_id = $1  
                                     ORDER BY t.id
-                               `, [req.params.projectId]);          
+                               `, [req.params.projectId]);
 
     res.status(200).json({ tables: result.rows });
 });
 
 router.get('/projectLogs/:projectId', requireAuth, requireProjectAccess, async (req, res) => {
-   try {
-      const result = await query(`
+    try {
+        const result = await query(`
          SELECT
             pl.id,
             pl.created_at,
@@ -181,15 +181,15 @@ router.get('/projectLogs/:projectId', requireAuth, requireProjectAccess, async (
          ORDER BY pl.created_at DESC, pl.id DESC
       `, [req.params.projectId]);
 
-      return res.status(200).json({ logs: result.rows });
-   } catch (e) {
-      console.error(e);
-      return res.status(500).json({ msg: 'There was a server side error, please try again later' });
-   }
+        return res.status(200).json({ logs: result.rows });
+    } catch (e) {
+        console.error(e);
+        return res.status(500).json({ msg: 'There was a server side error, please try again later' });
+    }
 });
 
 router.get('/viewTableStructure/:tableId', requireAuth, async (req, res) => {
-     const tableAccess = await query(`
+    const tableAccess = await query(`
                             SELECT 1
                             FROM schema_tables t 
                             JOIN projects P ON P.id = t.project_id
@@ -213,8 +213,8 @@ router.get('/viewTableStructure/:tableId', requireAuth, async (req, res) => {
 });
 router.get('/viewTableData/:tableId', requireAuth, async (req, res) => {
     const { tableId } = req.params;
-    const limit = Number(req.query.limit)||10;
-    const offset = Number(req.query.offset)||0;
+    const limit = Number(req.query.limit) || 10;
+    const offset = Number(req.query.offset) || 0;
 
     const table = await query(`SELECT
                                     UPPER('PROJ_'||P.id||'_'||P.author_id) AS schema_name , S.table_name AS table_name
@@ -230,10 +230,10 @@ router.get('/viewTableData/:tableId', requireAuth, async (req, res) => {
     const table_name = table.rows[0].table_name;
     const result = await query(`SELECT *
                            FROM "${schema}".${table_name}
-                           LIMIT $1 OFFSET $2 `, [ limit , offset]);
+                           LIMIT $1 OFFSET $2 `, [limit, offset]);
     res.status(200).json({ msg: "Successfully show the data of the table ", data: result.rows });
 });
-router.get('/apis/:projectId' , requireAuth , requireProjectAccess , async(req , res)=>{
+router.get('/apis/:projectId', requireAuth, requireProjectAccess, async (req, res) => {
     const result = await query(`SELECT
                              a.* ,
                              p.name AS project_name ,
@@ -247,8 +247,8 @@ router.get('/apis/:projectId' , requireAuth , requireProjectAccess , async(req ,
                              WHERE  pc.user_id = $2 AND pc.status = $3 AND pc.project_id = p.id ))
                              ORDER BY a.created_at DESC
                                 `, [req.params.projectId, req.loggedInUser.id, 'accepted']);
-     return res.status(200).json({ apis : result.rows});
-                             
+    return res.status(200).json({ apis: result.rows });
+
 });
 router.get('/viewUserSessions', requireAuth, async (req, res) => {
 
@@ -364,9 +364,9 @@ router.get('/templateDetails/:templateId', async (req, res) => {
     res.status(200).json({ msg: "Successfully show template details ", data: result.rows[0] })
 
 });
-router.get('/viewFeedback/:templateId' , requireAuth , requireTemplateAuthor , async (req , res)=>{
-   const { templateId } = req.params;
-   const result = await query(`
+router.get('/viewFeedback/:templateId', requireAuth, requireTemplateAuthor, async (req, res) => {
+    const { templateId } = req.params;
+    const result = await query(`
        SELECT
            tf.id,
            tf.user_id,
@@ -378,8 +378,8 @@ router.get('/viewFeedback/:templateId' , requireAuth , requireTemplateAuthor , a
        JOIN users u ON u.id = tf.user_id
        WHERE tf.template_id = $1
        ORDER BY tf.created_at DESC
-                 ` ,[templateId]);
-     if (result.rows.length === 0) return res.status(404).json({ msg: "No feedback yet" });
+                 ` , [templateId]);
+    if (result.rows.length === 0) return res.status(404).json({ msg: "No feedback yet" });
     res.status(200).json({ data: result.rows });
 
 
@@ -421,14 +421,14 @@ router.get('/viewAllForeignkeys/:projectId', requireAuth, async (req, res) => {
     res.status(200).json({ msg: "Successfully fetched foreign keys", data: result.rows })
 
 });
-router.post('/getUsername', async(req , res)=>{
-    const {username} = req.body;
+router.post('/getUsername', async (req, res) => {
+    const { username } = req.body;
     const result = await query(`SELECT
                                  u.id , u.name , u.username
                                  FROM users u
                                  WHERE u.username LIKE $1
                                 ` , [`%${username}%`]);
-   return res.status(200).json(result.rows);
+    return res.status(200).json(result.rows);
 
 })
 router.get('/searchTags', requireAuth, async (req, res) => {
@@ -532,7 +532,7 @@ router.post('/notifications/dismiss', requireAuth, async (req, res) => {
     if (result.rowCount === 0) return res.status(404).json({ msg: 'Notification not found' });
     res.status(200).json({ msg: 'Notification dismissed' });
 });
-router.get('/likedTemplates' , requireAuth , async( req ,res )=>{
+router.get('/likedTemplates', requireAuth, async (req, res) => {
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.max(1, Number(req.query.limit) || 10);
 
@@ -568,7 +568,7 @@ router.get('/likedTemplates' , requireAuth , async( req ,res )=>{
                                     T.user_id = $1
                                 ORDER BY T.created_at DESC
                                 LIMIT $2 
-                                OFFSET $3 ` , [req.loggedInUser.id , limit , offset]);
+                                OFFSET $3 ` , [req.loggedInUser.id, limit, offset]);
 
     const countResult = await query(`
                                 SELECT COUNT(*) AS total
@@ -577,6 +577,208 @@ router.get('/likedTemplates' , requireAuth , async( req ,res )=>{
 
     const total = parseInt(countResult.rows[0] && countResult.rows[0].total, 10) || 0;
 
-   return res.status(200).json({ templates : result.rows , total });
+    return res.status(200).json({ templates: result.rows, total });
+});
+router.get('/ownTemplates', requireAuth, async (req, res) => {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.max(1, Number(req.query.limit) || 10);
+
+    const offset = (page - 1) * limit;
+    const result = await query(`
+                                SELECT
+                                    P.id,
+                                    P.name AS template_name,
+                                    P.description,
+                                    P.auth_enabled,
+                                    P.created_at,
+                                    COALESCE((SELECT AVG(tr.rating) FROM template_ratings tr WHERE tr.template_id = P.id ), 0 ) AS avg_ratings,
+                                    (SELECT COUNT(*) FROM template_clones tr WHERE tr.template_id = P.id ) AS clone_count,
+                                    COALESCE(
+                                        ( SELECT json_agg(
+                                            json_build_object (
+                                                'id' , t.id , 'tag_id' , pt.tag_id ,
+                                                'name' , t.name
+                                            ) ORDER BY t.name
+                                        )
+                                        FROM project_tags pt
+                                        JOIN tags t ON t.id = pt.tag_id
+                                        WHERE pt.project_id = p.id
+                                        ) , '[]' :: json
+                                    ) AS template_tags
+                                FROM
+                                projects P 
+                                WHERE
+                                    P.author_id = $1 AND P.is_template = $2
+                                ORDER BY P.created_at DESC
+                                LIMIT $3
+                                OFFSET $4 ` , [req.loggedInUser.id, true, limit, offset]);
+
+    const countResult = await query(`
+                                SELECT COUNT(*) AS total
+                                FROM projects T
+                                WHERE T.author_id = $1  AND T.is_template = $2` , [req.loggedInUser.id, true]);
+
+    const total = parseInt(countResult.rows[0] && countResult.rows[0].total, 10) || 0;
+
+    return res.status(200).json({ templates: result.rows, total });
+});
+router.get('/highratedTemplates', requireAuth, async (req, res) => {
+    const limit = 3;
+
+    const result = await query(`
+                                SELECT
+                                    P.id,
+                                    P.name AS template_name,
+                                    P.description,
+                                    P.auth_enabled,
+                                    P.created_at,
+                                    U.id ,
+                                    U.name , 
+                                    U.username ,
+                                    COALESCE((SELECT ROUND(AVG(tr.rating),2) FROM template_ratings tr WHERE tr.template_id = P.id ), 0 ) AS avg_ratings,
+                                    (SELECT COUNT(*) FROM template_ratings tr WHERE tr.template_id = P.id ) AS count_ratings,
+                                    (SELECT COUNT(*) FROM template_clones tr WHERE tr.template_id = P.id )  AS clone_count,
+                                    (SELECT COUNT(*) FROM template_likes tr WHERE tr.template_id = P.id ) AS like_count,
+                                    COALESCE(
+                                        ( SELECT json_agg(
+                                            json_build_object (
+                                                'id' , t.id , 'tag_id' , pt.tag_id ,
+                                                'name' , t.name
+                                            ) ORDER BY t.name
+                                        )
+                                        FROM project_tags pt
+                                        JOIN tags t ON t.id = pt.tag_id
+                                        WHERE pt.project_id = p.id
+                                        ) , '[]' :: json
+                                    ) AS template_tags
+                                FROM
+                                projects P
+                                JOIN users U ON U.id = P.author_id  
+                                WHERE
+                                P.is_template = $1
+                                AND   COALESCE((SELECT ROUND(AVG(tr.rating),2) FROM template_ratings tr WHERE tr.template_id = P.id ), 0 ) > 0
+                                ORDER BY avg_ratings DESC , count_ratings DESC , P.created_at DESC
+                                LIMIT $2
+                                 ` , [true, limit]);
+
+    return res.status(200).json({ templates: result.rows });
+});
+router.get('/mostClonedTemplates', requireAuth, async (req, res) => {
+    const limit = 3;
+
+    const result = await query(`
+                                SELECT
+                                    P.id,
+                                    P.name AS template_name,
+                                    P.description,
+                                    P.auth_enabled,
+                                    P.created_at,
+                                    U.id ,
+                                    U.name , 
+                                    U.username ,
+                                    COALESCE((SELECT ROUND(AVG(tr.rating),2) FROM template_ratings tr WHERE tr.template_id = P.id ), 0 ) AS avg_ratings,
+                                    (SELECT COUNT(*) FROM template_ratings tr WHERE tr.template_id = P.id ) AS count_ratings,
+                                    (SELECT COUNT(*) FROM template_clones tr WHERE tr.template_id = P.id )  AS clone_count,
+                                    (SELECT COUNT(*) FROM template_likes tr WHERE tr.template_id = P.id ) AS like_count,
+                                    COALESCE(
+                                        ( SELECT json_agg(
+                                            json_build_object (
+                                                'id' , t.id , 'tag_id' , pt.tag_id ,
+                                                'name' , t.name
+                                            ) ORDER BY t.name
+                                        )
+                                        FROM project_tags pt
+                                        JOIN tags t ON t.id = pt.tag_id
+                                        WHERE pt.project_id = p.id
+                                        ) , '[]' :: json
+                                    ) AS template_tags
+                                FROM
+                                projects P
+                                JOIN users U ON U.id = P.author_id  
+                                WHERE
+                                P.is_template = $1
+                                AND  (SELECT COUNT(*) FROM template_clones tr WHERE tr.template_id = P.id ) > 0
+                                ORDER BY  clone_count DESC , P.created_at DESC
+                                LIMIT $2
+                                 ` , [true, limit]);
+
+    return res.status(200).json({ templates: result.rows });
+});
+router.get('/mostLikedTemplates', requireAuth, async (req, res) => {
+    const limit = 3;
+
+    const result = await query(`
+                                SELECT
+                                    P.id,
+                                    P.name AS template_name,
+                                    P.description,
+                                    P.auth_enabled,
+                                    P.created_at,
+                                    U.id ,
+                                    U.name , 
+                                    U.username ,
+                                    COALESCE((SELECT ROUND(AVG(tr.rating),2) FROM template_ratings tr WHERE tr.template_id = P.id ), 0 ) AS avg_ratings,
+                                    (SELECT COUNT(*) FROM template_ratings tr WHERE tr.template_id = P.id ) AS count_ratings,
+                                    (SELECT COUNT(*) FROM template_clones tr WHERE tr.template_id = P.id )  AS clone_count,
+                                    (SELECT COUNT(*) FROM template_likes tr WHERE tr.template_id = P.id ) AS like_count,
+                                    COALESCE(
+                                        ( SELECT json_agg(
+                                            json_build_object (
+                                                'id' , t.id , 'tag_id' , pt.tag_id ,
+                                                'name' , t.name
+                                            ) ORDER BY t.name
+                                        )
+                                        FROM project_tags pt
+                                        JOIN tags t ON t.id = pt.tag_id
+                                        WHERE pt.project_id = p.id
+                                        ) , '[]' :: json
+                                    ) AS template_tags
+                                FROM
+                                projects P
+                                JOIN users U ON U.id = P.author_id  
+                                WHERE
+                                P.is_template = $1
+                                AND  (SELECT COUNT(*) FROM template_likes tr WHERE tr.template_id = P.id ) > 0
+                                ORDER BY  like_count DESC , P.created_at DESC
+                                LIMIT $2
+                                 ` , [true, limit]);
+
+    return res.status(200).json({ templates: result.rows });
+});
+router.get('/popularTags', requireAuth, async (req, res) => {
+    const LIMIT = 5;
+    const result = await query(`
+                          
+								 SELECT  t.id , t.name ,
+                                (SELECT COUNT(*)  FROM project_tags WHERE tag_id = t.id ) AS tag_used ,
+                                COALESCE( 
+                                        ( SELECT json_agg( row_to_json( sub ))
+                                            FROM (SELECT
+                                                 P.id ,
+                                                 P.name ,
+                                                 P.description ,
+                                                 P.created_at , 
+                                                 COALESCE((SELECT ROUND(AVG(tr.rating),2) FROM template_ratings tr WHERE tr.template_id = P.id ), 0 ) AS avg_ratings , 
+                                                 (SELECT COUNT(*) FROM template_clones tr WHERE tr.template_id = P.id )  AS clone_count,
+                                                 (SELECT COUNT(*) FROM template_likes tr WHERE tr.template_id = P.id ) AS like_count,
+                                                 P.author_id,
+                                                U.username ,
+                                                 U.name 
+                                                 FROM project_tags pt
+                                                 JOIN projects P ON p.id = pt.project_id 
+                                                 JOIN users U ON U.id = P.author_id
+                                                WHERE pt.tag_id = t.id
+                                                ORDER BY avg_ratings DESC , clone_count DESC , P.created_at DESC
+                                                LIMIT 3
+                                                  ) sub
+            
+                                        ) , '[]' :: json
+                                    ) AS tag_template
+                                    FROM tags t 
+                                    WHERE  (SELECT COUNT(*)  FROM project_tags WHERE tag_id = t.id ) > 0
+                                    ORDER BY tag_used DESC
+                                    LIMIT $1
+                                ` ,[LIMIT]);
+return res.status(200).json({tags : result.rows});
 });
 module.exports = router;

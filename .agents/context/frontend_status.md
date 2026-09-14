@@ -234,6 +234,21 @@ Self-executing script that checks session status (`/auth/me`). Redirects to `/lo
 | `relativeTime(ts)` | Returns human-readable relative time string (e.g. "5m ago", "3d ago") |
 | `esc(str)` | XSS helper — escapes `&`, `<`, `>`, `"` |
 
+### `js/leaderboard.js` — leaderboard page only
+
+| Function | What it does |
+|---|---|
+| `initLeaderboard()` | Main entrypoint — guards to `#ldb-sections`, then loads all data from the backend |
+| `fetchJson(path)` | `GET` wrapper (credentials included) against `LEADERBOARD_API`; 401 → redirect `/login`; throws on error with `payload.msg` |
+| `fetchRated()` / `fetchMostCloned()` / `fetchMostLiked()` / `fetchPopularTags()` | Consume `/view/highratedTemplates`, `/view/mostClonedTemplates`, `/view/mostLikedTemplates`, `/view/popularTags` respectively |
+| `normalizeTemplate(raw)` | Maps a backend row (`id`, `template_name`, `name`, `username`, `template_tags`, `created_at`, `avg_ratings`, `clone_count`, `like_count`) → card model |
+| `renderTopThree(gridId, templates)` | Renders up to 3 cards with `#1`/`#2`/`#3` rank badges into a section grid |
+| `renderTagPills()` / `renderTagTemplates()` | Renders popular-tag pills and the selected tag's top templates from `tag_template` |
+| `loadLeaderboard()` | `Promise.all` of the four fetches, normalizes, renders grids + tags; on failure shows an error card with retry |
+| `buildCard(tpl, badge)` / `starsHtml()` / `formatNum()` / `escapeHtml()` / `formatDate()` / `getInitials()` | Card rendering + XSS/date helpers |
+
+> **Leaderboard backend wiring (2026-09-14)**: `leaderboard.html` no longer uses mock data and the sort toolbar (`#ldb-sort`) was removed. The page now loads live data from the four existing backend routes in `backend/routes/view.js` (`highratedTemplates`, `mostClonedTemplates`, `mostLikedTemplates`, `popularTags`) — backend unchanged. Card links point to `/template/:id`. Rank badges reflect the backend ordering (already top-3 per category, `LIMIT 3`), so no client-side sorting is applied.
+
 ### `js/view-project.js` — project view page only
 
 | Function | What it does |

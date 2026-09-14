@@ -227,6 +227,9 @@ let _popularityFilter = 'popular'; // 'popular' | 'recent'
 let _activeTags = new Set();       // multi-select; empty = all tags
 let _sortBy = 'popular';           // 'popular' | 'recent' | 'name'
 let _sortDir = 'desc';             // 'asc' | 'desc'
+let _activeTab = 'all';            // 'all' | 'mine'
+let _myTemplates = null;           // cached backend dataset for "mine" tab (null = not loaded)
+let _myTemplatesLoading = false;
 
 // ─── Entry point ────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -242,6 +245,21 @@ function initTemplatesPage() {
 
 // ─── Event bindings ─────────────────────────────────────────────────────────────
 function bindTemplateEvents() {
+  // Tab switcher (All Templates / My Templates)
+  document.querySelectorAll('.tmpl-tabs .vp-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tmpl-tabs .vp-tab').forEach(t => {
+        t.classList.remove('is-active');
+        t.setAttribute('aria-selected', 'false');
+      });
+      tab.classList.add('is-active');
+      tab.setAttribute('aria-selected', 'true');
+      _activeTab = tab.dataset.tab;
+      _page = 1;
+      renderTemplates();
+    });
+  });
+
   // Search
   const searchInput = document.getElementById('tmpl-search');
   if (searchInput) {
@@ -395,6 +413,13 @@ function renderTemplates() {
   const container = document.getElementById('tmpl-container');
   if (!container) return;
 
+  if (_activeTab === 'mine') {
+    renderMyTemplates();
+    return;
+  }
+
+  toggleToolbarForTab();
+
   const filtered = getFilteredTemplates();
   const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / _perPage));
@@ -428,6 +453,146 @@ function renderTemplates() {
   }
 
   updatePaginationUI(total, start, end, totalPages);
+}
+
+// ─── Toggle toolbar visibility per active tab ───────────────────────────────────
+function toggleToolbarForTab() {
+  const toolbar = document.querySelector('.tmpl-toolbar');
+  if (toolbar) toolbar.style.display = _activeTab === 'mine' ? 'none' : '';
+}
+
+// ─── My Templates (fetched from backend via /view/ownTemplates) ─────────────────
+function renderMyTemplates() {
+  const container = document.getElementById('tmpl-container');
+  if (!container) return;
+
+  const toolbar = document.querySelector('.tmpl-toolbar');
+  if (toolbar) toolbar.style.display = 'none';
+
+  if (_myTemplatesLoading) return;
+
+  if (_myTemplates === null) {
+    _myTemplatesLoading = true;
+    const shimmerHtml = [...Array(6)].map(() =>
+      '<div class="tmpl-card tmpl-card--shimmer" aria-hidden="true">' +
+        '<div class="tmpl-shimmer-line tmpl-shimmer-line--short"></div>' +
+        '<div class="tmpl-shimmer-line tmpl-shimmer-line--long"></div>' +
+        '<div class="tmpl-shimmer-line tmpl-shimmer-line--long"></div>' +
+        '<div class="tmpl-shimmer-tags">' +
+          '<div class="tmpl-shimmer-tag"></div><div class="tmpl-shimmer-tag"></div><div class="tmpl-shimmer-tag"></div>' +
+        '</div>' +
+        '<div class="tmpl-shimmer-footer"></div>' +
+      '</div>'
+    ).join('');
+    container.innerHTML = shimmerHtml;
+    const infoEl = document.getElementById('tmpl-pagination-info');
+    if (infoEl) infoEl.textContent = 'Loading…';
+
+    fetchOwnTemplates().then(data => {
+      _myTemplatesLoading = false;
+      _myTemplates = data;
+      if (_activeTab === 'mine') renderMyTemplates();
+    }).catch(() => {
+      _myTemplatesLoading = false;
+      _myTemplates = [];
+      if (_activeTab === 'mine') renderMyTemplates();
+    });
+    return;
+  }
+
+  const total = _myTemplates.length;
+  const totalPages = Math.max(1, Math.ceil(total / _perPage));
+  if (_page > totalPages) _page = totalPages;
+  if (_page < 1) _page = 1;
+
+  const start = (_page - 1) * _perPage;
+  const end = Math.min(start + _perPage, total);
+  const slice = _myTemplates.slice(start, end);
+
+  const countEl = document.getElementById('tmpl-total-count');
+  if (countEl) countEl.textContent = total > 0 ? total + ' template' + (total !== 1 ? 's' : '') : '';
+
+  if (slice.length === 0) {
+    container.innerHTML =
+      '<div class="tmpl-empty">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" width="40" height="40" aria-hidden="true">' +
+      '<path d="M12 2 3 7l9 5 9-5-9-5"/><path d="M3 12l9 5 9-5"/><path d="M3 17l9 5 9-5"/>' +
+      '</svg>' +
+      '<p>You haven\'t created any templates yet.</p>' +
+      '</div>';
+  } else {
+    container.innerHTML = slice.map(t => createOwnTemplateCardHtml(t)).join('');
+  }
+
+  updatePaginationUI(total, start, end, totalPages);
+}
+
+function fetchOwnTemplates() {
+  const backendUrl = window.BACKEND_URL || 'http://localhost:3000';
+  return fetch(`${backendUrl}/view/ownTemplates?page=1&limit=1000`, {
+    credentials: 'include'
+  })
+    .then(res => res.json())
+    .then(payload => {
+      const templates = (payload && payload.templates) || [];
+      return templates.map(row => ({
+        id: row.id,
+        name: row.template_name,
+        description: row.description,
+        authEnabled: !!row.auth_enabled,
+        rating: Number(row.avg_ratings) || 0,
+        useCount: Number(row.clone_count) || 0,
+        createdAt: formatOwnDate(row.created_at),
+        tags: Array.isArray(row.template_tags) ? row.template_tags.map(t => t.name) : []
+      }));
+    });
+}
+
+function formatOwnDate(iso) {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch (_) {
+    return iso;
+  }
+}
+
+// Card for the user's own templates — same style as templates.html, no author name
+function createOwnTemplateCardHtml(t) {
+  const tagsHtml = (t.tags || []).slice(0, 4).map(tag =>
+    '<span class="liked-tag">' + escapeHtml(tag) + '</span>'
+  ).join('');
+
+  const starsHtml = buildStarsHtml(t.rating);
+
+  const authBadgeHtml = t.authEnabled
+    ? '<span class="project-badge project-badge--auth">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="10" height="10" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>' +
+        'Auth On</span>'
+    : '<span class="project-badge project-badge--no-auth">Auth Off</span>';
+
+  return '<article class="tmpl-card" id="tmpl-card-' + escapeHtml(t.id) + '">' +
+    '<div class="tmpl-card__top">' +
+      '<div class="tmpl-card__author-row">' +
+        authBadgeHtml +
+      '</div>' +
+      '<h2 class="tmpl-card__title">' +
+        '<a href="/template/' + escapeHtml(t.id) + '" class="tmpl-card__title-link">' + escapeHtml(t.name) + '</a>' +
+      '</h2>' +
+      '<p class="tmpl-card__desc">' + escapeHtml(t.description) + '</p>' +
+      '<div class="liked-card__tags tmpl-card__tags">' + tagsHtml + '</div>' +
+    '</div>' +
+    '<div class="tmpl-card__footer">' +
+      '<div class="tmpl-card__rating" aria-label="Rating: ' + t.rating + ' out of 5">' +
+        starsHtml +
+        '<span class="tmpl-card__rating-val">' + Number(t.rating).toFixed(1) + '</span>' +
+      '</div>' +
+      '<div class="tmpl-card__meta">' +
+        '<span class="tmpl-card__uses">' + formatUseCount(t.useCount) + ' clones</span>' +
+        '<span class="tmpl-card__date">' + escapeHtml(t.createdAt) + '</span>' +
+      '</div>' +
+    '</div>' +
+    '</article>';
 }
 
 // ─── Card HTML builder ──────────────────────────────────────────────────────────

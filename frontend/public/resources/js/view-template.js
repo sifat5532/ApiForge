@@ -21,7 +21,10 @@
     liked: false,
     cloned: false,
     myRating: null,
-    likeBusy: false
+    likeBusy: false,
+    isOwner: false,
+    settingsTags: [],
+    settingsBound: false
   };
 
   document.addEventListener('DOMContentLoaded', init);
@@ -37,12 +40,14 @@
     bindRateForm();
     bindFeedbackForm();
     bindCloneModal();
+    initModal();
+    bindSettings();
     await loadCurrentUser();
     await loadTemplate();
   }
 
   function extractTemplateId() {
-    var match = window.location.pathname.match(/\/template\/([^/]+)/);
+    var match = window.location.pathname.match(/\/(?:my-)?template\/([^/]+)/);
     if (!match) return null;
     return decodeURIComponent(match[1]);
   }
@@ -74,18 +79,44 @@
         renderLoadError('Template not found');
         return;
       }
-      if (state.user && data.author_id != null && String(data.author_id) === String(state.user.id)) {
-        window.location.href = '/my-template/' + encodeURIComponent(data.id);
-        return;
+
+      state.isOwner = !!(state.user && data.author_id != null && String(data.author_id) === String(state.user.id));
+
+      if (state.isOwner) {
+        applyOwnerMode();
+      } else {
+        applyPublicMode();
       }
+
       state.data = data;
       state.templateId = data.id != null ? data.id : state.templateId;
       state.myRating = findMyReview(data.template_reviews || []);
       if (state.myRating) state.cloned = true;
       renderPage(data);
+      if (state.isOwner) fillSettingsForm(data);
     } catch (_) {
       renderLoadError('Network error. Is the backend reachable?');
     }
+  }
+
+  function applyOwnerMode() {
+    var feedbackTab = document.getElementById('tab-feedback');
+    var settingsTab = document.getElementById('tab-settings');
+    var actions = document.getElementById('vt-hero-actions');
+    var composeGrid = document.querySelector('#panel-reviews .vt-compose-grid');
+    if (feedbackTab) feedbackTab.hidden = false;
+    if (settingsTab) settingsTab.hidden = false;
+    if (actions) actions.hidden = true;
+    if (composeGrid) composeGrid.hidden = true;
+  }
+
+  function applyPublicMode() {
+    var feedbackTab = document.getElementById('tab-feedback');
+    var settingsTab = document.getElementById('tab-settings');
+    var actions = document.getElementById('vt-hero-actions');
+    if (feedbackTab) feedbackTab.hidden = true;
+    if (settingsTab) settingsTab.hidden = true;
+    if (actions) actions.hidden = false;
   }
 
   function normalizeTemplate(raw) {
@@ -337,12 +368,63 @@
     }).join('');
   }
 
+  async function loadFeedback() {
+    var body = document.getElementById('vt-feedback-body');
+    if (!body) return;
+    body.innerHTML = emptyState('Loading feedback…');
+    try {
+      var res = await apiFetch('/view/viewFeedback/' + encodeURIComponent(state.templateId));
+      if (res.status === 401) { window.location.href = '/login'; return; }
+      var payload = await readJson(res);
+      if (res.status === 403) {
+        body.innerHTML = emptyState(routeMsg(payload, "You don't have access to this template's feedback"));
+        return;
+      }
+      if (res.status === 404) {
+        body.innerHTML = emptyState(routeMsg(payload, 'No feedback yet'));
+        return;
+      }
+      if (!res.ok) {
+        body.innerHTML = emptyState(routeMsg(payload, 'Failed to load feedback'));
+        return;
+      }
+      var items = asArray(payload && payload.data);
+      renderFeedback(items);
+    } catch (_) {
+      body.innerHTML = emptyState(NETWORK_ERROR);
+    }
+  }
+
+  function renderFeedback(items) {
+    var body = document.getElementById('vt-feedback-body');
+    if (!body) return;
+    if (!items.length) {
+      body.innerHTML = emptyState('No feedback yet.');
+      return;
+    }
+    body.innerHTML = items.map(function (f) {
+      return '<article class="vt-review">' +
+        avatar({ name: f.name, username: f.username, size: 42, className: 'vt-review__avatar' }) +
+        '<div class="vt-review__body">' +
+          '<div class="vt-review__head">' +
+            '<span class="vt-review__name">' + esc(f.name || f.username || 'User') + '</span>' +
+            (f.username ? '<span class="vt-review__handle">@' + esc(f.username) + '</span>' : '') +
+            '<span class="vt-review__time">' + esc(formatDateTime(f.created_at)) + '</span>' +
+          '</div>' +
+          '<p class="vt-review__text">' + esc(f.message || '') + '</p>' +
+        '</div>' +
+      '</article>';
+    }).join('');
+  }
+
   function initTabs() {
     var tabs = document.querySelectorAll('.vt-tabs .vp-tab');
     var panels = {
       'tab-tables': 'panel-tables',
       'tab-apis': 'panel-apis',
-      'tab-reviews': 'panel-reviews'
+      'tab-reviews': 'panel-reviews',
+      'tab-feedback': 'panel-feedback',
+      'tab-settings': 'panel-settings'
     };
     tabs.forEach(function (tab) {
       tab.addEventListener('click', function () {
@@ -359,6 +441,7 @@
           panel.classList.toggle('is-active', on);
           panel.hidden = !on;
         });
+        if (tab.id === 'tab-feedback') loadFeedback();
       });
     });
   }
@@ -718,6 +801,265 @@
 
     document.getElementById('akm-continue-btn').addEventListener('click', function () {
       window.location.href = '/projects';
+    });
+  }
+
+  /* ----------------------------- Owner features ----------------------------- */
+
+  function fillSettingsForm(data) {
+    var nameEl = document.getElementById('vt-settings-name');
+    var descEl = document.getElementById('vt-settings-desc');
+    var authEl = document.getElementById('vt-settings-auth');
+    if (nameEl) nameEl.value = data.template_name || '';
+    if (descEl) descEl.value = data.description || '';
+    if (authEl) authEl.checked = !!data.auth_enabled;
+    var tags = Array.isArray(data.template_tags) ? data.template_tags.map(function (t) { return t.name; }) : [];
+    state.settingsTags = tags.slice();
+    renderSettingsTags();
+  }
+
+  function bindSettings() {
+    if (state.settingsBound) return;
+    state.settingsBound = true;
+
+    var form = document.getElementById('vt-settings-form');
+    var addTagBtn = document.getElementById('vt-btn-add-tag');
+    var deleteBtn = document.getElementById('vt-btn-delete-template');
+
+    if (form) form.addEventListener('submit', submitSettings);
+    if (addTagBtn) addTagBtn.addEventListener('click', addSettingsTag);
+    if (deleteBtn) deleteBtn.addEventListener('click', deleteTemplate);
+    initSettingsTagSearch();
+  }
+
+  function initSettingsTagSearch() {
+    var input = document.getElementById('vt-settings-tag-input');
+    var group = input ? input.closest('.tag-input-group') : null;
+    var form = document.getElementById('vt-settings-form');
+    if (!input || !group || !form) return;
+
+    var dropdown = document.getElementById('vt-settings-tag-dropdown');
+    if (!dropdown) {
+      dropdown = document.createElement('div');
+      dropdown.id = 'vt-settings-tag-dropdown';
+      dropdown.className = 'tag-dropdown-menu';
+      dropdown.hidden = true;
+      group.appendChild(dropdown);
+    }
+
+    var reqId = 0;
+
+    function renderDbTags(names) {
+      dropdown.innerHTML = '';
+      var selectedLower = state.settingsTags.map(function (t) { return t.toLowerCase(); });
+      var newTags = names.filter(function (n) { return selectedLower.indexOf(n.toLowerCase()) === -1; });
+      if (newTags.length === 0) {
+        var empty = document.createElement('div');
+        empty.className = 'tag-dropdown-empty';
+        empty.textContent = 'No matching tags found in the database.';
+        dropdown.appendChild(empty);
+        dropdown.hidden = false;
+        return;
+      }
+      newTags.forEach(function (name) {
+        var item = document.createElement('div');
+        item.className = 'tag-dropdown-item';
+        item.innerHTML = '<span>' + esc(name) + '</span> <span style="font-size: 0.72rem; color: var(--text-faint);">From database</span>';
+        item.addEventListener('mousedown', function (e) {
+          e.preventDefault();
+          addSettingsTagFromValue(name);
+          input.value = '';
+          dropdown.hidden = true;
+        });
+        dropdown.appendChild(item);
+      });
+      dropdown.hidden = false;
+    }
+
+    async function runSearch() {
+      var q = input.value.trim().toLowerCase();
+      if (!q) { dropdown.hidden = true; return; }
+      var myReq = ++reqId;
+      try {
+        var res = await apiFetch('/view/searchTags?q=' + encodeURIComponent(q));
+        if (!res.ok) return;
+        var data = await res.json();
+        if (myReq !== reqId) return;
+        var names = Array.isArray(data.tags) ? data.tags.map(function (t) { return t.name; }) : [];
+        renderDbTags(names);
+      } catch (_) { /* non-fatal */ }
+    }
+
+    input.addEventListener('focus', function () {
+      if (input.value.trim()) runSearch();
+    });
+    input.addEventListener('input', runSearch);
+
+    document.addEventListener('click', function (e) {
+      if (form && !form.contains(e.target)) dropdown.hidden = true;
+    });
+
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        var items = dropdown.querySelectorAll('.tag-dropdown-item');
+        if (!dropdown.hidden && items.length > 0) {
+          items[0].dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        } else {
+          addSettingsTag();
+        }
+      } else if (e.key === 'Escape') {
+        dropdown.hidden = true;
+      }
+    });
+  }
+
+  function renderSettingsTags() {
+    var wrap = document.getElementById('vt-settings-tags');
+    if (!wrap) return;
+    wrap.innerHTML = state.settingsTags.map(function (t) {
+      return '<span class="tag">' + esc(t) +
+        ' <button type="button" class="tag__remove" data-tag-name="' + esc(t) + '" aria-label="Remove tag">&times;</button></span>';
+    }).join('');
+    wrap.querySelectorAll('.tag__remove').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var name = btn.getAttribute('data-tag-name');
+        var idx = state.settingsTags.indexOf(name);
+        if (idx !== -1) {
+          state.settingsTags.splice(idx, 1);
+          renderSettingsTags();
+        }
+      });
+    });
+  }
+
+  function addSettingsTag() {
+    var input = document.getElementById('vt-settings-tag-input');
+    if (!input) return;
+    var val = input.value.trim();
+    if (!val) return;
+    addSettingsTagFromValue(val);
+    input.value = '';
+  }
+
+  function addSettingsTagFromValue(raw) {
+    var val = String(raw).trim().toLowerCase();
+    if (!val) return;
+    if (!(val[0] >= 'a' && val[0] <= 'z')) { showToast('Tag must start with a–z', 'error'); return; }
+    if (val.length < 2 || val.length > 20) { showToast('Tag must be 2–20 characters', 'error'); return; }
+    if (state.settingsTags.length >= 10) { showToast('Max 10 tags allowed', 'error'); return; }
+    if (state.settingsTags.indexOf(val) !== -1) { showToast('Tag already added', 'error'); return; }
+    state.settingsTags.push(val);
+    renderSettingsTags();
+  }
+
+  async function submitSettings(e) {
+    e.preventDefault();
+    var nameEl = document.getElementById('vt-settings-name');
+    var descEl = document.getElementById('vt-settings-desc');
+    var authEl = document.getElementById('vt-settings-auth');
+    var saveBtn = document.getElementById('vt-btn-save-settings');
+    var err = document.getElementById('vt-settings-error');
+    hideFormError(err);
+
+    var payload = {
+      proj_name: nameEl ? nameEl.value.trim() : '',
+      description: descEl ? descEl.value : '',
+      enable_auth: !!(authEl && authEl.checked),
+      tags: state.settingsTags
+    };
+
+    setBusy(saveBtn, true, 'Saving…');
+    try {
+      var res = await apiFetch('/project/updateProject/' + encodeURIComponent(state.templateId), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.status === 401) { window.location.href = '/login'; return; }
+      var data = await readJson(res);
+      var msg = routeMsg(data, res.ok ? 'Project updated successfully' : 'Failed to update project');
+      if (!res.ok) {
+        showFormError(err, msg);
+        showToast(msg, 'error');
+        return;
+      }
+      showToast(msg, 'success');
+      await loadTemplate();
+    } catch (_) {
+      showFormError(err, NETWORK_ERROR);
+      showToast(NETWORK_ERROR, 'error');
+    } finally {
+      setBusy(saveBtn, false);
+    }
+  }
+
+  function deleteTemplate() {
+    confirmModal({
+      title: 'Delete Template',
+      message: 'Delete this template permanently? This cannot be undone.',
+      confirmLabel: 'Delete',
+      danger: true,
+      onConfirm: async function () {
+        try {
+          var res = await apiFetch('/project/deleteProject/' + encodeURIComponent(state.templateId), { method: 'DELETE' });
+          if (res.status === 401) { window.location.href = '/login'; return; }
+          var data = await readJson(res);
+          var msg = routeMsg(data, res.ok ? 'Project was deleted successfully' : 'Failed to delete project');
+          if (res.ok) {
+            showToast(msg, 'success');
+            window.location.href = '/templates';
+          } else {
+            showToast(msg, 'error');
+          }
+        } catch (_) {
+          showToast(NETWORK_ERROR, 'error');
+        }
+      }
+    });
+  }
+
+  function initModal() {
+    var overlay = document.getElementById('vt-modal-overlay');
+    var closeBtn = document.getElementById('vt-modal-close');
+    if (closeBtn) closeBtn.addEventListener('click', closeModal);
+    if (overlay) overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeModal(); });
+  }
+
+  function showModal(title, bodyHtml, footHtml) {
+    var overlay = document.getElementById('vt-modal-overlay');
+    var titleEl = document.getElementById('vt-modal-title');
+    var bodyEl = document.getElementById('vt-modal-body');
+    var footEl = document.getElementById('vt-modal-foot');
+    if (titleEl) titleEl.textContent = title;
+    if (bodyEl) bodyEl.innerHTML = bodyHtml;
+    if (footEl) footEl.innerHTML = footHtml;
+    if (overlay) overlay.hidden = false;
+  }
+
+  function closeModal() {
+    var overlay = document.getElementById('vt-modal-overlay');
+    var bodyEl = document.getElementById('vt-modal-body');
+    var footEl = document.getElementById('vt-modal-foot');
+    if (overlay) overlay.hidden = true;
+    if (bodyEl) bodyEl.innerHTML = '';
+    if (footEl) footEl.innerHTML = '';
+  }
+
+  function confirmModal(opts) {
+    opts = opts || {};
+    var bodyHtml = '<p class="vp-confirm-msg">' + esc(opts.message || '') + '</p>';
+    var okClass = opts.danger ? 'btn btn--ghost btn--sm' : 'btn btn--primary btn--sm';
+    var okStyle = opts.danger ? ' style="color:var(--error);border-color:var(--error);"' : '';
+    var footHtml =
+      '<button class="btn btn--ghost btn--sm" id="vt-confirm-cancel" type="button">Cancel</button>' +
+      '<button class="' + okClass + '" id="vt-confirm-ok" type="button"' + okStyle + '>' + esc(opts.confirmLabel || 'Confirm') + '</button>';
+    showModal(opts.title || 'Confirm', bodyHtml, footHtml);
+    document.getElementById('vt-confirm-cancel').addEventListener('click', closeModal);
+    document.getElementById('vt-confirm-ok').addEventListener('click', function () {
+      closeModal();
+      if (typeof opts.onConfirm === 'function') opts.onConfirm();
     });
   }
 
