@@ -1205,6 +1205,7 @@ html.onboarding-dismissed .onboarding-card,
   line-height: 1.55;
 }
 .activity-item__text strong { color: var(--text); font-weight: 600; }
+.activity-item__of { color: var(--text-faint); }
 .activity-item__time {
   display: block;
   font-family: var(--font-mono);

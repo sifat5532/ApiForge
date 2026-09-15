@@ -203,13 +203,13 @@
         <div class="onboarding-card__body">
           <div class="onboarding-card__top">
             <span class="onboarding-card__title">Getting started</span>
-            <span class="onboarding-card__progress">2 of 3 steps complete</span>
+            <span class="onboarding-card__progress" id="onboarding-progress">—</span>
           </div>
           <div class="onboarding-card__track">
-            <div class="onboarding-card__fill" style="width: 66%;"></div>
+            <div class="onboarding-card__fill" id="onboarding-fill" style="width: 0%;"></div>
           </div>
           <div class="onboarding-steps">
-            <div class="onboarding-step is-done">
+            <div class="onboarding-step" data-step="project">
               <span class="onboarding-step__icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M5 13l4 4L19 7"></path>
@@ -217,7 +217,7 @@
               </span>
               <span class="step-label">Create your first project</span>
             </div>
-            <div class="onboarding-step is-done">
+            <div class="onboarding-step" data-step="table">
               <span class="onboarding-step__icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M5 13l4 4L19 7"></path>
@@ -225,10 +225,10 @@
               </span>
               <span class="step-label">Design your first table</span>
             </div>
-            <div class="onboarding-step is-pending">
+            <div class="onboarding-step" data-step="api">
               <span class="onboarding-step__icon" aria-hidden="true"></span>
               <span class="step-label">Create your first API</span>
-              <a href="#" class="btn btn--primary btn--sm onboarding-step__cta">Create an API →</a>
+              <a href="/new-project?from=dashboard" class="btn btn--primary btn--sm onboarding-step__cta">Create an API →</a>
             </div>
           </div>
         </div>
@@ -243,23 +243,23 @@
       <section class="stat-grid" aria-label="Usage snapshot">
         <div class="stat-card">
           <span class="stat-card__label">Projects</span>
-          <span class="stat-card__value">2 / 2</span>
-          <span class="stat-card__hint stat-card__hint--warn">Free plan limit reached</span>
+          <span class="stat-card__value" id="stat-projects">—</span>
+          <span class="stat-card__hint" id="stat-projects-hint">&nbsp;</span>
         </div>
         <div class="stat-card">
           <span class="stat-card__label">Tables</span>
-          <span class="stat-card__value">14</span>
-          <span class="stat-card__hint">across 2 projects</span>
+          <span class="stat-card__value" id="stat-tables">—</span>
+          <span class="stat-card__hint" id="stat-tables-hint">&nbsp;</span>
         </div>
         <div class="stat-card">
           <span class="stat-card__label">APIs</span>
-          <span class="stat-card__value">0</span>
-          <span class="stat-card__hint">0 of 14 tables exposed</span>
+          <span class="stat-card__value" id="stat-apis">—</span>
+          <span class="stat-card__hint" id="stat-apis-hint">&nbsp;</span>
         </div>
         <div class="stat-card">
           <span class="stat-card__label">Requests (30d)</span>
-          <span class="stat-card__value">0</span>
-          <span class="stat-card__hint">create an API to see traffic here</span>
+          <span class="stat-card__value" id="stat-requests">—</span>
+          <span class="stat-card__hint" id="stat-requests-hint">&nbsp;</span>
         </div>
       </section>
 
@@ -272,32 +272,34 @@
             <a href="/projects" class="panel__link">View all →</a>
           </div>
 
-          <div class="project-row">
-            <div>
-              <div class="project-row__name">task-app</div>
-              <div class="project-row__meta">
-                <span>6 tables</span>
-                <span>·</span>
-                <span>0 APIs</span>
-                <span>·</span>
-                <span>updated 2 hours ago</span>
+          <div id="recent-projects">
+            <div class="project-row">
+              <div>
+                <div class="project-row__name">task-app</div>
+                <div class="project-row__meta">
+                  <span>6 tables</span>
+                  <span>·</span>
+                  <span>0 APIs</span>
+                  <span>·</span>
+                  <span>updated 2 hours ago</span>
+                </div>
               </div>
+              <a href="#" class="project-row__link" aria-label="Open task-app">→</a>
             </div>
-            <a href="#" class="project-row__link" aria-label="Open task-app">→</a>
-          </div>
 
-          <div class="project-row">
-            <div>
-              <div class="project-row__name">blog-cms</div>
-              <div class="project-row__meta">
-                <span>8 tables</span>
-                <span>·</span>
-                <span>0 APIs</span>
-                <span>·</span>
-                <span>updated yesterday</span>
+            <div class="project-row">
+              <div>
+                <div class="project-row__name">blog-cms</div>
+                <div class="project-row__meta">
+                  <span>8 tables</span>
+                  <span>·</span>
+                  <span>0 APIs</span>
+                  <span>·</span>
+                  <span>updated yesterday</span>
+                </div>
               </div>
+              <a href="#" class="project-row__link" aria-label="Open blog-cms">→</a>
             </div>
-            <a href="#" class="project-row__link" aria-label="Open blog-cms">→</a>
           </div>
         </section>
 
@@ -307,7 +309,7 @@
             <h2 class="panel__title">Recent activity</h2>
           </div>
 
-          <div class="activity-list">
+          <div class="activity-list" id="recent-activity">
             <div class="activity-item">
               <span class="activity-item__dot" aria-hidden="true"></span>
               <div class="activity-item__text">

@@ -204,7 +204,7 @@ function renderSessions(list) {
           '<div class="session-row__meta">' + escapeHtml(ip) + '</div>' +
         '</div>' +
         '<div class="session-row__time">' + escapeHtml(when) + '</div>' +
-        (isCurrent ? '' :
+        (isCurrent || !active ? '' :
           '<button class="btn btn--ghost btn--sm session-row__action" type="button" data-session-id="' + s.id + '">Log out</button>') +
       '</div>'
     );

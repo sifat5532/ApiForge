@@ -14,7 +14,185 @@ document.addEventListener('DOMContentLoaded', () => {
   initSidebarToggle();
   initAccountMenu();
   initOnboardingCard();
+  loadDashboardData();
 });
+
+/* ------------------------- dashboard data -------------------------
+   Fetches stats, recent projects, and recent activity from the
+   backend (mounted at /dashboard/*) and renders them into the page. */
+async function loadDashboardData() {
+  const backendUrl = window.BACKEND_URL || 'http://localhost:3000';
+
+  try {
+    const [statsRes, projectsRes, activityRes] = await Promise.all([
+      fetch(`${backendUrl}/dashboard/stats`, { credentials: 'include' }),
+      fetch(`${backendUrl}/dashboard/recentProjects`, { credentials: 'include' }),
+      fetch(`${backendUrl}/dashboard/recentActivity`, { credentials: 'include' })
+    ]);
+
+    if (statsRes.ok) {
+      const stats = await statsRes.json();
+      renderStats(stats);
+      renderOnboarding(stats);
+    }
+    if (projectsRes.ok) {
+      const data = await projectsRes.json();
+      renderRecentProjects(data.projects || []);
+    }
+    if (activityRes.ok) {
+      const data = await activityRes.json();
+      renderRecentActivity(data.activities || []);
+    }
+  } catch (err) {
+    console.error('Failed to load dashboard data:', err);
+  }
+}
+
+function renderStats(stats) {
+  setText('stat-projects', stats.projects);
+  setText('stat-tables', stats.tables);
+  setText('stat-apis', stats.apis);
+  setText('stat-requests', stats.requests30d ?? 0);
+
+  setText('stat-tables-hint', `across ${stats.projects} project${stats.projects === 1 ? '' : 's'}`);
+  setText('stat-apis-hint', `${stats.apis} of ${stats.tables} tables exposed`);
+  setText('stat-requests-hint', stats.requests30d > 0 ? 'last 30 days' : 'create an API to see traffic here');
+
+  const projectsHint = document.getElementById('stat-projects-hint');
+  if (projectsHint) {
+    // Free plan limit is 2 projects (mirrors backend project cap).
+    if (stats.projects >= 2) {
+      projectsHint.textContent = 'Free plan limit reached';
+      projectsHint.classList.add('stat-card__hint--warn');
+    } else {
+      projectsHint.classList.remove('stat-card__hint--warn');
+    }
+  }
+}
+
+function renderRecentProjects(projects) {
+  const container = document.getElementById('recent-projects');
+  if (!container) return;
+
+  if (!projects.length) {
+    container.innerHTML = '<p class="panel__empty">No recent projects yet.</p>';
+    return;
+  }
+
+  container.innerHTML = projects.map((p) => {
+    const updated = p.last_update ? formatRelative(p.last_update) : 'unknown';
+    return `
+      <div class="project-row">
+        <div>
+          <div class="project-row__name">${escapeHtml(p.name)}</div>
+          <div class="project-row__meta">
+            <span>${p.total_tables} tables</span>
+            <span>·</span>
+            <span>${p.total_apis} APIs</span>
+            <span>·</span>
+            <span>updated ${updated}</span>
+          </div>
+        </div>
+        <a href="/project/${encodeURIComponent(p.name)}" class="project-row__link" aria-label="Open ${escapeHtml(p.name)}">→</a>
+      </div>`;
+  }).join('');
+}
+
+function renderRecentActivity(activities) {
+  const container = document.getElementById('recent-activity');
+  if (!container) return;
+
+  if (!activities.length) {
+    container.innerHTML = '<p class="panel__empty">No recent activity.</p>';
+    return;
+  }
+
+  container.innerHTML = activities.map((a) => {
+    const when = a.created_at ? formatRelative(a.created_at) : '';
+    const summary = describeActivity(a);
+    return `
+      <div class="activity-item">
+        <span class="activity-item__dot" aria-hidden="true"></span>
+        <div class="activity-item__text">
+          ${summary}
+          <span class="activity-item__time">${when}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function describeActivity(a) {
+  const change = a.change_type || 'updated';
+  const verb = change === 'insert' ? 'Created'
+    : change === 'delete' ? 'Deleted'
+    : change === 'update' ? 'Updated'
+    : capitalize(change);
+
+  // Prefer the new state, fall back to the old (e.g. on delete there is no new).
+  const data = a.new_data && Object.keys(a.new_data).length ? a.new_data : (a.old_data || {});
+
+  const project = a.project_name
+    ? `<strong>${escapeHtml(a.project_name)}</strong>`
+    : (data.project_name ? `<strong>${escapeHtml(data.project_name)}</strong>` : 'a project');
+
+  const table = data.table_name ? `<strong>${escapeHtml(data.table_name)}</strong>` : '';
+  const column = data.col_name ? `<strong>${escapeHtml(data.col_name)}</strong>` : '';
+  const api = data.name && a.entity_type === 'api_definition' ? `<strong>${escapeHtml(data.name)}</strong>` : '';
+
+  const label = {
+    project: 'project',
+    schema_table: 'table',
+    schema_column: 'column',
+    api_definition: 'API',
+    collaborator: 'collaborator',
+    cors_origin: 'CORS origin',
+    foreign_key: 'foreign key'
+  }[a.entity_type] || 'item';
+
+  let detail = '';
+  if (a.entity_type === 'schema_column' && column) {
+    detail = ` <span class="activity-item__of">in ${table}</span>`;
+  } else if (a.entity_type === 'schema_table' && table) {
+    detail = ` <span class="activity-item__of">${table}</span>`;
+  } else if (a.entity_type === 'api_definition' && api) {
+    detail = ` <span class="activity-item__of">${api}</span>`;
+  } else if (a.entity_type === 'collaborator' && data.username) {
+    detail = ` <span class="activity-item__of">${escapeHtml(data.username)}</span>`;
+  }
+
+  return `${verb} ${label} ${detail} <span class="activity-item__of">in ${project}</span>`.trim();
+}
+
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+}
+
+function formatRelative(iso) {
+  const then = new Date(iso);
+  const diffMs = Date.now() - then.getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'} ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days} day${days === 1 ? '' : 's'} ago`;
+  return then.toLocaleDateString();
+}
+
+function capitalize(str) {
+  return str ? str.charAt(0).toUpperCase() + str.slice(1) : '';
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 /* ------------------------- sidebar toggle -------------------------
    Desktop  (>840px): collapses to icon-only, ~72px. State persists
@@ -129,9 +307,40 @@ function initAccountMenu() {
 }
 
 /* ------------------------- getting-started checklist -------------------------
-   Dismissing hides the card and remembers the choice in localStorage.
-   The pre-paint <script> in dashboard.html's <head> reads the same key
-   so a returning visitor who dismissed it never sees it flash back in. */
+    Dismissing hides the card and remembers the choice in localStorage.
+    The pre-paint <script> in dashboard.html's <head> reads the same key
+    so a returning visitor who dismissed it never sees it flash back in. */
+function renderOnboarding(stats) {
+  const card = document.getElementById('onboarding-card');
+  if (!card) return;
+
+  const steps = {
+    project: stats.projects > 0,
+    table: stats.tables > 0,
+    api: stats.apis > 0
+  };
+
+  let done = 0;
+  const total = Object.keys(steps).length;
+  for (const [key, completed] of Object.entries(steps)) {
+    const stepEl = card.querySelector(`.onboarding-step[data-step="${key}"]`);
+    if (!stepEl) continue;
+    stepEl.classList.toggle('is-done', completed);
+    stepEl.classList.toggle('is-pending', !completed);
+    if (completed) done++;
+  }
+
+  const progressEl = document.getElementById('onboarding-progress');
+  if (progressEl) {
+    progressEl.textContent = `${done} of ${total} steps complete`;
+  }
+
+  const fillEl = document.getElementById('onboarding-fill');
+  if (fillEl) {
+    fillEl.style.width = `${Math.round((done / total) * 100)}%`;
+  }
+}
+
 function initOnboardingCard() {
   const card = document.getElementById('onboarding-card');
   const dismissBtn = document.getElementById('onboarding-dismiss');
