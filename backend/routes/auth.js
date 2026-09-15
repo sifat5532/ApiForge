@@ -44,6 +44,7 @@ const requireAuth = async (req, res, next) => {
         } else {
             await query('UPDATE user_sessions SET last_active_at = now() WHERE session_token_hashed = $1',[hashedToken]);
 
+            req.currentSession = result.rows[0];
             const userData = await query('SELECT id, username, email, name from users WHERE id = $1', [result.rows[0].user_id]);
             req.loggedInUser = userData.rows[0];
             next();

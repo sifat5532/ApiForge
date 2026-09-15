@@ -9,6 +9,7 @@ const templateRoutes = require('./routes/template');
 const viewRoutes = require('./routes/view');
 const apiRoutes = require('./routes/api');
 const serveApiRoutes = require('./routes/serve.api');
+const profileRoutes = require('./routes/profile');
 const { requireAuth, requireGuest } = require('./routes/auth');
 const errorHandler = require('./middleware/errorHandler');
 
@@ -27,6 +28,7 @@ app.use('/template', templateRoutes);
 app.use('/view', viewRoutes);
 app.use('/new/api', apiRoutes);
 app.use('/api', serveApiRoutes);
+app.use('/profile', profileRoutes);
 
 app.get('/', requireAuth, (req, res) => {
   res.send('Hello World! You are logged in.' + '\n' + 'id: ' + req.loggedInUser.id + '\n' + 'name: ' + req.loggedInUser.name + '\n' + 'email: ' + req.loggedInUser.email + '\n' + 'username: ' + req.loggedInUser.username);

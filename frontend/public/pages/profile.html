@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Liked Templates — ApiForge</title>
-  <meta name="description" content="Browse and manage all the templates you have liked on ApiForge." />
+  <title>Profile — ApiForge</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
@@ -22,7 +21,7 @@
         if (localStorage.getItem('apiforge-onboarding-dismissed') === 'true') {
           document.documentElement.classList.add('onboarding-dismissed');
         }
-      } catch (e) { /* localStorage unavailable — use defaults */ }
+      } catch (e) { /* localStorage unavailable — default to expanded/visible */ }
     })();
   </script>
 </head>
@@ -51,7 +50,7 @@
         <nav class="breadcrumb" aria-label="Breadcrumb">
           <a href="/dashboard" class="breadcrumb__item">Home</a>
           <span class="breadcrumb__sep" aria-hidden="true">/</span>
-          <span class="breadcrumb__item breadcrumb__item--current" aria-current="page">Liked</span>
+          <span class="breadcrumb__item breadcrumb__item--current" aria-current="page">Profile</span>
         </nav>
       </div>
 
@@ -61,7 +60,7 @@
           <span class="plan-badge__usage">6/10 tables</span>
         </div>
 
-        <a href="/new-project?from=liked" class="btn btn--primary btn--sm">+ New project</a>
+        <a href="/new-project?from=dashboard" class="btn btn--primary btn--sm">+ New project</a>
 
         <div class="account-menu">
           <button
@@ -72,12 +71,12 @@
             aria-expanded="false"
             aria-controls="account-dropdown"
           >
-            <span class="avatar" aria-hidden="true">S</span>
+            <span class="avatar" id="nav-avatar" aria-hidden="true">U</span>
             <span class="sr-only">Account menu</span>
           </button>
 
           <div class="account-menu__dropdown" id="account-dropdown" role="menu" aria-label="Account">
-            <a href="/profile" role="menuitem">Profile</a>
+            <a href="/profile" role="menuitem" class="is-active">Profile</a>
             <a href="/logout" role="menuitem" class="is-danger">Sign out</a>
           </div>
         </div>
@@ -114,7 +113,7 @@
                 </a>
               </li>
               <li>
-                <a href="/liked" class="sidebar__link is-active" data-tooltip="Liked" aria-current="page">
+                <a href="/liked" class="sidebar__link" data-tooltip="Liked">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l8.78-8.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
                   </svg>
@@ -171,7 +170,7 @@
 
         <ul class="sidebar__nav--secondary">
           <li>
-            <a href="/profile" class="sidebar__link" data-tooltip="Profile">
+            <a href="/profile" class="sidebar__link is-active" data-tooltip="Profile" aria-current="page">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="8" r="3.5"></circle>
                 <path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"></path>
@@ -183,81 +182,172 @@
       </nav>
     </aside>
 
-    <!-- Backdrop for mobile sidebar drawer -->
+    <!-- backdrop for off-canvas sidebar on small screens -->
     <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
 
     <!-- MAIN CONTENT -->
     <main class="dash-main">
-
-      <!-- PAGE HEADER -->
-      <div class="dash-main__header liked-header">
-        <div>
-          <h1>Liked Templates</h1>
-          <p class="dash-main__subtitle">Templates you've saved — browse, search, and open them any time.</p>
-        </div>
-        <div class="liked-header__count" id="liked-total-count" aria-live="polite"></div>
+      <div class="dash-main__header">
+        <h1>Profile</h1>
+        <p class="dash-main__subtitle">Manage your profile, security, and account preferences.</p>
       </div>
 
-      <!-- TOOLBAR: SEARCH + SORT -->
-      <div class="projects-toolbar liked-toolbar">
-        <div class="search-box">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="search-icon" aria-hidden="true">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-          <input
-            type="text"
-            id="liked-search"
-            placeholder="Search by template name, tag, or author..."
-            aria-label="Search liked templates by name, tag, or author"
-          />
+      <!-- Tab strip -->
+      <nav class="settings-tabs" id="settings-tabs" aria-label="Settings sections">
+        <button class="settings-tab is-active" type="button" data-tab="profile">Profile</button>
+        <button class="settings-tab" type="button" data-tab="security">Security</button>
+        <button class="settings-tab" type="button" data-tab="sessions">Login history</button>
+        <button class="settings-tab" type="button" data-tab="preferences">Preferences</button>
+      </nav>
+
+      <!-- ============ PROFILE ============ -->
+      <section class="settings-panel is-active" id="tab-profile" aria-label="Profile settings">
+        <div class="panel">
+          <div class="panel__head">
+            <h2 class="panel__title">Profile</h2>
+          </div>
+
+          <form id="profile-form" novalidate>
+            <div class="profile-avatar-row">
+              <div class="avatar-preview avatar-preview--fixed" id="avatar-preview" aria-hidden="true">U</div>
+              <div class="profile-avatar-row__controls">
+             
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="username">Username</label>
+              <input type="text" id="username" name="username" autocomplete="username" placeholder="username" />
+              <p class="field__hint">Used in your API URLs. Lowercase letters, numbers, and dashes only.</p>
+              <div class="form__error" id="username-error"></div>
+            </div>
+
+            <div class="field">
+              <label for="displayname">Name</label>
+              <input type="text" id="displayname" name="displayname" autocomplete="name" placeholder="Your name" />
+            </div>
+
+            <div class="field">
+              <label for="email">Email</label>
+              <input type="email" id="email" name="email" autocomplete="email" placeholder="you@example.com" />
+              <div class="form__error" id="email-error"></div>
+            </div>
+
+            <div class="settings-actions">
+              <button class="btn btn--primary" type="submit" id="profile-save">Save changes</button>
+              <span class="form__success" id="profile-success" role="status"></span>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- ============ SECURITY ============ -->
+      <section class="settings-panel" id="tab-security" aria-label="Security settings">
+        <div class="panel">
+          <div class="panel__head">
+            <h2 class="panel__title">Change password</h2>
+          </div>
+
+          <form id="password-form" novalidate>
+            <div class="field">
+              <label for="current-password">Current password</label>
+              <input type="password" id="current-password" name="currentPassword" autocomplete="current-password" />
+            </div>
+
+            <div class="field">
+              <label for="new-password">New password</label>
+              <input type="password" id="new-password" name="newPassword" autocomplete="new-password" />
+              <p class="field__hint">At least 6 characters, with a number and a symbol.</p>
+            </div>
+
+            <div class="field">
+              <label for="confirm-password">Confirm new password</label>
+              <input type="password" id="confirm-password" name="confirmPassword" autocomplete="new-password" />
+              <div class="form__error" id="password-error"></div>
+            </div>
+
+            <div class="settings-actions">
+              <button class="btn btn--primary" type="submit" id="password-save">Update password</button>
+              <span class="form__success" id="password-success" role="status"></span>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- ============ LOGIN HISTORY ============ -->
+      <section class="settings-panel" id="tab-sessions" aria-label="Login history">
+        <div class="panel">
+          <div class="panel__head">
+            <h2 class="panel__title">Login notifications</h2>
+          </div>
+          <div class="toggle-field">
+            <div>
+              <div class="toggle-field__label">Notify me on every new login</div>
+              <p class="field__hint">Get a notification whenever your account is accessed from a new device or session.</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="login-notify-toggle" checked />
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+          <p class="settings-note" id="login-notify-note">Login notifications are on.</p>
         </div>
 
-        <div class="projects-toolbar__right">
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <select id="liked-sort" class="filter-select" aria-label="Sort liked templates">
-              <option value="liked">Recently Liked</option>
-              <option value="name">Name</option>
-              <option value="created">Created At</option>
-              <option value="author">Author</option>
-            </select>
-            <button id="liked-sort-dir" type="button" aria-label="Toggle sort direction" data-dir="desc" style="background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius-sm); width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.2s;">
-              <svg id="liked-sort-icon-desc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
-              <svg id="liked-sort-icon-asc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px; display: none;"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+        <div class="panel">
+          <div class="panel__head">
+            <h2 class="panel__title">Login history</h2>
+            
+          </div>
+          <p class="field__hint">Sign-ins from the last month. If something looks wrong, sign out of that device or change your password.</p>
+          <div class="session-list" id="session-list">
+            <div class="session-empty">Loading login history…</div>
+          </div>
+          <div class="settings-actions">
+            <button class="btn btn--ghost" type="button" id="revoke-all">
+              Sign out of all other devices
             </button>
           </div>
         </div>
-      </div>
+      </section>
 
-      <!-- LIKED TEMPLATES GRID (dynamic) -->
-      <div id="liked-container" class="projects-container liked-grid" aria-live="polite">
-        <!-- Skeleton shimmer cards injected by liked.js -->
-      </div>
+      <!-- ============ PREFERENCES ============ -->
+      <section class="settings-panel" id="tab-preferences" aria-label="Preferences">
+        <div class="panel">
+          <div class="panel__head">
+            <h2 class="panel__title">Notification settings</h2>
+          </div>
 
-      <!-- PAGINATION -->
-      <div class="pagination-bar">
-        <div class="pagination-info-wrapper">
-          <span id="liked-pagination-info" class="pagination-info">Showing 0–0 of 0 templates</span>
-          <select id="liked-items-per-page" class="pagination-select" aria-label="Items per page">
-            <option value="10">10 per page</option>
-            <option value="25">25 per page</option>
-            <option value="50">50 per page</option>
-          </select>
+          <div class="toggle-field">
+            <div>
+              <div class="toggle-field__label">Rating notifications</div>
+              <p class="field__hint">Get notified when someone rates your API or project.</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="pref-rating-toggle" checked />
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+
+          <div class="toggle-field">
+            <div>
+              <div class="toggle-field__label">Feedback notifications</div>
+              <p class="field__hint">Get notified when someone leaves feedback on your API or project.</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="pref-feedback-toggle" checked />
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+
+          <p class="settings-note" id="pref-note">Notification preferences saved.</p>
         </div>
-
-        <div class="pagination-controls">
-          <button id="liked-btn-prev" class="pagination-btn" type="button" disabled aria-label="Previous Page">← Previous</button>
-          <div id="liked-pagination-pages" class="pagination-pages"></div>
-          <button id="liked-btn-next" class="pagination-btn" type="button" aria-label="Next Page">Next →</button>
-        </div>
-      </div>
-
+      </section>
     </main>
   </div>
 
   <script src="js/config.js"></script>
   <script src="js/auth-guard.js"></script>
   <script src="js/dashboard.js"></script>
-  <script src="js/liked.js"></script>
+  <script src="js/profile.js"></script>
 </body>
 </html>

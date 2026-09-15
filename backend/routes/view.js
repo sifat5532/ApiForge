@@ -250,25 +250,6 @@ router.get('/apis/:projectId', requireAuth, requireProjectAccess, async (req, re
     return res.status(200).json({ apis: result.rows });
 
 });
-router.get('/viewUserSessions', requireAuth, async (req, res) => {
-
-    const result = await query(`
-                            SELECT 
-                            id ,
-                            user_id , 
-                            device_label ,
-                            ip_address ,
-                            created_at ,
-                            expires_at ,
-                            last_active_at ,
-                            revoked_at 
-                            FROM user_sessions 
-                            WHERE user_id = $1 AND created_at > CURRENT_DATE - INTERVAL '1 month'
-                            ORDER BY last_active_at DESC 
-                            `, [req.loggedInUser.id]
-    );
-    res.status(200).json({ msg: "Successfully show user sessions", data: result.rows });
-});
 
 router.get('/templateDetails/:templateId', async (req, res) => {
     const { templateId } = req.params;// ** I think ids  are not required to send to backend . Confirm me .

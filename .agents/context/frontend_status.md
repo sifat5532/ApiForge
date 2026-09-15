@@ -46,6 +46,7 @@ frontend/
 | Templates | `pages/templates.html` | `js/dashboard.js`, `js/templates.js` | ✅ Complete |
 | Leaderboard | `pages/leaderboard.html` | `js/dashboard.js`, `js/leaderboard.js` | ✅ Complete |
 | Logout route | N/A (`/logout`) | Backend `/auth/logout` bridge | ✅ Complete |
+| Settings | `pages/settings.html` | `js/dashboard.js`, `js/settings.js` | ✅ Complete |
 
 ---
 
@@ -58,7 +59,6 @@ Do not create these pages unless explicitly instructed. See Rule §7 in `fronten
 |---|---|---|
 | Usage & Billing | `pages/billing.html` | `href="#" data-stub="billing"` |
 | Profile | `pages/profile.html` | `href="#" data-stub="profile"` |
-| Settings | `pages/settings.html` | `href="#" data-stub="settings"` |
 
 ---
 
@@ -101,6 +101,7 @@ Sections in order (each preceded by a `/* --- */` comment header):
 | Liked — page components | `.liked-header`, `.liked-header__count`, `.liked-toolbar`, `.liked-grid`, `.liked-card`, `.liked-card__author`, `.liked-card__avatar`, `.liked-card__author-info`, `.liked-card__author-name`, `.liked-card__author-handle`, `.liked-card__unlike-btn`, `.liked-card__title`, `.liked-card__desc`, `.liked-card__tags`, `.liked-tag`, `.liked-card__footer`, `.liked-card__date`, `.liked-card__stars`, `.liked-card__open-btn` |
 | Templates — page components | `.tmpl-toolbar`, `.tmpl-filter-row`, `.tmpl-chip-group`, `.tmpl-chip`, `.tmpl-chip--tag`, `.tmpl-grid`, `.tmpl-card`, `.tmpl-card--shimmer`, `.tmpl-card__author-row`, `.tmpl-card__author-name`, `.tmpl-card__title`, `.tmpl-card__title-link`, `.tmpl-card__desc`, `.tmpl-card__tags`, `.tmpl-card__footer`, `.tmpl-card__rating`, `.tmpl-card__rating-val`, `.tmpl-card__rating-count`, `.tmpl-card__meta`, `.tmpl-card__uses`, `.tmpl-card__date`, `.tmpl-auth-badge`, `.tmpl-auth-badge--jwt`, `.tmpl-auth-badge--oauth`, `.tmpl-auth-badge--apikey`, `.tmpl-auth-badge--none`, `.tmpl-shimmer-line`, `.tmpl-shimmer-tag`, `.tmpl-shimmer-tags`, `.tmpl-shimmer-footer`, `@keyframes tmpl-shimmer`, `.tmpl-empty` |
 | Notifications — page components | `.notif-page-header`, `.notif-page-header__left`, `.notif-page-header__actions`, `.notif-unread-badge`, `.notif-tabs`, `.notif-tab`, `.notif-tab__count`, `.notif-list`, `.notif-item`, `.notif-item--unread`, `.notif-item--removing`, `.notif-item--shimmer`, `.notif-avatar-col`, `.notif-avatar`, `.notif-avatar--shimmer`, `.notif-avatar--user`, `.notif-avatar__initials`, `.notif-avatar--system`, `.notif-avatar--system-session`, `.notif-avatar--system-warn`, `.notif-avatar--system-billing`, `.notif-avatar--system-activity`, `.notif-unread-dot`, `.notif-body`, `.notif-meta`, `.notif-actor`, `.notif-actor--warn`, `.notif-username`, `.notif-time`, `.notif-text`, `.notif-link`, `.notif-role-badge`, `.notif-role-badge--muted`, `.notif-outcome-badge`, `.notif-outcome-badge--accepted`, `.notif-outcome-badge--declined`, `.notif-collab-status`, `.notif-collab-status--accepted`, `.notif-collab-status--declined`, `.notif-stars`, `.notif-star--filled`, `.notif-star--empty`, `.notif-review`, `.notif-device`, `.notif-session-meta`, `.notif-session-chip`, `.notif-actions`, `.notif-btn-accept`, `.notif-btn-decline`, `.notif-btn-ghost`, `.notif-btn-upgrade`, `.notif-plan-badge`, `.notif-plan-badge--free`, `.notif-plan-badge--lite`, `.notif-plan-badge--pro`, `.notif-strong`, `.notif-limit-val`, `.notif-chips`, `.notif-chip`, `.notif-chip--mono`, `.notif-controls`, `.notif-ctrl-btn`, `.notif-empty`, `.notif-shimmer-line`, `@keyframes notif-shimmer` |
+| Settings — page components | `.settings-tabs`, `.settings-tab`, `.settings-panel`, `.settings-actions`, `.form__success`, `.profile-avatar-row`, `.avatar-preview`, `.profile-avatar-row__controls`, `.toggle-field`, `.toggle-field__label`, `.switch`, `.switch-slider`, `.settings-note`, `.filter-select`, `.session-list`, `.session-row`, `.session-row--current`, `.session-row__icon`, `.session-row__device`, `.session-row__badge`, `.session-row__meta`, `.session-row__time`, `.session-empty`, `.vp-danger-zone`, `.vp-danger-zone__title`, `.vp-danger-zone__hint`, `.vp-modal-overlay`, `.vp-modal`, `.vp-modal__head`, `.vp-modal__title`, `.vp-modal__close`, `.vp-modal__body`, `.vp-modal__foot`, `.btn--danger` |
 | View Project — APIs tab | `.vp-api-list`, `.vp-api-card`, `.vp-api-card__head`, `.vp-api-card__name`, `.vp-api-method`, `.vp-api-method--get/post/put/delete`, `.vp-api-status`, `.vp-api-status--active/inactive`, `.vp-api-card__actions`, `.vp-api-icon`, `.vp-api-details`, `.vp-api-edit`, `.vp-api-delete`, `.vp-api-copy`, `.vp-api-url`, `.vp-api-url__method`, `.vp-api-url__code`, `.vp-api-meta`, `.vp-api-meta__item`, `.vp-api-meta__label`, `.vp-api-meta__sep` |
 | View Project — API details modal | `.vp-api-detail`, `.vp-api-detail-badges`, `.vp-api-detail-badge`, `.vp-api-detail-section`, `.vp-api-detail-section__title`, `.vp-api-detail-count`, `.vp-api-param-table`, `.vp-api-param__name`, `.vp-api-param__none`, `.vp-api-param__ctx`, `.vp-api-req`, `.vp-api-req--yes/no`, `.vp-api-detail-empty`, `.vp-api-example`, `.vp-api-example__code`, `.vp-api-example__body` |
 | View Project — page components | `.vp-header`, `.vp-header__title-row`, `.vp-header__actions`, `.vp-project-title`, `.vp-clone-badge`, `.vp-meta-grid`, `.vp-meta-chip`, `.vp-meta-chip__label`, `.vp-meta-chip__value`, `.vp-tags`, `.vp-tabs`, `.vp-tab`, `.vp-panel`, `.vp-action-bar`, `.vp-table`, `.vp-table th`, `.vp-table td`, `.vp-table__link`, `.vp-empty`, `.vp-empty__icon`, `.vp-empty__title`, `.vp-empty__text`, `.vp-shimmer`, `.vp-shimmer-row`, `@keyframes vp-shimmer`, `.vp-modal-overlay`, `.vp-modal`, `.vp-modal__head`, `.vp-modal__title`, `.vp-modal__close`, `.vp-modal__body`, `.vp-modal__grid`, `.vp-modal__foot`, `.vp-collab-list`, `.vp-collab-row`, `.vp-collab-row__avatar`, `.vp-collab-row__info`, `.vp-collab-row__name`, `.vp-collab-row__handle`, `.vp-collab-row__date`, `.vp-origin-list`, `.vp-origin-row`, `.vp-origin-row__url`, `.vp-origin-notice`, `.vp-toast-host`, `.vp-toast`, `.vp-toast--success`, `.vp-toast--error`, `.vp-settings-wrap`, `.vp-settings-form`, `.vp-settings-banner`, `.vp-settings-actions`, `.vp-danger-zone`, `.vp-danger-zone__title`, `.vp-danger-zone__hint`, `.vp-struct-panel`, `.vp-struct-panel__title`, `.vp-struct-panel__shimmer`, `.vp-api-key-display`, `.vp-api-key-code`, `.tag__remove`, `.modal-form`, `.modal-form__row`, `.modal-input`, `.modal-select`, `.field__label`, `.field__hint-inline` |
@@ -286,6 +287,24 @@ Self-executing script that checks session status (`/auth/me`). Redirects to `/lo
 | `initModal()` / `showModal()` / `setModalBody()` / `setModalFoot()` / `closeModal()` | Modal helpers |
 | `renderShimmer()` / `emptyState()` / `showToast()` / `setLoading()` / `formatDate()` / `escHtml()` | Rendering + utility helpers |
 | `apiFetch(url, opts)` | Thin wrapper — prepends `BACKEND_URL`, sets `credentials: 'include'` |
+
+### `js/settings.js` — settings page only
+
+| Function | What it does |
+|---|---|
+| `initTabs()` | Switches between Profile / Security / Login history / Preferences / Danger zone panels |
+| `initTabsFromHash()` | Opens the tab named in the URL hash (e.g. `/settings#security`) on load |
+| `initProfileForm()` | Loads `/auth/me`, prefills username/displayName/email/bio, validates + saves profile |
+| `initAvatarPicker()` | File input → preview (≤2MB), clears/removes avatar |
+| `initPasswordForm()` | Validates + submits change-password form |
+| `initTwoFactor()` | Toggles 2FA switch + updates note |
+| `initSessions()` | Renders login-history list (mock placeholders), refresh + revoke-others |
+| `renderSessions(list)` | Builds session row markup from a session list |
+| `initPreferences()` | Email/product toggles + language select, persists to localStorage |
+| `initDeleteAccount()` | Confirm modal (username match) → delete account flow |
+| `showError()` / `hideError()` / `setLoading()` / `escapeHtml()` / `apiFetch()` | Shared helpers (mirrors `app.js` / `view-project.js` patterns) |
+
+> **Settings page built (2026-09-14)**: New `pages/settings.html` + `js/settings.js` + route `GET /settings`. Frontend-only — every backend call is stubbed with a `// TODO (backend):` marker so the API can be wired later without restructuring. Tabs: Profile (username, display name, email, bio, avatar upload), Security (change password, 2FA), Login history (session list + revoke others), Preferences (email/product notifications, language), Danger zone (delete account with username-confirm modal). All dashboard sidebar + account-dropdown "Settings" stub links now point to `/settings`; the `settings` stub was removed from the registry.
 
 ---
 
