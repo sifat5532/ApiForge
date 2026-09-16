@@ -5950,7 +5950,7 @@ html.onboarding-dismissed .onboarding-card,
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  padding: 14px 0;
+  padding: 14px 14px;
   border-bottom: 1px solid var(--border);
 }
 .toggle-field:last-of-type { border-bottom: none; }

@@ -1096,7 +1096,7 @@ BEGIN
          IF k = 'table_id' AND jsonb_typeof(v) = 'number'  THEN 
                result := result || jsonb_build_object(k , COALESCE(table_map -> (v #>> '{}'), v));        
          ELSIF k = 'col_id' AND jsonb_typeof(v) = 'number'  THEN 
-               result := result || jsonb_build_object(k , COALESCE(table_map -> (v #>> '{}'), v));
+               result := result || jsonb_build_object(k , COALESCE(col_map -> (v #>> '{}'), v));
          ELSE 
                result := result || jsonb_build_object(k , remap_query_ids( v , table_map , col_map ));        
          END IF;
@@ -1104,7 +1104,7 @@ BEGIN
          RETURN result;
      ELSIF jsonb_typeof(input) = 'array' THEN 
         FOR elem IN SELECT * FROM jsonb_array_elements(input)  LOOP 
-               arr := arr || jsonb_build_object(remap_query_ids(elem , table_map , col_map));        
+               arr := arr || jsonb_build_array(remap_query_ids(elem , table_map , col_map));        
          END LOOP;
          RETURN arr;
      ELSE 
@@ -1149,7 +1149,8 @@ BEGIN
         SELECT id, project_id, table_name FROM schema_tables WHERE project_id = NEW.cloned_from_id
     LOOP
         INSERT INTO schema_tables(project_id, table_name) VALUES (NEW.id, rec.table_name) RETURNING id INTO table_id;
-
+         INSERT INTO tmp_table_map(old_table_id, new_table_id, old_col_id, new_col_id)
+            VALUES (rec.id, table_id, null , null );
         FOR col_def IN
             SELECT * FROM schema_columns WHERE schema_table_id = rec.id
         LOOP
@@ -1172,23 +1173,25 @@ BEGIN
         VALUES (fk_def.child_col, fk_def.parent_col, fk_def.fk_name, fk_def.on_delete, fk_def.on_update);
     END LOOP;
     
-    SELECT COALESCE(jsonb_build_object( DISTINCT old_table_id :: text , new_table_id) , '{}'::jsonb)
+    SELECT COALESCE(jsonb_object_agg(DISTINCT old_table_id :: text , new_table_id) , '{}'::jsonb)
     INTO v_table_map
     FROM tmp_table_map;
 
-    SELECT COALESCE(jsonb_build_object( DISTINCT old_col_id :: text , new_col_id) , '{}'::jsonb)
-    INTO v_col_map
-    FROM tmp_table_map;
-    FOR api_def IN
-        SELECT * FROM api_definitions WHERE project_id = NEW.cloned_from_id
-    LOOP
-        INSERT INTO api_definitions(name, project_id, method, query_definition, is_active, rate_limit_per_day)
+   
+      SELECT COALESCE(jsonb_object_agg(old_col_id::text, new_col_id), '{}'::jsonb) INTO v_col_map
+      FROM tmp_table_map
+                       WHERE old_col_id IS NOT NULL;
+          FOR api_def IN 
+            SELECT *
+            FROM api_definitions
+   WHERE project_id = NEW.cloned_from_id LOOP
+   INSERT INTO api_definitions(name, project_id, method, query_definition, is_active, rate_limit_per_day)
         VALUES (
          api_def.name,
          NEW.id, 
          api_def.method,
          remap_query_ids(api_def.query_definition , v_table_map , v_col_map), 
-         false, 
+         true, 
          api_def.rate_limit_per_day);
     END LOOP;
 
@@ -1228,7 +1231,8 @@ BEGIN
         SELECT id, project_id, table_name FROM schema_tables WHERE project_id = NEW.originates_from_id
     LOOP
         INSERT INTO schema_tables(project_id, table_name) VALUES (NEW.id, rec.table_name) RETURNING id INTO table_id;
-
+        INSERT INTO tmp_table_map(old_table_id, new_table_id, old_col_id, new_col_id)
+        VALUES (rec.id, table_id, NULL, NULL);   
         FOR col_def IN
             SELECT * FROM schema_columns WHERE schema_table_id = rec.id
         LOOP
@@ -1252,13 +1256,14 @@ BEGIN
     END LOOP;
 
       
-    SELECT COALESCE(jsonb_build_object( DISTINCT old_table_id :: text , new_table_id) , '{}'::jsonb)
+    SELECT COALESCE(jsonb_object_agg( DISTINCT old_table_id :: text , new_table_id) , '{}'::jsonb)
     INTO v_table_map
     FROM tmp_table_map;
 
-    SELECT COALESCE(jsonb_build_object( DISTINCT old_col_id :: text , new_col_id) , '{}'::jsonb)
+    SELECT COALESCE(jsonb_object_agg( old_col_id :: text , new_col_id) , '{}'::jsonb)
     INTO v_col_map
-    FROM tmp_table_map;
+    FROM tmp_table_map
+    WHERE old_col_id IS NOT NULL;
 
     FOR api_def IN
         SELECT * FROM api_definitions WHERE project_id = NEW.originates_from_id
