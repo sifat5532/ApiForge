@@ -106,7 +106,7 @@
     var composeGrid = document.querySelector('#panel-reviews .vt-compose-grid');
     if (feedbackTab) feedbackTab.hidden = false;
     if (settingsTab) settingsTab.hidden = false;
-    if (actions) actions.hidden = true;
+    if (actions) actions.hidden = false;
     if (composeGrid) composeGrid.hidden = true;
   }
 

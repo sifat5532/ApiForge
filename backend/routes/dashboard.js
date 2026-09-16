@@ -22,7 +22,7 @@ router.get('/stats', requireAuth, async (req, res) => {
             JOIN api_definitions ap ON ap.id = al.api_definition_id
             JOIN projects P ON P.id = ap.project_id
             WHERE P.author_id = $1
-              AND al.created_at > CURRENT_DATE - INTERVAL '30 day') AS requests_30d
+            AND al.created_at > CURRENT_DATE - INTERVAL '30 day') AS requests_30d 
        `,
       [userId]
     );

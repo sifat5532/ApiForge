@@ -1115,9 +1115,6 @@ $$;
          
    
 
-
-
-
 -- we need to insert a row into the project_logs table that a new table has been inserted, it will be implemented later
 -------------------------------Clone Template------------------------------------
 CREATE OR REPLACE FUNCTION tgfunc_clone_template () RETURNS TRIGGER LANGUAGE plpgsql AS $$
