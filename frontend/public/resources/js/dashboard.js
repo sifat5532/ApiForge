@@ -78,9 +78,12 @@ function renderRecentProjects(projects) {
     container.innerHTML = '<p class="panel__empty">No recent projects yet.</p>';
     return;
   }
-
+  
   container.innerHTML = projects.map((p) => {
     const updated = p.last_update ? formatRelative(p.last_update) : 'unknown';
+    const href = p.is_template === true
+  ? `/template/${encodeURIComponent(p.id)}`
+  : `/project/${encodeURIComponent(p.name)}`;
     return `
       <div class="project-row">
         <div>
@@ -93,7 +96,7 @@ function renderRecentProjects(projects) {
             <span>updated ${updated}</span>
           </div>
         </div>
-        <a href="/project/${encodeURIComponent(p.name)}" class="project-row__link" aria-label="Open ${escapeHtml(p.name)}">→</a>
+        <a href="${href}" class="project-row__link" aria-label="Open ${escapeHtml(p.name)}">→</a>
       </div>`;
   }).join('');
 }

@@ -43,7 +43,7 @@ router.get('/recentProjects', requireAuth, async (req, res) => {
   try {
     const userId = req.loggedInUser.id;
     const result = await query(
-      `SELECT p.id, p.name, p.created_at,
+      `SELECT p.id, p.name, p.created_at, p.is_template ,
               (SELECT COUNT(*) FROM schema_tables WHERE project_id = p.id) AS total_tables,
               (SELECT COUNT(*) FROM api_definitions WHERE project_id = p.id) AS total_apis,
               (SELECT created_at FROM project_logs WHERE project_id = p.id ORDER BY created_at LIMIT 1) AS last_update
