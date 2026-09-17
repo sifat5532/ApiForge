@@ -27,8 +27,8 @@ router.post('/subscribe', requireAuth, async (req, res) => {
     if (plan.name === 'free') {
         month = null;
         // will add a log here
-        await query('INSERT INTO subscription_log(user_id, plan_id) VALUES($1, $2)', 
-                    [req.loggedInUser.id, plan_id]);
+        await query('INSERT INTO subscription_log(user_id, plan_id) VALUES($1, $2)',
+            [req.loggedInUser.id, plan_id]);
         return res.status(200).json({ done: true, msg: 'Subscribed to free plan successfully' });
     }
 
@@ -57,18 +57,16 @@ router.post('/subscribe', requireAuth, async (req, res) => {
             console.log('Gateway response:', result);
             const paymentUrl = result.next_action.redirect_to_url.url;
             const paymentID = result.id; // similar as trxn id;
-            await query('INSERT INTO subscription_log(user_id, plan_id, trxn_id, payment_method, payment_status, amount, month_count) VALUES($1, $2, $3, $4, $5, $6, $7)', 
+            await query('INSERT INTO subscription_log(user_id, plan_id, trxn_id, payment_method, payment_status, amount, month_count) VALUES($1, $2, $3, $4, $5, $6, $7)',
                 [req.loggedInUser.id, plan_id, paymentID, 'mockgateway', 'pending', amount, month]);
 
-            return res.status(200).json({ done: false, amount, month: parsedMonth, paymentUrl, msg: "Payment should be done in this url" });
+            return res.status(200).json({ done: false, paymentID, amount, month: parsedMonth, paymentUrl, msg: "Payment should be done in this url" });
             // res.status(response.status).json(result);
         } catch (err) {
             console.error('Gateway request failed:', err);
             res.status(500).json({ error: err.message });
         }
-
     }
-
     return res.status(400).json({ msg: 'Invalid plan' });
 });
 
@@ -85,8 +83,8 @@ router.post('/webhook', express.json(), async (req, res) => {
         return res.status(400).json({ error: 'missing paymentId' });
     }
 
-    if(!req.get('WEBHOOK_SECRET') || req.get('WEBHOOK_SECRET') != WEBHOOK_SECRET){
-        return res.status(400).json({error: 'Invalid Webhook secret'});
+    if (!req.get('WEBHOOK_SECRET') || req.get('WEBHOOK_SECRET') != WEBHOOK_SECRET) {
+        return res.status(400).json({ error: 'Invalid Webhook secret' });
     }
 
     try {
@@ -105,15 +103,15 @@ router.post('/webhook', express.json(), async (req, res) => {
 
 router.get('/verify', requireAuth, async (req, res) => {
     const { paymentId } = req.body;
-    if(!paymentId){
-        return res.status(400).json({msg: 'Payment ID is needed'});
+    if (!paymentId) {
+        return res.status(400).json({ msg: 'Payment ID is needed' });
     }
     // console.log('Verifying paymentId:', paymentId);
 
     let queryRes = await query('SELECT * FROM subscription_log WHERE trxn_id = $1 AND user_id = $2',
-                                [paymentId, req.loggedInUser.id]);
-    if(queryRes.rowCount <= 0){
-        return res.status(400).json({msg: 'Either invalid Payment ID or you are not allowed to see the status'});
+        [paymentId, req.loggedInUser.id]);
+    if (queryRes.rowCount <= 0) {
+        return res.status(400).json({ msg: 'Either invalid Payment ID or you are not allowed to see the status' });
     }
 
     const url = `https://mockgateway.com/api/pg/${SLUG}/verify/${paymentId}`;
@@ -127,17 +125,25 @@ router.get('/verify', requireAuth, async (req, res) => {
         const result = await response.json();
         const paymentStatus = result.status;
         queryRes = await query('SELECT * FROM subscription_log WHERE trxn_id = $1 AND user_id = $2',
-                                [paymentId, req.loggedInUser.id]);
-        if(queryRes.rows[0].payment_status == 'pending' && result.status && (result.status == 'succeeded' || result.status == 'canceled')){
+            [paymentId, req.loggedInUser.id]);
+        if (queryRes.rows[0].payment_status == 'pending' && result.status && (result.status == 'succeeded' || result.status == 'canceled')) {
             await pool.query('UPDATE subscription_log SET payment_status = $1, updated_at = NOW() WHERE trxn_id = $2',
-                            [result.status, paymentId]
-        );
+                [result.status, paymentId]
+            );
         }
-        res.status(response.status).json({paymentStatus});
+        res.status(response.status).json({ paymentStatus });
     } catch (err) {
         console.error('Gateway request failed:', err);
         res.status(500).json({ msg: err.message });
     }
+});
+
+router.get('/anyPendingPayment', requireAuth, async (req, res)=>{
+    const log_res = await query('SELECT payment_status FROM subscription_log WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1;', [req.loggedInUser.id]);
+    if(log_res.rowCount > 0 && log_res.rows[0].payment_status == 'pending'){
+        return res.status(409).json({msg: 'You already have a pending payment. You have already paid, then don\'t pay again and contact the ApiForge team. Otherwise, you can proceed to a new payment.'});
+    }
+    return res.status(200).json({msg: 'No pending payment request'});
 });
 
 module.exports = router;

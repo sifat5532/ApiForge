@@ -1291,7 +1291,6 @@ CREATE OR REPLACE FUNCTION tgfunc_add_free_subscription () RETURNS TRIGGER LANGU
   free_plan_id INTEGER;
   BEGIN 
       SELECT plan_id INTO free_plan_id FROM plans WHERE name = 'free';
-      INSERT INTO subscriptions(user_id, plan_id, status) VALUES(NEW.id, free_plan_id, 'active');
       INSERT INTO subscription_log(user_id, plan_id)  VALUES(NEW.id, free_plan_id);
    RETURN NEW;
    END ;
