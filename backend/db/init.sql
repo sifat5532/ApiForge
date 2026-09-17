@@ -1303,6 +1303,8 @@ AFTER INSERT ON users FOR EACH ROW
 EXECUTE FUNCTION tgfunc_add_free_subscription ();
 
 CREATE OR REPLACE FUNCTION tgfunc_sync_subscription () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+   v_current_plan_id INTEGER;
 BEGIN
    IF TG_OP = 'INSERT' AND NEW.payment_status = 'free' THEN
       UPDATE subscriptions
@@ -1313,12 +1315,24 @@ BEGIN
       VALUES (NEW.user_id, NEW.plan_id, 'active');
 
    ELSIF TG_OP = 'UPDATE' AND OLD.payment_status = 'pending' AND NEW.payment_status = 'succeeded' THEN
-      UPDATE subscriptions
-      SET status = 'inactive'
-      WHERE user_id = NEW.user_id AND status = 'active';
+      SELECT plan_id INTO v_current_plan_id
+      FROM subscriptions
+      WHERE user_id = NEW.user_id AND status = 'active'
+      ORDER BY subscription_id DESC
+      LIMIT 1;
 
-      INSERT INTO subscriptions (user_id, plan_id, status, end_date)
-      VALUES (NEW.user_id, NEW.plan_id, 'active', now() + (NEW.month_count || ' months')::INTERVAL);
+      IF v_current_plan_id = NEW.plan_id THEN
+         UPDATE subscriptions
+         SET end_date = now() + (NEW.month_count || ' months')::INTERVAL
+         WHERE user_id = NEW.user_id AND status = 'active';
+      ELSE
+         UPDATE subscriptions
+         SET status = 'inactive'
+         WHERE user_id = NEW.user_id AND status = 'active';
+
+         INSERT INTO subscriptions (user_id, plan_id, status, end_date)
+         VALUES (NEW.user_id, NEW.plan_id, 'active', now() + (NEW.month_count || ' months')::INTERVAL);
+      END IF;
 
    END IF;
 
