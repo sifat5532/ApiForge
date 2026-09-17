@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Usage &amp; Billing — ApiForge</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/responsive.css">
+
+  <!-- Pre-paint: restore persisted UI state before first frame -->
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem('apiforge-sidebar-collapsed') === 'true') {
+          document.documentElement.classList.add('sidebar-collapsed');
+        }
+        if (localStorage.getItem('apiforge-onboarding-dismissed') === 'true') {
+          document.documentElement.classList.add('onboarding-dismissed');
+        }
+      } catch (e) { /* localStorage unavailable — use defaults */ }
+    })();
+  </script>
+
+  <style>
+    /* ── Billing page–specific styles ── */
+
+    /* Tab strip (reuses settings-tabs pattern) */
+    .billing-tabs {
+      display: flex;
+      gap: 4px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 28px;
+      padding-bottom: 0;
+    }
+    .billing-tab {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-family: var(--font-body);
+      font-size: 0.875rem;
+      font-weight: 500;
+      padding: 10px 16px;
+      margin-bottom: -1px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .billing-tab:hover { color: var(--text); }
+    .billing-tab.is-active {
+      color: var(--accent-light);
+      border-bottom-color: var(--accent);
+    }
+
+    /* Panel sections */
+    .billing-panel { display: none; }
+    .billing-panel.is-active { display: block; }
+
+    /* Current plan hero card */
+    .bill-plan-hero {
+      background: var(--surface-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 28px 32px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    .bill-plan-hero__left { flex: 1; min-width: 220px; }
+    .bill-plan-hero__eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-faint);
+      margin-bottom: 8px;
+    }
+    .bill-plan-hero__name {
+      font-family: var(--font-display);
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--text);
+      margin: 0 0 6px;
+    }
+    .bill-plan-hero__name span { color: var(--accent-light); }
+    .bill-plan-hero__tagline {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      margin: 0 0 18px;
+    }
+    .bill-plan-hero__meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 20px;
+    }
+    .bill-meta-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+    .bill-meta-chip svg {
+      width: 13px; height: 13px;
+      stroke: var(--accent-light);
+      flex-shrink: 0;
+    }
+    .bill-plan-hero__right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 10px;
+      min-width: 160px;
+    }
+    .bill-plan-hero__price {
+      font-family: var(--font-display);
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1;
+    }
+    .bill-plan-hero__price sub {
+      font-size: 0.9rem;
+      font-family: var(--font-body);
+      color: var(--text-muted);
+      font-weight: 400;
+      vertical-align: baseline;
+    }
+    .bill-plan-hero__renew {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--text-faint);
+      text-align: right;
+    }
+    .bill-plan-hero__renew strong { color: var(--accent-light); }
+
+    /* Status badge */
+    .bill-status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 3px 9px;
+      border-radius: 20px;
+      font-weight: 600;
+    }
+    .bill-status-badge--active {
+      background: rgba(34,197,94,0.12);
+      color: var(--success);
+      border: 1px solid rgba(34,197,94,0.25);
+    }
+    .bill-status-badge--active::before {
+      content: '';
+      display: inline-block;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--success);
+    }
+    .bill-status-badge--cancelled {
+      background: rgba(248,113,113,0.12);
+      color: var(--error);
+      border: 1px solid rgba(248,113,113,0.25);
+    }
+    .bill-status-badge--expired {
+      background: rgba(138,138,138,0.12);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+
+    /* Usage meters */
+    .bill-usage-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 840px) { .bill-usage-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 480px) { .bill-usage-grid { grid-template-columns: 1fr; } }
+
+    .bill-usage-card {
+      background: var(--surface-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 18px 20px;
+    }
+    .bill-usage-card__label {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-faint);
+      margin-bottom: 10px;
+    }
+    .bill-usage-card__values {
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+      margin-bottom: 10px;
+    }
+    .bill-usage-card__used {
+      font-family: var(--font-display);
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .bill-usage-card__sep { color: var(--text-faint); font-size: 1rem; }
+    .bill-usage-card__limit {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+    .bill-meter-track {
+      height: 5px;
+      background: var(--bg);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .bill-meter-fill {
+      height: 100%;
+      border-radius: 3px;
+      background: var(--accent);
+      transition: width 0.4s ease;
+    }
+    .bill-meter-fill--warn { background: #f59e0b; }
+    .bill-meter-fill--crit { background: var(--error); }
+    .bill-usage-card__hint {
+      font-size: 0.72rem;
+      color: var(--text-faint);
+      margin-top: 6px;
+    }
+
+    /* Panel heading row */
+    .bill-section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .bill-section-head h2 {
+      font-family: var(--font-display);
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text);
+      margin: 0;
+    }
+
+    /* Pricing plan cards */
+    .bill-plans-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    @media (max-width: 1024px) { .bill-plans-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 600px)  { .bill-plans-grid { grid-template-columns: 1fr; } }
+
+    .bill-plan-card {
+      background: var(--surface-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 24px 24px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      position: relative;
+      transition: border-color 0.2s;
+    }
+    .bill-plan-card--current {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent), 0 0 24px var(--accent-glow);
+    }
+    .bill-plan-card--popular {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent), 0 0 32px var(--accent-glow);
+    }
+    .bill-plan-card__badge {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      background: var(--accent);
+      color: #0f0f0f;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 20px;
+      margin-bottom: 14px;
+      align-self: flex-start;
+    }
+    .bill-plan-card__current-badge {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      background: rgba(249,115,22,0.15);
+      color: var(--accent-light);
+      border: 1px solid var(--accent);
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 20px;
+      margin-bottom: 14px;
+      align-self: flex-start;
+    }
+    .bill-plan-card__name {
+      font-family: var(--font-display);
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--text);
+      margin: 0 0 4px;
+    }
+    .bill-plan-card__tagline {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      margin: 0 0 18px;
+    }
+    .bill-plan-card__price {
+      font-family: var(--font-display);
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--text);
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+      margin-bottom: 20px;
+    }
+    .bill-plan-card__price sub {
+      font-size: 0.85rem;
+      font-family: var(--font-body);
+      color: var(--text-muted);
+      font-weight: 400;
+      vertical-align: baseline;
+    }
+    .bill-plan-card__features {
+      list-style: none;
+      margin: 0 0 24px;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      flex: 1;
+    }
+    .bill-plan-card__features li {
+      font-size: 0.84rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .bill-plan-card__features li::before {
+      content: '✓';
+      color: var(--accent-light);
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .bill-plan-card__features li.is-limit::before { content: '—'; color: var(--text-faint); }
+
+    /* Subscription log table */
+    .bill-log-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.84rem;
+    }
+    .bill-log-table thead th {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-faint);
+      text-align: left;
+      padding: 0 12px 10px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .bill-log-table tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.12s;
+    }
+    .bill-log-table tbody tr:last-child { border-bottom: none; }
+    .bill-log-table tbody tr:hover { background: rgba(255,255,255,0.025); }
+    .bill-log-table td {
+      padding: 13px 12px;
+      color: var(--text-muted);
+      vertical-align: middle;
+    }
+    .bill-log-table td:first-child { color: var(--text); font-weight: 500; }
+    .bill-log__plan-pill {
+      display: inline-flex;
+      align-items: center;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+    .bill-log__plan-pill--pro {
+      background: rgba(249,115,22,0.12);
+      color: var(--accent-light);
+      border-color: rgba(249,115,22,0.3);
+    }
+    .bill-log__plan-pill--lite {
+      background: rgba(125,211,252,0.08);
+      color: #7dd3fc;
+      border-color: rgba(125,211,252,0.2);
+    }
+    .bill-log__plan-pill--free {
+      background: rgba(138,138,138,0.1);
+      color: var(--text-muted);
+      border-color: var(--border);
+    }
+    .bill-log__invoice-link {
+      color: var(--accent-light);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      text-decoration: none;
+    }
+    .bill-log__invoice-link:hover { text-decoration: underline; }
+
+    /* Empty state */
+    .bill-empty {
+      text-align: center;
+      padding: 56px 24px;
+      color: var(--text-muted);
+    }
+    .bill-empty__icon {
+      width: 40px; height: 40px;
+      margin: 0 auto 16px;
+      stroke: var(--text-faint);
+    }
+    .bill-empty__title {
+      font-family: var(--font-display);
+      font-size: 1.05rem;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .bill-empty__text { font-size: 0.84rem; color: var(--text-muted); }
+
+    /* Info box */
+    .bill-info-box {
+      background: rgba(249,115,22,0.06);
+      border: 1px solid rgba(249,115,22,0.2);
+      border-radius: var(--radius-md);
+      padding: 14px 18px;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .bill-info-box svg {
+      flex-shrink: 0;
+      width: 15px; height: 15px;
+      stroke: var(--accent-light);
+      margin-top: 1px;
+    }
+
+    /* Responsive: stack plan hero */
+    @media (max-width: 640px) {
+      .bill-plan-hero { flex-direction: column; }
+      .bill-plan-hero__right { align-items: flex-start; }
+    }
+  </style>
+</head>
+<body class="dashboard-body">
+
+  <!-- TOP NAVBAR -->
+  <header class="dash-nav">
+    <div class="dash-nav__inner">
+      <div class="dash-nav__left">
+        <button
+          class="sidebar-toggle"
+          id="sidebar-toggle"
+          type="button"
+          aria-label="Toggle sidebar"
+          aria-expanded="true"
+          aria-controls="sidebar"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+            <path d="M9 4v16"></path>
+          </svg>
+        </button>
+
+        <a href="/dashboard" class="brand">Api<span>Forge</span></a>
+
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+          <a href="/dashboard" class="breadcrumb__item">Home</a>
+          <span class="breadcrumb__sep" aria-hidden="true">/</span>
+          <span class="breadcrumb__item breadcrumb__item--current" aria-current="page">Usage &amp; Billing</span>
+        </nav>
+      </div>
+
+      <div class="dash-nav__right">
+        <div class="plan-badge">
+          <span class="plan-badge__tier">Free plan</span>
+          <span class="plan-badge__usage">6/10 tables</span>
+        </div>
+
+        <a href="/new-project?from=billing" class="btn btn--primary btn--sm">+ New project</a>
+
+        <div class="account-menu">
+          <button
+            class="account-menu__trigger"
+            id="account-menu-trigger"
+            type="button"
+            aria-haspopup="true"
+            aria-expanded="false"
+            aria-controls="account-dropdown"
+          >
+            <span class="avatar" aria-hidden="true">S</span>
+            <span class="sr-only">Account menu</span>
+          </button>
+
+          <div class="account-menu__dropdown" id="account-dropdown" role="menu" aria-label="Account">
+            <a href="/profile" role="menuitem">Profile</a>
+            <a href="/logout" role="menuitem" class="is-danger">Sign out</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="dash-shell">
+
+    <!-- LEFT SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+      <nav class="sidebar__nav" aria-label="Primary">
+        <div>
+          <div class="sidebar__group">
+            <span class="sidebar__group-label">Workspace</span>
+            <ul>
+              <li>
+                <a href="/dashboard" class="sidebar__link" data-tooltip="Dashboard">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="7" rx="1.3"></rect>
+                    <rect x="14" y="3" width="7" height="7" rx="1.3"></rect>
+                    <rect x="3" y="14" width="7" height="7" rx="1.3"></rect>
+                    <rect x="14" y="14" width="7" height="7" rx="1.3"></rect>
+                  </svg>
+                  <span>Dashboard</span>
+                </a>
+              </li>
+              <li>
+                <a href="/projects" class="sidebar__link" data-tooltip="Projects">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"></path>
+                  </svg>
+                  <span>Projects</span>
+                </a>
+              </li>
+              <li>
+                <a href="/liked" class="sidebar__link" data-tooltip="Liked">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l8.78-8.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                  </svg>
+                  <span>Liked</span>
+                </a>
+              </li>
+              <li>
+                <a href="/templates" class="sidebar__link" data-tooltip="Templates">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2 3 7l9 5 9-5-9-5z"></path>
+                    <path d="M3 12l9 5 9-5"></path>
+                    <path d="M3 17l9 5 9-5"></path>
+                  </svg>
+                  <span>Templates</span>
+                </a>
+              </li>
+              <li>
+                <a href="/leaderboard" class="sidebar__link" data-tooltip="Leaderboard">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="13" width="4" height="7" rx="1"></rect>
+                    <rect x="10" y="9" width="4" height="11" rx="1"></rect>
+                    <rect x="16" y="5" width="4" height="15" rx="1"></rect>
+                  </svg>
+                  <span>Leaderboard</span>
+                </a>
+              </li>
+              <li>
+                <a href="/notifications" class="sidebar__link" data-tooltip="Notifications">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 8a6 6 0 1 0-12 0c0 3-1.5 4.5-1.5 6.5h15C18 12.5 18 11 18 8z"></path>
+                    <path d="M9.5 17a2.5 2.5 0 0 0 5 0"></path>
+                  </svg>
+                  <span>Notifications</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+
+          <div class="sidebar__group">
+            <span class="sidebar__group-label">Account</span>
+            <ul>
+              <li>
+                <a href="/billing" class="sidebar__link is-active" data-tooltip="Usage &amp; Billing" aria-current="page">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+                    <path d="M2 10h20"></path>
+                  </svg>
+                  <span>Usage &amp; Billing</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <ul class="sidebar__nav--secondary">
+          <li>
+            <a href="/profile" class="sidebar__link" data-tooltip="Profile">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="8" r="3.5"></circle>
+                <path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"></path>
+              </svg>
+              <span>Profile</span>
+            </a>
+          </li>
+        </ul>
+      </nav>
+    </aside>
+
+    <!-- backdrop for off-canvas sidebar on small screens -->
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+    <!-- MAIN CONTENT -->
+    <main class="dash-main">
+      <div class="dash-main__header">
+        <h1>Usage &amp; Billing</h1>
+        <p class="dash-main__subtitle">Manage your subscription, track resource usage, and view billing history.</p>
+      </div>
+
+      <!-- TAB STRIP -->
+      <nav class="billing-tabs" id="billing-tabs" aria-label="Billing sections">
+        <button class="billing-tab is-active" type="button" data-tab="overview">Overview</button>
+        <button class="billing-tab" type="button" data-tab="plans">Plans</button>
+        <button class="billing-tab" type="button" data-tab="history">Billing History</button>
+
+      </nav>
+
+      <!-- ══════════════════════════════════════════
+           TAB 1 — OVERVIEW
+      ══════════════════════════════════════════════ -->
+      <section class="billing-panel is-active" id="tab-overview" aria-label="Overview">
+
+        <!-- Current plan hero -->
+        <div class="bill-plan-hero">
+          <div class="bill-plan-hero__left">
+            <p class="bill-plan-hero__eyebrow">// current plan</p>
+            <h2 class="bill-plan-hero__name">Free <span>Plan</span></h2>
+            <p class="bill-plan-hero__tagline">Perfect for side projects and early exploration.</p>
+            <div class="bill-plan-hero__meta">
+              <span class="bill-meta-chip">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg>
+                Up to 5 Projects
+              </span>
+              <span class="bill-meta-chip">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1H3z"></path><rect x="3" y="8" width="18" height="11" rx="1"></rect></svg>
+                10 Tables / project
+              </span>
+              <span class="bill-meta-chip">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                500 API calls / day
+              </span>
+              <span class="bill-meta-chip">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4l3 3"></path></svg>
+                Community support
+              </span>
+            </div>
+          </div>
+          <div class="bill-plan-hero__right">
+            <span class="bill-status-badge bill-status-badge--active">Active</span>
+            <div class="bill-plan-hero__price">$0<sub>&nbsp;/ mo</sub></div>
+            <p class="bill-plan-hero__renew">No renewal — free forever.</p>
+            <a href="#" class="btn btn--primary btn--sm" data-tab-target="plans" id="upgrade-from-overview">Upgrade plan →</a>
+          </div>
+        </div>
+
+        <!-- Pending payment note -->
+        <div class="bill-info-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+          <span>You have already a pending payment. If you have paid the money but it's still pending, then contact the ApiForge team. Otherwise, leave it.</span>
+        </div>
+
+      </section>
+
+      <!-- ══════════════════════════════════════════
+           TAB 2 — PLANS
+      ══════════════════════════════════════════════ -->
+      <section class="billing-panel" id="tab-plans" aria-label="Plans">
+
+        <div class="bill-section-head" style="margin-bottom:20px;">
+          <h2>Choose a plan</h2>
+          <span style="font-family:var(--font-mono);font-size:0.72rem;color:var(--text-faint);">All prices in USD · billed monthly</span>
+        </div>
+
+        <div class="bill-plans-grid">
+
+          <!-- FREE -->
+          <div class="bill-plan-card bill-plan-card--current">
+            <span class="bill-plan-card__current-badge">Current plan</span>
+            <h3 class="bill-plan-card__name">Free</h3>
+            <p class="bill-plan-card__tagline">For hobby projects &amp; exploration.</p>
+            <div class="bill-plan-card__price">$0<sub>&nbsp;/ mo</sub></div>
+            <ul class="bill-plan-card__features">
+              <li>Up to 5 projects</li>
+              <li>10 tables per project</li>
+              <li>10 APIs per project</li>
+              <li>500 API calls / day</li>
+              <li>3 collaborators per project</li>
+              <li>3 templates publishable</li>
+              <li>Community support</li>
+              <li class="is-limit">No custom domains</li>
+              <li class="is-limit">No analytics dashboard</li>
+            </ul>
+            <button class="btn btn--ghost" type="button" disabled style="opacity:0.45;cursor:not-allowed;">Current plan</button>
+          </div>
+
+          <!-- LITE -->
+          <div class="bill-plan-card bill-plan-card--popular">
+            <span class="bill-plan-card__badge">Most popular</span>
+            <h3 class="bill-plan-card__name">Lite</h3>
+            <p class="bill-plan-card__tagline">For growing teams and serious builders.</p>
+            <div class="bill-plan-card__price">$9<sub>&nbsp;/ mo</sub></div>
+            <ul class="bill-plan-card__features">
+              <li>Up to 20 projects</li>
+              <li>50 tables per project</li>
+              <li>50 APIs per project</li>
+              <li>10,000 API calls / day</li>
+              <li>10 collaborators per project</li>
+              <li>Unlimited templates</li>
+              <li>Email &amp; chat support</li>
+              <li>API analytics (7-day window)</li>
+              <li class="is-limit">No custom domains</li>
+            </ul>
+            <button class="btn btn--primary" type="button">Upgrade to Lite →</button>
+          </div>
+
+          <!-- PRO -->
+          <div class="bill-plan-card">
+            <h3 class="bill-plan-card__name">Pro</h3>
+            <p class="bill-plan-card__tagline">For production APIs and power users.</p>
+            <div class="bill-plan-card__price">$29<sub>&nbsp;/ mo</sub></div>
+            <ul class="bill-plan-card__features">
+              <li>Unlimited projects</li>
+              <li>Unlimited tables</li>
+              <li>Unlimited APIs</li>
+              <li>100,000 API calls / day</li>
+              <li>Unlimited collaborators</li>
+              <li>Unlimited templates</li>
+              <li>Priority support &amp; SLA</li>
+              <li>API analytics (90-day window)</li>
+              <li>Custom domains &amp; CORS</li>
+            </ul>
+            <button class="btn btn--primary" type="button">Upgrade to Pro →</button>
+          </div>
+
+        </div>
+
+        <!-- Feature comparison note -->
+        <div class="bill-info-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+          <span>Upgrading is instant. Downgrading takes effect at the end of your billing cycle. You will never be charged without confirmation.</span>
+        </div>
+
+      </section>
+
+      <!-- ══════════════════════════════════════════
+           TAB 3 — BILLING HISTORY
+      ══════════════════════════════════════════════ -->
+      <section class="billing-panel" id="tab-history" aria-label="Billing history">
+
+        <div class="bill-section-head">
+          <h2>Subscription history</h2>
+          <button class="btn btn--ghost btn--sm" type="button" style="font-size:0.78rem;">Export CSV</button>
+        </div>
+
+        <div class="panel">
+          <table class="bill-log-table" aria-label="Subscription logs">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Plan</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Period</th>
+                <th>Invoice</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Sep 1, 2026</td>
+                <td><span class="bill-log__plan-pill bill-log__plan-pill--free">Free</span></td>
+                <td style="font-family:var(--font-mono);">$0.00</td>
+                <td><span class="bill-status-badge bill-status-badge--active">Active</span></td>
+                <td style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-faint);">Sep 1 – Sep 30</td>
+                <td>—</td>
+              </tr>
+              <tr>
+                <td>Aug 1, 2026</td>
+                <td><span class="bill-log__plan-pill bill-log__plan-pill--lite">Lite</span></td>
+                <td style="font-family:var(--font-mono);">$9.00</td>
+                <td><span class="bill-status-badge bill-status-badge--expired">Expired</span></td>
+                <td style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-faint);">Aug 1 – Aug 31</td>
+                <td><a href="#" class="bill-log__invoice-link">INV-0042 ↗</a></td>
+              </tr>
+              <tr>
+                <td>Jul 1, 2026</td>
+                <td><span class="bill-log__plan-pill bill-log__plan-pill--lite">Lite</span></td>
+                <td style="font-family:var(--font-mono);">$9.00</td>
+                <td><span class="bill-status-badge bill-status-badge--expired">Expired</span></td>
+                <td style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-faint);">Jul 1 – Jul 31</td>
+                <td><a href="#" class="bill-log__invoice-link">INV-0031 ↗</a></td>
+              </tr>
+              <tr>
+                <td>Jun 1, 2026</td>
+                <td><span class="bill-log__plan-pill bill-log__plan-pill--pro">Pro</span></td>
+                <td style="font-family:var(--font-mono);">$29.00</td>
+                <td><span class="bill-status-badge bill-status-badge--expired">Expired</span></td>
+                <td style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-faint);">Jun 1 – Jun 30</td>
+                <td><a href="#" class="bill-log__invoice-link">INV-0019 ↗</a></td>
+              </tr>
+              <tr>
+                <td>May 1, 2026</td>
+                <td><span class="bill-log__plan-pill bill-log__plan-pill--pro">Pro</span></td>
+                <td style="font-family:var(--font-mono);">$29.00</td>
+                <td><span class="bill-status-badge bill-status-badge--expired">Expired</span></td>
+                <td style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-faint);">May 1 – May 31</td>
+                <td><a href="#" class="bill-log__invoice-link">INV-0008 ↗</a></td>
+              </tr>
+              <tr>
+                <td>Apr 15, 2026</td>
+                <td><span class="bill-log__plan-pill bill-log__plan-pill--free">Free</span></td>
+                <td style="font-family:var(--font-mono);">$0.00</td>
+                <td><span class="bill-status-badge bill-status-badge--expired">Expired</span></td>
+                <td style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-faint);">Apr 15 – Apr 30</td>
+                <td>—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination hint -->
+        <p style="font-family:var(--font-mono);font-size:0.72rem;color:var(--text-faint);margin-top:12px;text-align:right;">
+          Showing 6 of 6 entries
+        </p>
+
+      </section>
+
+    </main>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/auth-guard.js"></script>
+  <script src="js/dashboard.js"></script>
+  <script>
+    /* ── Billing page tab logic ── */
+    (function () {
+      var tabs    = document.querySelectorAll('.billing-tab');
+      var panels  = document.querySelectorAll('.billing-panel');
+
+      function activateTab(name) {
+        tabs.forEach(function (t) {
+          t.classList.toggle('is-active', t.dataset.tab === name);
+        });
+        panels.forEach(function (p) {
+          p.classList.toggle('is-active', p.id === 'tab-' + name);
+        });
+      }
+
+      tabs.forEach(function (tab) {
+        tab.addEventListener('click', function () { activateTab(tab.dataset.tab); });
+      });
+
+      /* "Upgrade plan →" button on Overview tab jumps to Plans tab */
+      var upgradeBtn = document.getElementById('upgrade-from-overview');
+      if (upgradeBtn) {
+        upgradeBtn.addEventListener('click', function (e) {
+          e.preventDefault();
+          activateTab('plans');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+      }
+
+      /* Open tab from URL hash: /billing#plans */
+      var hash = window.location.hash.slice(1);
+      if (hash && document.getElementById('tab-' + hash)) {
+        activateTab(hash);
+      }
+    })();
+  </script>
+</body>
+</html>

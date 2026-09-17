@@ -17,6 +17,7 @@ router.get('/template/:templateId', (req, res) => res.sendFile(path.join(pages, 
 router.get('/my-template/:templateId', (req, res) => res.sendFile(path.join(pages, 'view-template.html')));
 router.get('/leaderboard',   (req, res) => res.sendFile(path.join(pages, 'leaderboard.html')));
 router.get('/profile',       (req, res) => res.sendFile(path.join(pages, 'profile.html')));
+router.get('/billing',       (req, res) => res.sendFile(path.join(pages, 'billing.html')));
 router.get('/project/:projectId', (req, res) => res.sendFile(path.join(pages, 'view-project.html')));
 router.get('/logout',        async (req, res) => {
   try {

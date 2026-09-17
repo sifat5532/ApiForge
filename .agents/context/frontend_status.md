@@ -47,6 +47,7 @@ frontend/
 | Leaderboard | `pages/leaderboard.html` | `js/dashboard.js`, `js/leaderboard.js` | ✅ Complete |
 | Logout route | N/A (`/logout`) | Backend `/auth/logout` bridge | ✅ Complete |
 | Settings | `pages/settings.html` | `js/dashboard.js`, `js/settings.js` | ✅ Complete |
+| Usage & Billing | `pages/billing.html` | `js/dashboard.js` (inline tab JS) | ✅ Complete |
 
 ---
 
@@ -57,7 +58,6 @@ Do not create these pages unless explicitly instructed. See Rule §7 in `fronten
 
 | Sidebar / UI label | Target file | Stub `href` / `data-stub` |
 |---|---|---|
-| Usage & Billing | `pages/billing.html` | `href="#" data-stub="billing"` |
 | Profile | `pages/profile.html` | `href="#" data-stub="profile"` |
 
 ---
