@@ -336,14 +336,16 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 
 CREATE TABLE IF NOT EXISTS subscription_log (
    log_id serial PRIMARY KEY,
-   subscription_id INTEGER NOT NULL,
+   user_id INTEGER NOT NULL,
+   plan_id INTEGER NOT NULL,
    trxn_id VARCHAR(30),
    payment_method VARCHAR(20),
    payment_status VARCHAR(15) NOT NULL DEFAULT 'free',
    amount NUMERIC(20, 4) NOT NULL DEFAULT 0 CONSTRAINT chk_subscription_log_amount CHECK (amount >= 0),
    month_count INTEGER,
    created_at TIMESTAMP(0) NOT NULL DEFAULT now(),
-   CONSTRAINT fk_subscription_log_subscription_id FOREIGN KEY (subscription_id) REFERENCES subscriptions (subscription_id) ON DELETE CASCADE,
+   CONSTRAINT fk_subscription_log_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+   CONSTRAINT fk_subscription_log_plan_id FOREIGN KEY (plan_id) REFERENCES plans (plan_id) ON DELETE RESTRICT,
    CONSTRAINT chk_subscription_log_month_count CHECK (
       (
          payment_status = 'free'
@@ -1285,10 +1287,11 @@ EXECUTE FUNCTION tgfunc_create_template ();
 ------------------------------Subscription trigger-----------------------------
 CREATE OR REPLACE FUNCTION tgfunc_add_free_subscription () RETURNS TRIGGER LANGUAGE plpgsql AS $$ 
   DECLARE 
-  v_subscription_id INTEGER;
+  free_plan_id INTEGER;
   BEGIN 
-    INSERT INTO subscriptions(user_id, plan_id, status) VALUES(NEW.id, 1, 'active') RETURNING subscription_id INTO v_subscription_id ;
-    INSERT INTO subscription_log(subscription_id)  VALUES(v_subscription_id);
+      SELECT plan_id INTO free_plan_id FROM plans WHERE name = 'free';
+      INSERT INTO subscriptions(user_id, plan_id, status) VALUES(NEW.id, free_plan_id, 'active');
+      INSERT INTO subscription_log(user_id, plan_id)  VALUES(NEW.id, free_plan_id);
    RETURN NEW;
    END ;
    $$;
