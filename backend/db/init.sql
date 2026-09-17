@@ -344,6 +344,7 @@ CREATE TABLE IF NOT EXISTS subscription_log (
    amount NUMERIC(20, 4) NOT NULL DEFAULT 0 CONSTRAINT chk_subscription_log_amount CHECK (amount >= 0),
    month_count INTEGER,
    created_at TIMESTAMP(0) NOT NULL DEFAULT now(),
+   updated_at TIMESTAMP(0),
    CONSTRAINT fk_subscription_log_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
    CONSTRAINT fk_subscription_log_plan_id FOREIGN KEY (plan_id) REFERENCES plans (plan_id) ON DELETE RESTRICT,
    CONSTRAINT chk_subscription_log_month_count CHECK (
