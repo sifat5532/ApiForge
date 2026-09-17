@@ -1100,6 +1100,17 @@ BEGIN
                result := result || jsonb_build_object(k , COALESCE(table_map -> (v #>> '{}'), v));        
          ELSIF k = 'col_id' AND jsonb_typeof(v) = 'number'  THEN 
                result := result || jsonb_build_object(k , COALESCE(col_map -> (v #>> '{}'), v));
+         ELSIF k IN ('column_id_array' , 'returning_cols_id') AND jsonb_typeof(v) = 'array' THEN 
+              -- bare array of column ids -> array of {col_id}
+              arr := '[]'::jsonb;
+              FOR elem IN SELECT * FROM jsonb_array_elements(v) LOOP 
+                 arr := arr||jsonb_build_array(
+                  jsonb_build_object(
+                     'col_id'  , COALESCE(col_map -> (elem #>> '{}'), elem)
+                  )
+                 );
+         END LOOP;
+         result := result || jsonb_build_object(k , arr);
          ELSE 
                result := result || jsonb_build_object(k , remap_query_ids( v , table_map , col_map ));        
          END IF;
@@ -1116,8 +1127,82 @@ BEGIN
 END ;
 $$;                      
          
-   
+ ----FUNCTIONs to describe api_definitions for templates the describe_api_definition will call in backend --------------------
+ CREATE OR REPLACE FUNCTION annotate_query_ids( input jsonb , table_map jsonb , col_map jsonb)
+ RETURNS jsonb LANGUAGE plpgsql AS $$
+ DECLARE 
+     result jsonb;
+     k text ;
+     v jsonb;
+     elem jsonb;
+     arr jsonb := '[]'::jsonb;
+BEGIN 
+     IF input IS NULL THEN 
+        RETURN NULL;
+     END IF;
+     IF jsonb_typeof(input) = 'object'  THEN 
+       result := '{}'::jsonb;
+       FOR k , v IN SELECT * FROM jsonb_each(input) LOOP 
+         IF k = 'table_id' AND jsonb_typeof(v) = 'number'  THEN 
+               result := result || jsonb_build_object(k , v) || 
+               jsonb_build_object('table_name', COALESCE(table_map -> (v #>> '{}'), 'null'::jsonb));     
+         ELSIF k = 'col_id' AND jsonb_typeof(v) = 'number'  THEN 
+               result := result || jsonb_build_object(k , v ) ||
+                jsonb_build_object('col_name', COALESCE(col_map -> (v #>> '{}'), 'null'::jsonb));     
+         ELSIF k IN ('column_id_array' , 'returning_cols_id') AND jsonb_typeof(v) = 'array' THEN 
+              -- bare array of column ids -> array of {col_id}
+              arr := '[]'::jsonb;
+              FOR elem IN SELECT * FROM jsonb_array_elements(v) LOOP 
+                 arr := arr||jsonb_build_array(
+                  jsonb_build_object(
+                     'col_id'  , COALESCE(elem) ,
+                     'col_name' , COALESCE( col_map -> (elem #>> '{}') , 'null' :: jsonb)
+                  )
+                 );
+         END LOOP;
+         result := result || jsonb_build_object(k , arr);
+         ELSE 
+               result := result || jsonb_build_object(k , annotate_query_ids( v , table_map , col_map ));        
+         END IF;
+         END LOOP;
+         RETURN result;
+     ELSIF jsonb_typeof(input) = 'array' THEN 
+        FOR elem IN SELECT * FROM jsonb_array_elements(input)  LOOP 
+               arr := arr || jsonb_build_array(annotate_query_ids(elem , table_map , col_map));        
+         END LOOP;
+         RETURN arr;
+     ELSE 
+         RETURN input;
+     END IF;
+END ;
+$$;          
+CREATE OR REPLACE FUNCTION describe_api_definition( p_api_definition_id int)
+RETURNS jsonb LANGUAGE plpgsql AS $$ 
+DECLARE 
+  v_project_id int ;
+  v_query jsonb ;
+  v_table_map jsonb ;
+  v_col_map jsonb;
+BEGIN 
+   SELECT project_id  , query_definition 
+   INTO v_project_id , v_query 
+   FROM api_definitions 
+   WHERE id = p_api_definition_id;
 
+   SELECT COALESCE(jsonb_object_agg( id::text , table_name ) , '{}'::jsonb) 
+   INTO v_table_map 
+   FROM schema_tables
+   WHERE project_id = v_project_id;
+   
+   SELECT COALESCE(jsonb_object_agg( sc.id::text , sc.col_name ) , '{}'::jsonb) 
+   INTO v_col_map 
+   FROM schema_columns sc
+   JOIN schema_tables st ON st.id = sc.schema_table_id
+   WHERE st.project_id = v_project_id;
+   RETURN annotate_query_ids( v_query , v_table_map , v_col_map );
+
+END;  
+$$;
 -- we need to insert a row into the project_logs table that a new table has been inserted, it will be implemented later
 -------------------------------Clone Template------------------------------------
 CREATE OR REPLACE FUNCTION tgfunc_clone_template () RETURNS TRIGGER LANGUAGE plpgsql AS $$
@@ -1130,6 +1215,9 @@ DECLARE
     col_id INTEGER;
     v_table_map jsonb;
     v_col_map jsonb;
+    api_table_dep RECORD ;
+    api_col_dep RECORD ;
+    api_def_id INTEGER;
 BEGIN
     IF NEW.is_clone = FALSE OR NEW.cloned_from_id IS NULL THEN
         RETURN NEW;
@@ -1192,7 +1280,20 @@ BEGIN
          api_def.method,
          remap_query_ids(api_def.query_definition , v_table_map , v_col_map), 
          true, 
-         api_def.rate_limit_per_day);
+         api_def.rate_limit_per_day)
+         RETURNING id INTO api_def_id;
+              FOR api_table_dep IN 
+          SELECT * FROM api_table_dependencies WHERE api_definition_id = api_def.id
+          LOOP
+          INSERT INTO api_table_dependencies(api_definition_id , schema_table_id , usage_context) 
+          VALUES (api_def_id , (v_table_map ->> api_table_dep.schema_table_id::text)::integer , api_table_dep.usage_context);
+          END LOOP;
+         FOR api_col_dep IN
+          SELECT * FROM api_column_dependencies WHERE api_definition_id = api_def.id
+          LOOP
+          INSERT INTO api_column_dependencies(api_definition_id , schema_col_id , usage_context) 
+          VALUES (api_def_id , (v_col_map ->> api_col_dep.schema_col_id::text)::integer , api_col_dep.usage_context);
+          END LOOP;
     END LOOP;
 
     RETURN NEW;
@@ -1214,6 +1315,9 @@ DECLARE
     col_id INTEGER;
     v_table_map jsonb;
     v_col_map jsonb;
+   api_table_dep RECORD ;
+    api_col_dep RECORD ;
+    api_def_id INTEGER;
 BEGIN
     IF NEW.is_template = FALSE OR NEW.originates_from_id IS NULL THEN
         RETURN NEW;
@@ -1274,9 +1378,20 @@ BEGIN
           api_def.method, 
           remap_query_ids(api_def.query_definition , v_table_map , v_col_map),
           false, 
-          api_def.rate_limit_per_day);
+          api_def.rate_limit_per_day) RETURNING id INTO api_def_id;
+          FOR api_table_dep IN
+          SELECT * FROM api_table_dependencies WHERE api_definition_id = api_def.id
+          LOOP
+          INSERT INTO api_table_dependencies(api_definition_id , schema_table_id , usage_context) 
+          VALUES (api_def_id , (v_table_map ->> api_table_dep.schema_table_id::text)::integer , api_table_dep.usage_context);
+          END LOOP;
+         FOR api_col_dep IN
+          SELECT * FROM api_column_dependencies WHERE api_definition_id = api_def.id
+          LOOP
+          INSERT INTO api_column_dependencies(api_definition_id , schema_col_id , usage_context) 
+          VALUES (api_def_id , (v_col_map ->> api_col_dep.schema_col_id::text)::integer , api_col_dep.usage_context);
+          END LOOP;
     END LOOP;
-
     RETURN NEW;
 END;
 $$;
