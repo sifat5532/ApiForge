@@ -131,7 +131,10 @@ router.get('/verify', requireAuth, async (req, res) => {
                 [result.status, paymentId]
             );
         }
-        res.status(response.status).json({ paymentStatus });
+        if(result.status != 'succeeded' || result.status != 'canceled'){
+            return res.status(200).json({ paymentStatus: 'pending'});
+        }
+        res.status(200).json({ paymentStatus });
     } catch (err) {
         console.error('Gateway request failed:', err);
         res.status(500).json({ msg: err.message });

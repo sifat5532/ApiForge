@@ -477,6 +477,117 @@
       .bill-plan-hero { flex-direction: column; }
       .bill-plan-hero__right { align-items: flex-start; }
     }
+
+    /* ── Modals ── */
+    .bill-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(8,8,10,0.72);
+      backdrop-filter: blur(3px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 1000;
+      animation: bill-fade 0.15s ease;
+    }
+    @keyframes bill-fade { from { opacity: 0; } to { opacity: 1; } }
+    .bill-modal {
+      background: var(--surface-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      width: 100%;
+      max-width: 420px;
+      padding: 26px 26px 22px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      animation: bill-pop 0.18s ease;
+    }
+    @keyframes bill-pop { from { transform: translateY(8px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
+    .bill-modal__title {
+      font-family: var(--font-display);
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--text);
+      margin: 0 0 16px;
+    }
+    .bill-modal__body { margin-bottom: 20px; }
+    .bill-modal__label {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-faint);
+      margin-bottom: 8px;
+    }
+    .bill-modal__select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      color: var(--text);
+      font-family: var(--font-body);
+      font-size: 0.9rem;
+      padding: 11px 12px;
+      outline: none;
+      cursor: pointer;
+    }
+    .bill-modal__select:focus { border-color: var(--accent); }
+    .bill-modal__total {
+      margin-top: 16px;
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+    .bill-modal__total span {
+      color: var(--accent-light);
+      font-weight: 700;
+      font-size: 1.05rem;
+    }
+    .bill-modal__error {
+      margin-top: 12px;
+      font-size: 0.8rem;
+      color: var(--error);
+    }
+    .bill-modal__actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+    .bill-modal--center { text-align: center; }
+    .bill-modal__summary {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin: 18px 0;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      text-align: left;
+    }
+    .bill-modal__summary > div {
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+    .bill-modal__summary strong { color: var(--text); }
+    .bill-modal__note {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+    .bill-spinner {
+      width: 42px; height: 42px;
+      border: 3px solid rgba(249,115,22,0.2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      margin: 0 auto 8px;
+      animation: bill-spin 0.8s linear infinite;
+    }
+    @keyframes bill-spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body class="dashboard-body">
@@ -760,6 +871,9 @@
     </main>
   </div>
 
+  <!-- Shared modal root -->
+  <div id="bill-modal-root"></div>
+
   <script src="js/config.js"></script>
   <script src="js/auth-guard.js"></script>
   <script src="js/dashboard.js"></script>
@@ -887,6 +1001,7 @@
             +   btn
             + '</div>';
         }).join('');
+        bindPlanButtons(plans);
       }).catch(function () {
         var grid = document.getElementById('plans-grid');
         if (grid) grid.innerHTML = '<p class="bill-empty__text">Unable to load plans.</p>';
@@ -963,6 +1078,225 @@
             + 'Unable to load billing history.</td></tr>';
         }
       });
+
+      /* ── Modal helpers ── */
+      var modalRoot = document.getElementById('bill-modal-root');
+
+      function closeModal() {
+        modalRoot.innerHTML = '';
+      }
+
+      function buildModal(innerHTML) {
+        modalRoot.innerHTML =
+          '<div class="bill-modal-overlay" id="bill-modal-overlay">' +
+            '<div class="bill-modal" role="dialog" aria-modal="true">' +
+              innerHTML +
+            '</div>' +
+          '</div>';
+        var overlay = document.getElementById('bill-modal-overlay');
+        overlay.addEventListener('click', function (e) {
+          if (e.target === overlay && !overlay.dataset.uncancellable) closeModal();
+        });
+        return overlay;
+      }
+
+      function apiPost(path, body) {
+        return fetch(backendUrl + path, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        }).then(function (r) { return r.json(); });
+      }
+
+      /* ── Month-select modal for Lite / Pro upgrade ── */
+      function openMonthSelectModal(plan) {
+        var months = [];
+        for (var i = 1; i <= 12; i++) months.push(i);
+        var options = months.map(function (m) {
+          return '<option value="' + m + '">' + m + (m === 1 ? ' month' : ' months') + '</option>';
+        }).join('');
+
+        var overlay = buildModal(
+          '<h3 class="bill-modal__title">Upgrade to ' + esc(plan.name) + '</h3>' +
+          '<div class="bill-modal__body">' +
+            '<label class="bill-modal__label" for="bill-month-select">Select duration</label>' +
+            '<select class="bill-modal__select" id="bill-month-select">' + options + '</select>' +
+            '<div class="bill-modal__total">Total cost: <span id="bill-total">৳' +
+              (Number(plan.cost_per_month) || 0) + '</span></div>' +
+            '<div class="bill-modal__error" id="bill-month-error" style="display:none;"></div>' +
+          '</div>' +
+          '<div class="bill-modal__actions">' +
+            '<button class="btn btn--ghost" type="button" id="bill-month-cancel">Cancel</button>' +
+            '<button class="btn btn--primary" type="button" id="bill-month-pay">Pay now</button>' +
+          '</div>'
+        );
+
+        var select = document.getElementById('bill-month-select');
+        var totalEl = document.getElementById('bill-total');
+        var price = Number(plan.cost_per_month) || 0;
+
+        select.addEventListener('change', function () {
+          totalEl.textContent = '৳' + (price * Number(select.value));
+        });
+
+        document.getElementById('bill-month-cancel').addEventListener('click', closeModal);
+
+        document.getElementById('bill-month-pay').addEventListener('click', function () {
+          var month = Number(select.value);
+          var errEl = document.getElementById('bill-month-error');
+          errEl.style.display = 'none';
+
+          apiPost('/payment/subscribe', { plan_id: plan.plan_id, month: month })
+            .then(function (data) {
+              if (data.done === false && data.paymentUrl) {
+                window.open(data.paymentUrl, '_blank');
+                openPaymentPendingModal(plan, month, price * month, data.paymentID);
+              } else if (data.msg) {
+                showInfoModal(data.msg);
+              } else {
+                errEl.textContent = 'Something went wrong. Please try again.';
+                errEl.style.display = 'block';
+              }
+            })
+            .catch(function () {
+              errEl.textContent = 'Network error. Please try again.';
+              errEl.style.display = 'block';
+            });
+        });
+      }
+
+      /* ── Uncancellable "payment going on" modal ── */
+      function openPaymentPendingModal(plan, month, amount, paymentID) {
+        var overlay = buildModal(
+          '<div class="bill-modal--center" id="bill-pending-body">' +
+            '<div class="bill-spinner"></div>' +
+            '<h3 class="bill-modal__title">Payment in progress</h3>' +
+            '<div class="bill-modal__summary">' +
+              '<div><span>Plan</span><strong>' + esc(plan.name) + '</strong></div>' +
+              '<div><span>Duration</span><strong>' + month + (month === 1 ? ' month' : ' months') + '</strong></div>' +
+              '<div><span>Total amount</span><strong>৳' + amount + '</strong></div>' +
+            '</div>' +
+            '<p class="bill-modal__note" id="bill-pending-note">Payment is going on. Please complete it in the opened tab. Please pay correctly — do not close this window until the payment is confirmed.</p>' +
+          '</div>'
+        );
+        overlay.dataset.uncancellable = 'true';
+
+        var pollTimer = setInterval(function () {
+          fetch(backendUrl + '/view/billingHistory', {
+            method: 'GET',
+            credentials: 'include'
+          })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+              var logs = data.logs || [];
+              var match = logs.filter(function (row) {
+                return String(row.trxn_id) === String(paymentID);
+              })[0];
+              if (!match) return; /* not recorded yet → keep polling */
+              var status = (match.status || '').toLowerCase();
+              if (status === 'pending') return; /* still pending → keep polling */
+              clearInterval(pollTimer);
+              renderPaymentResult(plan, month, amount, status);
+            })
+            .catch(function () { /* network error → keep polling */ });
+        }, 2000);
+      }
+
+      function renderPaymentResult(plan, month, amount, status) {
+        var succeeded = (status === 'succeeded');
+        var title = succeeded ? 'Payment successful' : 'Payment cancelled';
+        var note = succeeded
+          ? 'Your payment was completed successfully. Your plan is now active.'
+          : 'Your payment was cancelled. No amount was deducted and your plan was not changed.';
+
+        var overlay = buildModal(
+          '<div class="bill-modal--center">' +
+            '<h3 class="bill-modal__title">' + title + '</h3>' +
+            '<div class="bill-modal__summary">' +
+              '<div><span>Plan</span><strong>' + esc(plan.name) + '</strong></div>' +
+              '<div><span>Duration</span><strong>' + month + (month === 1 ? ' month' : ' months') + '</strong></div>' +
+              '<div><span>Total amount</span><strong>৳' + amount + '</strong></div>' +
+            '</div>' +
+            '<p class="bill-modal__note">' + esc(note) + '</p>' +
+            '<div class="bill-modal__actions" style="justify-content:center;margin-top:18px;">' +
+              '<button class="btn btn--primary" type="button" id="bill-result-refresh">Refresh page</button>' +
+            '</div>' +
+          '</div>'
+        );
+        document.getElementById('bill-result-refresh').addEventListener('click', function () {
+          window.location.reload();
+        });
+      }
+
+      /* ── Generic info modal with refresh button ── */
+      function showInfoModal(msg) {
+        var overlay = buildModal(
+          '<h3 class="bill-modal__title">Notice</h3>' +
+          '<p class="bill-modal__note">' + esc(msg) + '</p>' +
+          '<div class="bill-modal__actions" style="margin-top:18px;">' +
+            '<button class="btn btn--primary" type="button" id="bill-info-refresh">Refresh page</button>' +
+          '</div>'
+        );
+        document.getElementById('bill-info-refresh').addEventListener('click', function () {
+          window.location.reload();
+        });
+      }
+
+      /* ── Switch-to-free confirm modal ── */
+      function openDowngradeToFreeModal(freePlan) {
+        var overlay = buildModal(
+          '<h3 class="bill-modal__title">Switch to Free plan?</h3>' +
+          '<p class="bill-modal__note">Do you want to switch to the Free plan? Your current plan will become inactive immediately.</p>' +
+          '<div class="bill-modal__actions">' +
+            '<button class="btn btn--ghost" type="button" id="bill-free-cancel">Cancel</button>' +
+            '<button class="btn btn--primary" type="button" id="bill-free-confirm">Yes, switch</button>' +
+          '</div>'
+        );
+
+        document.getElementById('bill-free-cancel').addEventListener('click', closeModal);
+        document.getElementById('bill-free-confirm').addEventListener('click', function () {
+          apiPost('/payment/subscribe', { plan_id: freePlan.plan_id })
+            .then(function (data) {
+              if (data.done === true) {
+                showInfoModal(data.msg || 'Subscribed to free plan successfully');
+              } else if (data.msg) {
+                showInfoModal(data.msg);
+              } else {
+                showInfoModal('Something went wrong. Please try again.');
+              }
+            })
+            .catch(function () {
+              showInfoModal('Network error. Please try again.');
+            });
+        });
+      }
+
+      /* ── Wire up plan card buttons after render ── */
+      function bindPlanButtons(plans) {
+        var grid = document.getElementById('plans-grid');
+        if (!grid) return;
+        grid.querySelectorAll('.bill-plan-card').forEach(function (card) {
+          var nameEl = card.querySelector('.bill-plan-card__name');
+          if (!nameEl) return;
+          var planName = nameEl.textContent.trim().toLowerCase();
+          var btn = card.querySelector('button.btn--primary');
+          if (!btn) return;
+
+          var plan = plans.filter(function (p) {
+            return (p.name || '').toLowerCase() === planName;
+          })[0];
+          if (!plan) return;
+
+          btn.addEventListener('click', function () {
+            if (planName === 'free') {
+              openDowngradeToFreeModal(plan);
+            } else {
+              openMonthSelectModal(plan);
+            }
+          });
+        });
+      }
     })();
   </script>
 </body>
