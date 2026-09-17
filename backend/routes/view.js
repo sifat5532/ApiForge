@@ -329,7 +329,7 @@ router.get('/templateDetails/:templateId', async (req, res) => {
                          json_build_object (
                            'id' , ad.id ,
                            'name' , ad.name ,
-                           'query_definition' , ad.query_definition ,
+                           'query_definition' , describe_api_definition(ad.id) ,
                            'rate_limit_per_day' , ad.rate_limit_per_day 
                          ) ORDER BY ad.name) AS definitions 
                           FROM api_definitions ad 

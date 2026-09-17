@@ -320,7 +320,6 @@
     body.innerHTML = apis.map(function (api, i) {
       var method = inferMethod(api);
       var rate = api.rate_limit_per_day != null ? api.rate_limit_per_day + '/day' : '—';
-      var code = formatQueryDef(api.query_definition);
       var open = i === 0 ? ' is-open' : '';
       var expanded = i === 0 ? 'true' : 'false';
       return '<article class="vt-api-card' + open + '">' +
@@ -331,7 +330,7 @@
           '<span class="vt-table-card__chevron" aria-hidden="true"></span>' +
         '</button>' +
         '<div class="vt-api-card__body">' +
-          '<pre class="vt-code"><code>' + highlightJson(code) + '</code></pre>' +
+          renderQueryDefinitionVisual(api.query_definition) +
         '</div>' +
       '</article>';
     }).join('');
@@ -343,6 +342,242 @@
         btn.setAttribute('aria-expanded', String(openNow));
       });
     });
+
+    /* Collapsible qv-section and qv-group-box toggles */
+    body.querySelectorAll('.qv-section__header').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        btn.closest('.qv-section').classList.toggle('is-open');
+      });
+    });
+    body.querySelectorAll('.qv-group-box__toggle').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        btn.closest('.qv-group-box').classList.toggle('is-collapsed');
+      });
+    });
+  }
+
+  /* ------------------------------------------------------------------ *
+   *  Query Definition Visual Renderer
+   * ------------------------------------------------------------------ */
+
+  function renderQueryDefinitionVisual(def) {
+    var d = def;
+    if (typeof d === 'string') {
+      try { d = JSON.parse(d); } catch (_) { d = null; }
+    }
+    if (!d || typeof d !== 'object') {
+      return '<p class="qv-empty-inline" style="padding:12px 0;">No query definition available.</p>';
+    }
+
+    var selectObj       = d.select_obj || null;
+    var joinArr         = Array.isArray(d.join_obj_array) ? d.join_obj_array : [];
+    var whereArr        = Array.isArray(d.where) ? d.where : [];
+    var groupByArr      = Array.isArray(d.group_by_cols_array) ? d.group_by_cols_array : [];
+    var havingArr       = Array.isArray(d.having) ? d.having : [];
+
+    var html = '<div class="qv-root">';
+
+    /* ── SELECT / FROM ── */
+    html += qvSection('SELECT', renderSelectSection(selectObj), true);
+
+    /* ── JOINs ── */
+    if (joinArr.length > 0) {
+      html += qvSection('JOINs', renderJoinsSection(joinArr), true, joinArr.length);
+    }
+
+    /* ── WHERE ── */
+    if (whereArr.length > 0) {
+      html += qvSection('WHERE filters', renderFilterGroup(whereArr, 0), true, whereArr.length);
+    }
+
+    /* ── GROUP BY ── */
+    if (groupByArr.length > 0) {
+      html += qvSection('GROUP BY', renderGroupBySection(groupByArr), true, groupByArr.length);
+    }
+
+    /* ── HAVING ── */
+    if (havingArr.length > 0) {
+      html += qvSection('HAVING filters', renderFilterGroup(havingArr, 0), true, havingArr.length);
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  function qvSection(label, bodyHtml, openByDefault, count) {
+    var openClass = openByDefault ? ' is-open' : '';
+    var countBadge = count != null
+      ? '<span class="qv-section__count">' + esc(String(count)) + '</span>'
+      : '';
+    return '<div class="qv-section' + openClass + '">' +
+      '<button class="qv-section__header" type="button">' +
+        '<span class="qv-section__label">' + esc(label) + '</span>' +
+        countBadge +
+        '<span class="qv-section__chevron" aria-hidden="true"></span>' +
+      '</button>' +
+      '<div class="qv-section__body">' + bodyHtml + '</div>' +
+    '</div>';
+  }
+
+  function renderSelectSection(selectObj) {
+    if (!selectObj) return '<p class="qv-empty-inline">No SELECT defined.</p>';
+
+    var tableName = selectObj.table_name || ('table #' + selectObj.table_id);
+    var alias     = selectObj.table_alias ? ' <span class="qv-col-chip__alias">as ' + esc(selectObj.table_alias) + '</span>' : '';
+
+    var fromHtml = '<div class="qv-from" style="margin-bottom:10px;">' +
+      '<span style="font-family:var(--font-mono);font-size:0.68rem;color:var(--text-faint);font-weight:700;letter-spacing:0.07em;">FROM</span>' +
+      '<span class="qv-col-chip"><span class="qv-col-chip__col">' + esc(tableName) + '</span>' + alias + '</span>' +
+    '</div>';
+
+    var cols = Array.isArray(selectObj.cols_obj_array) ? selectObj.cols_obj_array : [];
+    var colsHtml = '<div class="qv-cols">' + cols.map(renderColChip).join('') + '</div>';
+
+    return fromHtml + colsHtml;
+  }
+
+  function renderColChip(c) {
+    // c.is_select_all → render as  tablealias.*
+    if (c.is_select_all) {
+      var tbl = c.table_name || c.table_alias || ('table #' + c.table_id);
+      return '<span class="qv-col-chip">' +
+        '<span class="qv-col-chip__table">' + esc(tbl) + '</span>' +
+        '<span class="qv-col-chip__dot">.</span>' +
+        '<span class="qv-col-chip__star">*</span>' +
+      '</span>';
+    }
+
+    var colName   = c.col_name   || ('col #' + c.col_id);
+    var tableName = c.table_name || c.table_alias || ('table #' + c.table_id);
+    var aggFn     = c.agg_func   ? String(c.agg_func).toUpperCase() : null;
+    var colAlias  = c.col_alias  || null;
+
+    var inner = '';
+    if (aggFn) {
+      inner += '<span class="qv-col-chip__agg">' + esc(aggFn) + '(</span>';
+    }
+    inner += '<span class="qv-col-chip__table">' + esc(tableName) + '</span>' +
+             '<span class="qv-col-chip__dot">.</span>' +
+             '<span class="qv-col-chip__col">' + esc(colName) + '</span>';
+    if (aggFn) {
+      inner += '<span class="qv-col-chip__agg">)</span>';
+    }
+    if (colAlias) {
+      inner += '<span class="qv-col-chip__alias"> as ' + esc(colAlias) + '</span>';
+    }
+
+    return '<span class="qv-col-chip">' + inner + '</span>';
+  }
+
+  function renderJoinsSection(joins) {
+    return '<div class="qv-joins">' + joins.map(function (j) {
+      var joinType  = String(j.join_type || j.type || 'inner').toLowerCase();
+      var joinTable = j.table_name || ('table #' + j.table_id);
+      var alias     = j.alias ? ' as ' + j.alias : '';
+
+      var leftCol   = (j.left && (j.left.col_name  || ('col #' + j.left.col_id)))  || '?';
+      var leftTbl   = (j.left && (j.left.table_name || j.left.table_alias)) || '';
+      var rightCol  = (j.right && (j.right.col_name || ('col #' + j.right.col_id))) || '?';
+      var rightTbl  = (j.right && (j.right.table_name || j.right.table_alias)) || '';
+
+      var leftDesc  = leftTbl  ? leftTbl  + '.' + leftCol  : leftCol;
+      var rightDesc = rightTbl ? rightTbl + '.' + rightCol : rightCol;
+
+      var opLabel   = j.join_operator || '=';
+
+      return '<div class="qv-join-row">' +
+        '<span class="qv-join-type qv-join-type--' + esc(joinType) + '">' + esc(joinType.toUpperCase()) + ' JOIN</span>' +
+        '<span class="qv-col-chip" style="font-size:0.76rem;">' +
+          '<span class="qv-col-chip__col">' + esc(joinTable) + '</span>' +
+          (alias ? '<span class="qv-col-chip__alias"> as ' + esc(j.alias) + '</span>' : '') +
+        '</span>' +
+        '<span class="qv-join-sep">ON</span>' +
+        '<code style="font-size:0.76rem;font-family:var(--font-mono);color:var(--text-muted);">' + esc(leftDesc) + '</code>' +
+        '<span class="qv-cond__op">' + esc(opLabel) + '</span>' +
+        '<code style="font-size:0.76rem;font-family:var(--font-mono);color:var(--text-muted);">' + esc(rightDesc) + '</code>' +
+      '</div>';
+    }).join('') + '</div>';
+  }
+
+  function renderGroupBySection(cols) {
+    return '<div class="qv-groupby-chips">' + cols.map(function (g) {
+      var tbl = g.table_name || g.table_alias || ('table #' + g.table_id);
+      var col = g.col_name   || ('col #' + g.col_id);
+      return '<span class="qv-groupby-chip">' +
+        '<span class="qv-badge-table">' + esc(tbl) + '</span>' +
+        '<span style="color:var(--text-faint);">.</span>' +
+        '<span class="qv-badge-col">'  + esc(col)  + '</span>' +
+      '</span>';
+    }).join('') + '</div>';
+  }
+
+  /* Recursively renders a WHERE / HAVING node array */
+  function renderFilterGroup(nodes, depth) {
+    if (!Array.isArray(nodes) || nodes.length === 0) {
+      return '<p class="qv-empty-inline">No conditions.</p>';
+    }
+
+    var html = '<div class="qv-filter-group">';
+    nodes.forEach(function (node, idx) {
+      /* Group node — has children */
+      if (Array.isArray(node.children) && node.children.length > 0) {
+        var logic = (idx > 0 && node.logical_operator)
+          ? node.logical_operator.toUpperCase()
+          : null;
+        var logicBadge = logic
+          ? '<span class="qv-logic-badge qv-logic-badge--' + logic.toLowerCase() + '">' + esc(logic) + '</span>'
+          : '';
+        var childHtml = renderFilterGroup(node.children, depth + 1);
+
+        html += '<div class="qv-group-box">' +
+          '<button class="qv-group-box__toggle" type="button">' +
+            logicBadge +
+            '<span class="qv-group-label">Group (' + node.children.length + ' condition' + (node.children.length === 1 ? '' : 's') + ')</span>' +
+            '<span class="qv-group-box__chevron" aria-hidden="true"></span>' +
+          '</button>' +
+          '<div class="qv-group-box__inner">' + childHtml + '</div>' +
+        '</div>';
+        return;
+      }
+
+      /* Leaf condition node */
+      var tbl = node.table_name || node.table_alias || ('table #' + node.table_id);
+      var col = node.col_name   || ('col #' + node.col_id);
+      var op  = String(node.operator || '=');
+
+      var logic2 = (idx > 0 && node.logical_operator)
+        ? node.logical_operator.toUpperCase()
+        : null;
+      var logicBadge2 = logic2
+        ? '<span class="qv-logic-badge qv-logic-badge--' + logic2.toLowerCase() + '">' + esc(logic2) + '</span>'
+        : '';
+
+      var valHtml = '';
+      if (op === 'IS NULL' || op === 'IS NOT NULL') {
+        valHtml = '<span class="qv-cond__null">—</span>';
+      } else if (op === 'BETWEEN' && node.value_from != null && node.value_to != null) {
+        valHtml = '<span class="qv-cond__val">' + esc(String(node.value_from)) + '</span>' +
+                  '<span style="color:var(--text-faint);font-size:0.7rem;"> &amp; </span>' +
+                  '<span class="qv-cond__val">' + esc(String(node.value_to)) + '</span>';
+      } else if (node.value != null) {
+        valHtml = '<span class="qv-cond__val">' + esc(String(node.value)) + '</span>';
+      } else if (node.param_name) {
+        valHtml = '<span class="qv-cond__val" style="color:var(--accent-light);">:' + esc(node.param_name) + '</span>';
+      }
+
+      html += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">' +
+        logicBadge2 +
+        '<div class="qv-cond">' +
+          '<span class="qv-col-chip__table" style="font-family:var(--font-mono);font-size:0.76rem;">' + esc(tbl) + '</span>' +
+          '<span style="color:var(--text-faint);font-family:var(--font-mono);">.</span>' +
+          '<span class="qv-cond__col">' + esc(col) + '</span>' +
+          '<span class="qv-cond__op">' + esc(op) + '</span>' +
+          valHtml +
+        '</div>' +
+      '</div>';
+    });
+    html += '</div>';
+    return html;
   }
 
   function renderReviews(reviews) {
