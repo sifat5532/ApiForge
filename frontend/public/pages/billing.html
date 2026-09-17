@@ -663,31 +663,27 @@
         <div class="bill-plan-hero">
           <div class="bill-plan-hero__left">
             <p class="bill-plan-hero__eyebrow">// current plan</p>
-            <h2 class="bill-plan-hero__name">Free <span>Plan</span></h2>
-            <p class="bill-plan-hero__tagline">Perfect for side projects and early exploration.</p>
+            <h2 class="bill-plan-hero__name" id="ov-plan-name">Free <span>Plan</span></h2>
+            <p class="bill-plan-hero__tagline" id="ov-tagline">Perfect for side projects and early exploration.</p>
             <div class="bill-plan-hero__meta">
               <span class="bill-meta-chip">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg>
-                Up to 5 Projects
+                <span id="ov-projects">Up to 5 Projects</span>
               </span>
               <span class="bill-meta-chip">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1H3z"></path><rect x="3" y="8" width="18" height="11" rx="1"></rect></svg>
-                10 Tables / project
+                <span id="ov-tables">10 Tables / project</span>
               </span>
               <span class="bill-meta-chip">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                500 API calls / day
-              </span>
-              <span class="bill-meta-chip">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4l3 3"></path></svg>
-                Community support
+                <span id="ov-apis">500 API calls / day</span>
               </span>
             </div>
           </div>
           <div class="bill-plan-hero__right">
-            <span class="bill-status-badge bill-status-badge--active">Active</span>
-            <div class="bill-plan-hero__price">$0<sub>&nbsp;/ mo</sub></div>
-            <p class="bill-plan-hero__renew">No renewal — free forever.</p>
+            <span class="bill-status-badge" id="ov-status">Active</span>
+            <div class="bill-plan-hero__price" id="ov-price">৳0<sub>&nbsp;/ mo</sub></div>
+            <p class="bill-plan-hero__renew" id="ov-renew">No renewal — free forever.</p>
             <a href="#" class="btn btn--primary btn--sm" data-tab-target="plans" id="upgrade-from-overview">Upgrade plan →</a>
           </div>
         </div>
@@ -695,7 +691,7 @@
         <!-- Pending payment note -->
         <div class="bill-info-box">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-          <span>You have already a pending payment. If you have paid the money but it's still pending, then contact the ApiForge team. Otherwise, leave it.</span>
+          <span id="pending-payment-text">You have already a pending payment. If you have paid the money but it's still pending, then contact the ApiForge team. Otherwise, leave it.</span>
         </div>
 
       </section>
@@ -707,76 +703,21 @@
 
         <div class="bill-section-head" style="margin-bottom:20px;">
           <h2>Choose a plan</h2>
-          <span style="font-family:var(--font-mono);font-size:0.72rem;color:var(--text-faint);">All prices in USD · billed monthly</span>
+          <span style="font-family:var(--font-mono);font-size:0.72rem;color:var(--text-faint);">All prices in BDT · billed monthly</span>
         </div>
 
-        <div class="bill-plans-grid">
-
-          <!-- FREE -->
-          <div class="bill-plan-card bill-plan-card--current">
-            <span class="bill-plan-card__current-badge">Current plan</span>
-            <h3 class="bill-plan-card__name">Free</h3>
-            <p class="bill-plan-card__tagline">For hobby projects &amp; exploration.</p>
-            <div class="bill-plan-card__price">$0<sub>&nbsp;/ mo</sub></div>
-            <ul class="bill-plan-card__features">
-              <li>Up to 5 projects</li>
-              <li>10 tables per project</li>
-              <li>10 APIs per project</li>
-              <li>500 API calls / day</li>
-              <li>3 collaborators per project</li>
-              <li>3 templates publishable</li>
-              <li>Community support</li>
-              <li class="is-limit">No custom domains</li>
-              <li class="is-limit">No analytics dashboard</li>
-            </ul>
-            <button class="btn btn--ghost" type="button" disabled style="opacity:0.45;cursor:not-allowed;">Current plan</button>
+        <div class="bill-plans-grid" id="plans-grid">
+          <!-- Plans are rendered from GET /view/billingPlans -->
+          <div class="bill-empty" id="plans-loading">
+            <div class="vp-shimmer"></div>
+            <p class="bill-empty__text">Loading plans…</p>
           </div>
-
-          <!-- LITE -->
-          <div class="bill-plan-card bill-plan-card--popular">
-            <span class="bill-plan-card__badge">Most popular</span>
-            <h3 class="bill-plan-card__name">Lite</h3>
-            <p class="bill-plan-card__tagline">For growing teams and serious builders.</p>
-            <div class="bill-plan-card__price">$9<sub>&nbsp;/ mo</sub></div>
-            <ul class="bill-plan-card__features">
-              <li>Up to 20 projects</li>
-              <li>50 tables per project</li>
-              <li>50 APIs per project</li>
-              <li>10,000 API calls / day</li>
-              <li>10 collaborators per project</li>
-              <li>Unlimited templates</li>
-              <li>Email &amp; chat support</li>
-              <li>API analytics (7-day window)</li>
-              <li class="is-limit">No custom domains</li>
-            </ul>
-            <button class="btn btn--primary" type="button">Upgrade to Lite →</button>
-          </div>
-
-          <!-- PRO -->
-          <div class="bill-plan-card">
-            <h3 class="bill-plan-card__name">Pro</h3>
-            <p class="bill-plan-card__tagline">For production APIs and power users.</p>
-            <div class="bill-plan-card__price">$29<sub>&nbsp;/ mo</sub></div>
-            <ul class="bill-plan-card__features">
-              <li>Unlimited projects</li>
-              <li>Unlimited tables</li>
-              <li>Unlimited APIs</li>
-              <li>100,000 API calls / day</li>
-              <li>Unlimited collaborators</li>
-              <li>Unlimited templates</li>
-              <li>Priority support &amp; SLA</li>
-              <li>API analytics (90-day window)</li>
-              <li>Custom domains &amp; CORS</li>
-            </ul>
-            <button class="btn btn--primary" type="button">Upgrade to Pro →</button>
-          </div>
-
         </div>
 
         <!-- Feature comparison note -->
         <div class="bill-info-box">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-          <span>Upgrading is instant. Downgrading takes effect at the end of your billing cycle. You will never be charged without confirmation.</span>
+          <span>If you downgrade or upgrade your plan, the previous plan will be inactive immediately. But if you buy same plan again, it will add up the months with the current end date</span>
         </div>
 
       </section>
@@ -788,78 +729,31 @@
 
         <div class="bill-section-head">
           <h2>Subscription history</h2>
-          <button class="btn btn--ghost btn--sm" type="button" style="font-size:0.78rem;">Export CSV</button>
         </div>
 
         <div class="panel">
-          <table class="bill-log-table" aria-label="Subscription logs">
+          <table class="bill-log-table" id="billing-history-table" aria-label="Subscription logs">
             <thead>
               <tr>
                 <th>Date</th>
                 <th>Plan</th>
                 <th>Amount</th>
                 <th>Status</th>
-                <th>Period</th>
-                <th>Invoice</th>
+                <th>Method</th>
+                <th>Month Count</th>
+                <th>Trxn ID</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td>Sep 1, 2026</td>
-                <td><span class="bill-log__plan-pill bill-log__plan-pill--free">Free</span></td>
-                <td style="font-family:var(--font-mono);">$0.00</td>
-                <td><span class="bill-status-badge bill-status-badge--active">Active</span></td>
-                <td style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-faint);">Sep 1 – Sep 30</td>
-                <td>—</td>
-              </tr>
-              <tr>
-                <td>Aug 1, 2026</td>
-                <td><span class="bill-log__plan-pill bill-log__plan-pill--lite">Lite</span></td>
-                <td style="font-family:var(--font-mono);">$9.00</td>
-                <td><span class="bill-status-badge bill-status-badge--expired">Expired</span></td>
-                <td style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-faint);">Aug 1 – Aug 31</td>
-                <td><a href="#" class="bill-log__invoice-link">INV-0042 ↗</a></td>
-              </tr>
-              <tr>
-                <td>Jul 1, 2026</td>
-                <td><span class="bill-log__plan-pill bill-log__plan-pill--lite">Lite</span></td>
-                <td style="font-family:var(--font-mono);">$9.00</td>
-                <td><span class="bill-status-badge bill-status-badge--expired">Expired</span></td>
-                <td style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-faint);">Jul 1 – Jul 31</td>
-                <td><a href="#" class="bill-log__invoice-link">INV-0031 ↗</a></td>
-              </tr>
-              <tr>
-                <td>Jun 1, 2026</td>
-                <td><span class="bill-log__plan-pill bill-log__plan-pill--pro">Pro</span></td>
-                <td style="font-family:var(--font-mono);">$29.00</td>
-                <td><span class="bill-status-badge bill-status-badge--expired">Expired</span></td>
-                <td style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-faint);">Jun 1 – Jun 30</td>
-                <td><a href="#" class="bill-log__invoice-link">INV-0019 ↗</a></td>
-              </tr>
-              <tr>
-                <td>May 1, 2026</td>
-                <td><span class="bill-log__plan-pill bill-log__plan-pill--pro">Pro</span></td>
-                <td style="font-family:var(--font-mono);">$29.00</td>
-                <td><span class="bill-status-badge bill-status-badge--expired">Expired</span></td>
-                <td style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-faint);">May 1 – May 31</td>
-                <td><a href="#" class="bill-log__invoice-link">INV-0008 ↗</a></td>
-              </tr>
-              <tr>
-                <td>Apr 15, 2026</td>
-                <td><span class="bill-log__plan-pill bill-log__plan-pill--free">Free</span></td>
-                <td style="font-family:var(--font-mono);">$0.00</td>
-                <td><span class="bill-status-badge bill-status-badge--expired">Expired</span></td>
-                <td style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-faint);">Apr 15 – Apr 30</td>
-                <td>—</td>
+                <td colspan="7" class="bill-empty" style="padding:40px 24px;">Loading history…</td>
               </tr>
             </tbody>
           </table>
         </div>
 
         <!-- Pagination hint -->
-        <p style="font-family:var(--font-mono);font-size:0.72rem;color:var(--text-faint);margin-top:12px;text-align:right;">
-          Showing 6 of 6 entries
-        </p>
+        <p id="billing-history-count" style="font-family:var(--font-mono);font-size:0.72rem;color:var(--text-faint);margin-top:12px;text-align:right;display:none;"></p>
 
       </section>
 
@@ -903,6 +797,172 @@
       if (hash && document.getElementById('tab-' + hash)) {
         activateTab(hash);
       }
+
+      /* ── Live data wiring ── */
+      var backendUrl = window.BACKEND_URL || 'http://localhost:3000';
+      function apiGet(path) {
+        return fetch(backendUrl + path, { credentials: 'include' })
+          .then(function (r) { return r.json(); });
+      }
+      function esc(s) {
+        return String(s == null ? '' : s)
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      }
+      function fmtLimit(v, label) {
+        return (v == null ? 'Unlimited' : v) + ' ' + label;
+      }
+
+      /* Overview: current plan + pending payment */
+      apiGet('/view/billingOverview').then(function (data) {
+        var plan = data.currentPlan;
+        if (!plan) return;
+        var name = (plan.plan_name || 'Free');
+        document.getElementById('ov-plan-name').innerHTML =
+          esc(name.charAt(0).toUpperCase() + name.slice(1)) + ' <span>Plan</span>';
+        document.getElementById('ov-tagline').textContent =
+          'Your current subscription details and usage.';
+        document.getElementById('ov-projects').textContent =
+          fmtLimit(plan.project_count, 'Projects');
+        document.getElementById('ov-tables').textContent =
+          fmtLimit(plan.table_per_project, 'Tables / project');
+        document.getElementById('ov-apis').textContent =
+          fmtLimit(plan.api_call_per_day, 'API calls / day');
+
+        var statusEl = document.getElementById('ov-status');
+        statusEl.textContent = (plan.status || 'active').charAt(0).toUpperCase()
+          + (plan.status || 'active').slice(1);
+        statusEl.className = 'bill-status-badge bill-status-badge--'
+          + (plan.status === 'active' ? 'active' : 'expired');
+
+        var price = Number(plan.cost_per_month) || 0;
+        document.getElementById('ov-price').innerHTML = '৳' + price + '<sub>&nbsp;/ mo</sub>';
+        document.getElementById('ov-renew').textContent = price === 0
+          ? 'No renewal — free forever.'
+          : ('Ends at ' + (plan.end_date ? new Date(plan.end_date).toLocaleDateString() : 'next cycle'));
+
+        /* Highlight the matching plan card on the Plans tab */
+        var currentBadges = document.querySelectorAll('.bill-plan-card__current-badge');
+        if (!currentBadges.length) {
+          document.querySelectorAll('.bill-plan-card').forEach(function (c) {
+            if (c.querySelector('.bill-plan-card__name').textContent.trim().toLowerCase() === name.toLowerCase()) {
+              c.classList.add('bill-plan-card--current');
+            }
+          });
+        }
+      }).catch(function () { /* keep static defaults on failure */ });
+
+      /* Plans: render from GET /view/billingPlans */
+      apiGet('/view/billingPlans').then(function (data) {
+        var plans = data.plans || [];
+        var grid = document.getElementById('plans-grid');
+        if (!grid) return;
+        if (!plans.length) return; /* keep loading placeholder if empty */
+
+        var currentName = (document.getElementById('ov-plan-name').textContent || '').toLowerCase();
+        grid.innerHTML = plans.map(function (p) {
+          var key = (p.name || '').toLowerCase();
+          var isCurrent = key === currentName;
+          var isPopular = key === 'lite';
+          var cls = 'bill-plan-card' + (isCurrent ? ' bill-plan-card--current' : '')
+            + (isPopular ? ' bill-plan-card--popular' : '');
+          var badge = isCurrent
+            ? '<span class="bill-plan-card__current-badge">Current plan</span>'
+            : (isPopular ? '<span class="bill-plan-card__badge">Most popular</span>' : '');
+          var price = Number(p.cost_per_month) || 0;
+          var btn = isCurrent
+            ? '<button class="btn btn--ghost" type="button" disabled style="opacity:0.45;cursor:not-allowed;">Current plan</button>'
+            : '<button class="btn btn--primary" type="button">Upgrade to ' + esc(p.name) + ' →</button>';
+          return ''
+            + '<div class="' + cls + '">'
+            +   badge
+            +   '<h3 class="bill-plan-card__name">' + esc(p.name) + '</h3>'
+            +   '<p class="bill-plan-card__tagline">' + esc(p.name) + ' plan</p>'
+            +   '<div class="bill-plan-card__price">৳' + price + '<sub>&nbsp;/ mo</sub></div>'
+            +   '<ul class="bill-plan-card__features">'
+            +     '<li>' + fmtLimit(p.project_count, 'projects') + '</li>'
+            +     '<li>' + fmtLimit(p.table_per_project, 'tables per project') + '</li>'
+            +     '<li>' + fmtLimit(p.api_per_project, 'APIs per project') + '</li>'
+            +     '<li>' + fmtLimit(p.api_call_per_day, 'API calls / day') + '</li>'
+            +   '</ul>'
+            +   btn
+            + '</div>';
+        }).join('');
+      }).catch(function () {
+        var grid = document.getElementById('plans-grid');
+        if (grid) grid.innerHTML = '<p class="bill-empty__text">Unable to load plans.</p>';
+      });
+
+      /* Pending payment note: pull message from /payment/anyPendingPayment */
+      apiGet('/payment/anyPendingPayment').then(function (data) {
+        var el = document.getElementById('pending-payment-text');
+        if (el && data && data.msg) el.textContent = data.msg;
+      }).catch(function () { /* keep static default on failure */ });
+
+      /* ── Billing history: render from GET /view/billingHistory ── */
+      var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      function fmtDate(iso) {
+        var d = new Date(iso);
+        if (isNaN(d)) return '—';
+        var hh = String(d.getHours()).padStart(2, '0');
+        var mm = String(d.getMinutes()).padStart(2, '0');
+        return MONTHS[d.getMonth()] + ' ' + String(d.getDate()).padStart(2, '0')
+          + ', ' + d.getFullYear() + ' ' + hh + ':' + mm;
+      }
+      function statusBadge(status) {
+        var s = (status || '').toLowerCase();
+        var cls = 'bill-status-badge bill-status-badge--'
+          + (s === 'free' || s === 'succeeded' || s === 'active' ? 'active'
+            : (s === 'pending' ? 'expired' : 'expired'));
+        var label = s.charAt(0).toUpperCase() + s.slice(1);
+        return '<span class="' + cls + '">' + esc(label) + '</span>';
+      }
+      function planPill(name) {
+        var key = (name || 'free').toLowerCase();
+        var variant = key === 'pro' ? 'pro' : (key === 'lite' ? 'lite' : 'free');
+        return '<span class="bill-log__plan-pill bill-log__plan-pill--' + variant + '">'
+          + esc(name || 'Free') + '</span>';
+      }
+
+      apiGet('/view/billingHistory').then(function (data) {
+        var logs = data.logs || [];
+        var tbody = document.querySelector('#billing-history-table tbody');
+        var countEl = document.getElementById('billing-history-count');
+        if (!tbody) return;
+
+        if (!logs.length) {
+          tbody.innerHTML = '<tr><td colspan="7" class="bill-empty" style="padding:40px 24px;">'
+            + 'No billing history yet.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = logs.map(function (row) {
+          var amount = Number(row.amount) || 0;
+          var method = row.method ? esc(row.method) : '—';
+          var monthCount = row.month_count != null ? esc(row.month_count) : '—';
+          var trxn = row.trxn_id ? esc(row.trxn_id) : '—';
+          return ''
+            + '<tr>'
+            +   '<td style="font-family:var(--font-mono);font-size:0.78rem;">' + fmtDate(row.created_at) + '</td>'
+            +   '<td>' + planPill(row.plan_name) + '</td>'
+            +   '<td style="font-family:var(--font-mono);">৳' + amount.toFixed(2) + '</td>'
+            +   '<td>' + statusBadge(row.status) + '</td>'
+            +   '<td style="font-family:var(--font-mono);font-size:0.75rem;">' + method + '</td>'
+            +   '<td style="font-family:var(--font-mono);font-size:0.75rem;">' + monthCount + '</td>'
+            +   '<td style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-faint);">' + trxn + '</td>'
+            + '</tr>';
+        }).join('');
+
+        if (countEl) {
+          countEl.textContent = 'Showing ' + logs.length + ' of ' + logs.length + ' entries';
+          countEl.style.display = 'block';
+        }
+      }).catch(function () {
+        var tbody = document.querySelector('#billing-history-table tbody');
+        if (tbody) {
+          tbody.innerHTML = '<tr><td colspan="7" class="bill-empty" style="padding:40px 24px;">'
+            + 'Unable to load billing history.</td></tr>';
+        }
+      });
     })();
   </script>
 </body>

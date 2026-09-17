@@ -39,7 +39,7 @@ router.post('/subscribe', requireAuth, async (req, res) => {
         }
         // creating payment gateway url
         const amount = plan.cost_per_month * parsedMonth;
-        let currency = 'USD';
+        let currency = 'BDT';
         const data = { amount, currency };
         console.log('Outgoing data:', data);
 

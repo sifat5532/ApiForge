@@ -762,4 +762,82 @@ router.get('/popularTags', requireAuth, async (req, res) => {
                                 ` ,[LIMIT]);
 return res.status(200).json({tags : result.rows});
 });
+
+router.get('/billingOverview', requireAuth, async (req, res) => {
+    try {
+        const sub = await query(`
+            SELECT
+                s.subscription_id,
+                s.plan_id,
+                s.start_date,
+                s.end_date,
+                s.status,
+                p.name            AS plan_name,
+                p.cost_per_month,
+                p.project_count,
+                p.table_per_project,
+                p.api_per_project,
+                p.api_call_per_day
+            FROM subscriptions s
+            JOIN plans p ON p.plan_id = s.plan_id
+            WHERE s.user_id = $1 AND s.status = 'active'
+            ORDER BY s.start_date DESC
+            LIMIT 1
+        `, [req.loggedInUser.id]);
+
+        const currentPlan = sub.rows.length ? sub.rows[0] : null;
+
+        return res.status(200).json({ currentPlan });
+    } catch (e) {
+        console.error(e);
+        return res.status(500).json({ msg: 'There was a server side error, please try again later' });
+    }
+});
+
+router.get('/billingPlans', requireAuth, async (req, res) => {
+    try {
+        const result = await query(`
+            SELECT
+                plan_id,
+                name,
+                cost_per_month,
+                project_count,
+                table_per_project,
+                api_per_project,
+                api_call_per_day
+            FROM plans
+            ORDER BY cost_per_month ASC
+        `);
+        return res.status(200).json({ plans: result.rows });
+    } catch (e) {
+        console.error(e);
+        return res.status(500).json({ msg: 'There was a server side error, please try again later' });
+    }
+});
+
+router.get('/billingHistory', requireAuth, async (req, res) => {
+    try {
+        const result = await query(`
+            SELECT
+                sl.log_id,
+                sl.created_at,
+                p.name               AS plan_name,
+                sl.amount,
+                sl.payment_status    AS status,
+                sl.payment_method    AS method,
+                sl.month_count,
+                sl.trxn_id
+            FROM subscription_log sl
+            JOIN plans p ON p.plan_id = sl.plan_id
+            WHERE sl.user_id = $1
+            ORDER BY sl.log_id DESC
+        `, [req.loggedInUser.id]);
+
+        return res.status(200).json({ logs: result.rows });
+    } catch (e) {
+        console.error(e);
+        return res.status(500).json({ msg: 'There was a server side error, please try again later' });
+    }
+});
+
 module.exports = router;
