@@ -1302,6 +1302,36 @@ CREATE TRIGGER tg_insert_users
 AFTER INSERT ON users FOR EACH ROW
 EXECUTE FUNCTION tgfunc_add_free_subscription ();
 
+CREATE OR REPLACE FUNCTION tgfunc_sync_subscription () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+   IF TG_OP = 'INSERT' AND NEW.payment_status = 'free' THEN
+      UPDATE subscriptions
+      SET status = 'inactive'
+      WHERE user_id = NEW.user_id AND status = 'active';
+
+      INSERT INTO subscriptions (user_id, plan_id, status)
+      VALUES (NEW.user_id, NEW.plan_id, 'active');
+
+   ELSIF TG_OP = 'UPDATE' AND OLD.payment_status = 'pending' AND NEW.payment_status = 'succeeded' THEN
+      UPDATE subscriptions
+      SET status = 'inactive'
+      WHERE user_id = NEW.user_id AND status = 'active';
+
+      INSERT INTO subscriptions (user_id, plan_id, status, end_date)
+      VALUES (NEW.user_id, NEW.plan_id, 'active', now() + (NEW.month_count || ' months')::INTERVAL);
+
+   END IF;
+
+   RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS tg_sync_subscription ON subscription_log;
+
+CREATE TRIGGER tg_sync_subscription
+AFTER INSERT OR UPDATE ON subscription_log FOR EACH ROW
+EXECUTE FUNCTION tgfunc_sync_subscription ();
+
 -------------------------------- PROJECT LOGS TRIGGERS START HERE ----------------------------------
 -- Generic helper to insert a row into project_logs.
 -- changed_by is read from the session variable app.current_user_id which the backend sets per request.
