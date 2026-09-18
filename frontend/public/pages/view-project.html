@@ -239,6 +239,7 @@
         <button class="vp-tab"           id="tab-apis"     type="button" role="tab" aria-selected="false" aria-controls="panel-apis">APIs</button>
         <button class="vp-tab"           id="tab-cors"     type="button" role="tab" aria-selected="false" aria-controls="panel-cors">CORS Origins</button>
         <button class="vp-tab"           id="tab-logs"     type="button" role="tab" aria-selected="false" aria-controls="panel-logs">Project Logs</button>
+        <button class="vp-tab"           id="tab-stats"    type="button" role="tab" aria-selected="false" aria-controls="panel-stats">Project Stats</button>
         <button class="vp-tab"           id="tab-collab"   type="button" role="tab" aria-selected="false" aria-controls="panel-collab">Collaborators</button>
         <button class="vp-tab"           id="tab-settings" type="button" role="tab" aria-selected="false" aria-controls="panel-settings">Settings</button>
       </nav>
@@ -295,6 +296,108 @@
             <button class="btn btn--ghost btn--sm" id="btn-refresh-logs" type="button">Refresh</button>
           </div>
           <div id="vp-logs-body" class="vp-log-list" aria-live="polite"></div>
+        </div>
+
+        <!-- PROJECT STATS PANEL -->
+        <div class="vp-panel" id="panel-stats" role="tabpanel" aria-labelledby="tab-stats" hidden>
+          <div id="ps-root">
+            <!-- Stats header / controls -->
+            <div class="ps-controls">
+              <div class="ps-controls__left">
+                <div class="ps-live-dot"></div>
+                <span class="ps-hint">live data &middot; all figures from a single repeatable-read snapshot</span>
+              </div>
+              <div class="ps-controls__right">
+                <div class="ps-select-wrap">
+                  <select id="ps-rangeSelect">
+                    <option value="7d">Last 7 days</option>
+                    <option value="30d" selected>Last 30 days</option>
+                  </select>
+                  <svg viewBox="0 0 20 20" fill="none"><path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                </div>
+              </div>
+            </div>
+
+            <!-- KPI strip (Calls · Avg response · Error rate) -->
+            <div class="ps-kpi-strip">
+              <div class="ps-kpi">
+                <div class="ps-kpi__label">Calls &middot; <span id="ps-kpiRangeLabel">30d</span></div>
+                <div class="ps-kpi__value ps-text-success" id="ps-kpiCalls">&mdash;</div>
+              </div>
+              <div class="ps-kpi">
+                <div class="ps-kpi__label">Avg response</div>
+                <div class="ps-kpi__value" id="ps-kpiAvgMs">&mdash;</div>
+              </div>
+              <div class="ps-kpi">
+                <div class="ps-kpi__label">Error rate</div>
+                <div class="ps-kpi__value" id="ps-kpiErrRate">&mdash;</div>
+              </div>
+            </div>
+
+            <!-- loading / error state -->
+            <div id="ps-status" class="ps-status" hidden></div>
+
+            <div class="ps-charts-grid" id="ps-charts-grid">
+
+              <!-- Calls over time -->
+              <div class="ps-card ps-card--full">
+                <div class="ps-card__head">
+                  <div>
+                    <div class="ps-card__title">Calls over time</div>
+                    <div class="ps-card__sub">daily volume with 7-day moving average</div>
+                  </div>
+                </div>
+                <div class="ps-card__canvas-wrap"><canvas id="ps-chartCalls"></canvas></div>
+              </div>
+
+              <!-- Top endpoints + Method distribution -->
+              <div class="ps-card">
+                <div class="ps-card__head">
+                  <div>
+                    <div class="ps-card__title">Top endpoints by usage</div>
+                    <div class="ps-card__sub">ranked by request volume, this range</div>
+                  </div>
+                </div>
+                <div class="ps-card__canvas-wrap ps-card__canvas-wrap--tall"><canvas id="ps-chartTop"></canvas></div>
+              </div>
+
+              <div class="ps-card">
+                <div class="ps-card__head">
+                  <div>
+                    <div class="ps-card__title">Traffic by HTTP method</div>
+                    <div class="ps-card__sub">share of calls per verb</div>
+                  </div>
+                </div>
+                <div class="ps-card__canvas-wrap ps-card__canvas-wrap--tall ps-card__canvas-center"><canvas id="ps-chartMethod"></canvas></div>
+              </div>
+
+              <!-- Error rate -->
+              <div class="ps-card ps-card--full">
+                <div class="ps-card__head">
+                  <div>
+                    <div class="ps-card__title">Error rate by endpoint</div>
+                    <div class="ps-card__sub">% of responses with status &ge; 400</div>
+                  </div>
+                </div>
+                <div class="ps-card__canvas-wrap ps-card__canvas-wrap--tall"><canvas id="ps-chartError"></canvas></div>
+              </div>
+
+              <!-- Peak hours heatmap -->
+              <div class="ps-card ps-card--full">
+                <div class="ps-card__head">
+                  <div>
+                    <div class="ps-card__title">Peak usage hours</div>
+                    <div class="ps-card__sub">call volume by hour of day, UTC</div>
+                  </div>
+                </div>
+                <div class="ps-heatmap-wrap">
+                  <div class="ps-hourgrid" id="ps-hourgrid"></div>
+                  <div class="ps-hourlabels"><span>0</span><span></span><span></span><span></span><span>6</span><span></span><span></span><span></span><span>12</span><span></span><span></span><span></span><span>18</span><span></span><span></span><span></span><span>23</span></div>
+                </div>
+              </div>
+
+            </div><!-- /ps-charts-grid -->
+          </div><!-- /ps-root -->
         </div>
 
         <!-- COLLABORATORS PANEL -->
@@ -371,5 +474,350 @@
   <script src="js/auth-guard.js"></script>
   <script src="js/dashboard.js"></script>
   <script src="js/view-project.js"></script>
+
+  <!-- Chart.js for Project Stats tab -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script>
+  /* =====================================================================
+     ApiForge — Project Stats tab (real backend data)
+  ===================================================================== */
+  (function () {
+    /* ------- helpers ------- */
+    function fmtNum(n)     { return Number(n).toLocaleString('en-US'); }
+    function fmtCompact(n) {
+      n = Number(n);
+      if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+      if (n >= 1_000)     return (n / 1_000).toFixed(1) + 'k';
+      return String(n);
+    }
+
+    const METHOD_COLOR = { GET: '#22c55e', POST: '#a78bfa', PUT: '#f97316', DELETE: '#f87171' };
+    const METHOD_CLASS = { GET: 'ps-text-success', POST: 'ps-text-purple', PUT: 'ps-text-accent', DELETE: 'ps-text-error' };
+    const GRID_COLOR   = '#2a2a2a';
+
+    let psCharts     = {};
+    let psState      = { range: '30d', projectId: null };
+    let psThemeReady = false;
+
+    /* ------- Chart.js theme (register once) ------- */
+    function ensureTheme() {
+      if (psThemeReady) return;
+      psThemeReady = true;
+      Chart.defaults.font.family = "'JetBrains Mono', monospace";
+      Chart.defaults.font.size   = 11;
+      Chart.defaults.color       = '#8a8a8a';
+
+      const plugin = {
+        id: 'psCenterText',
+        afterDraw(chart) {
+          const opts = chart.config.options.plugins.psCenterText;
+          if (!opts?.text) return;
+          const { ctx, chartArea: { width, height, left, top } } = chart;
+          ctx.save();
+          ctx.font      = "600 15px 'Space Grotesk', sans-serif";
+          ctx.fillStyle = opts.color || '#e5e5e5';
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(opts.text, left + width / 2, top + height / 2 - 4);
+          if (opts.sub) {
+            ctx.font      = "500 9px 'JetBrains Mono', monospace";
+            ctx.fillStyle = '#8a8a8a';
+            ctx.fillText(opts.sub, left + width / 2, top + height / 2 + 11);
+          }
+          ctx.restore();
+        }
+      };
+      if (!Chart.registry.plugins.get('psCenterText')) Chart.register(plugin);
+    }
+
+    /* ------- status helpers ------- */
+    function showStatus(msg, isError) {
+      const el = document.getElementById('ps-status');
+      if (!el) return;
+      el.textContent = msg;
+      el.className   = isError ? 'ps-status ps-status--error' : 'ps-status ps-status--loading';
+      el.hidden      = false;
+      const grid = document.getElementById('ps-charts-grid');
+      if (grid) grid.style.opacity = isError ? '0.3' : '0.5';
+    }
+    function clearStatus() {
+      const el = document.getElementById('ps-status');
+      if (el) { el.hidden = true; el.textContent = ''; }
+      const grid = document.getElementById('ps-charts-grid');
+      if (grid) grid.style.opacity = '';
+    }
+
+    /* ------- fetch from backend ------- */
+    async function fetchStats() {
+      const pid = psState.projectId;
+      if (!pid) return null;
+      const url = `/statistics/project/${pid}?range=${psState.range}`;
+      const res = await apiFetch(url);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    }
+
+    /* ------- renders ------- */
+    function renderKpis(data) {
+      const rl  = document.getElementById('ps-kpiRangeLabel');
+      const kc  = document.getElementById('ps-kpiCalls');
+      const km  = document.getElementById('ps-kpiAvgMs');
+      const ke  = document.getElementById('ps-kpiErrRate');
+      if (rl) rl.textContent = psState.range;
+      if (kc) kc.textContent = fmtCompact(data.kpis.total_calls);
+      if (km) km.textContent = data.kpis.avg_response_ms ? data.kpis.avg_response_ms + 'ms' : '—';
+      if (ke) ke.textContent = data.kpis.error_rate_pct != null ? data.kpis.error_rate_pct + '%' : '—';
+    }
+
+    function renderCallsChart(data) {
+      const rows   = data.calls_over_time;
+      const labels = rows.map(r => {
+        const d = new Date(r.day);
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      });
+      const ctx = document.getElementById('ps-chartCalls');
+      if (!ctx) return;
+      if (psCharts.calls) psCharts.calls.destroy();
+      psCharts.calls = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets: [
+          { label: 'Daily calls',      data: rows.map(r => r.calls), borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.08)', fill: true,  tension: 0.35, pointRadius: 0, borderWidth: 2 },
+          { label: '7-day moving avg', data: rows.map(r => r.ma7),   borderColor: '#f97316', borderDash: [5,4],              fill: false, tension: 0.35, pointRadius: 0, borderWidth: 2 },
+        ]},
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { display: true, position: 'top', align: 'end', labels: { boxWidth: 10, boxHeight: 2, padding: 14 } } },
+          scales: {
+            x: { grid: { display: false }, ticks: { maxTicksLimit: rows.length > 14 ? 8 : 7 } },
+            y: { grid: { color: GRID_COLOR }, ticks: { callback: v => fmtCompact(v) } }
+          }
+        }
+      });
+    }
+
+    function renderTopChart(data) {
+      const rows = data.top_endpoints;
+      const ctx  = document.getElementById('ps-chartTop');
+      if (!ctx) return;
+      if (psCharts.top) psCharts.top.destroy();
+      if (!rows.length) return;
+      psCharts.top = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: rows.map(r => r.method + ' ' + r.path), datasets: [{
+          data:            rows.map(r => r.calls),
+          backgroundColor: rows.map(r => METHOD_COLOR[r.method] || '#8a8a8a'),
+          borderRadius: 4, barThickness: 16,
+        }]},
+        options: {
+          indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => fmtNum(c.raw) + ' calls' } } },
+          scales: {
+            x: { grid: { color: GRID_COLOR }, ticks: { callback: v => fmtCompact(v) } },
+            y: { grid: { display: false } }
+          }
+        }
+      });
+    }
+
+    function renderMethodChart(data) {
+      const rows  = data.method_dist;
+      const total = rows.reduce((a, r) => a + r.calls, 0);
+      const ctx   = document.getElementById('ps-chartMethod');
+      if (!ctx) return;
+      if (psCharts.method) psCharts.method.destroy();
+      if (!rows.length) return;
+      psCharts.method = new Chart(ctx, {
+        type: 'doughnut',
+        data: { labels: rows.map(r => r.method), datasets: [{
+          data:            rows.map(r => r.calls),
+          backgroundColor: rows.map(r => METHOD_COLOR[r.method] || '#8a8a8a'),
+          borderColor: '#1a1a1a', borderWidth: 2,
+        }]},
+        options: {
+          responsive: true, maintainAspectRatio: false, cutout: '68%',
+          plugins: {
+            legend:       { position: 'bottom', labels: { boxWidth: 10, boxHeight: 10, padding: 14 } },
+            psCenterText: { text: fmtCompact(total), sub: 'total calls' },
+            tooltip:      { callbacks: { label: c => c.label + ': ' + fmtNum(c.raw) + ' (' + ((c.raw / total) * 100).toFixed(1) + '%)' } }
+          }
+        }
+      });
+    }
+
+    function renderErrorChart(data) {
+      const rows    = data.error_rates;
+      const colorFor = v => v >= 3 ? '#f87171' : v >= 1 ? '#f97316' : '#22c55e';
+      const ctx     = document.getElementById('ps-chartError');
+      if (!ctx) return;
+      if (psCharts.error) psCharts.error.destroy();
+      if (!rows.length) return;
+      psCharts.error = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: rows.map(r => r.method + ' ' + r.path), datasets: [{
+          data:            rows.map(r => r.error_pct),
+          backgroundColor: rows.map(r => colorFor(r.error_pct)),
+          borderRadius: 4, barThickness: 16,
+        }]},
+        options: {
+          indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.raw + '% error rate' } } },
+          scales: {
+            x: { grid: { color: GRID_COLOR }, ticks: { callback: v => v + '%' } },
+            y: { grid: { display: false } }
+          }
+        }
+      });
+    }
+
+    function renderHeatmap(data) {
+      const rows = data.peak_hours;   // [{hour, calls}] length 24
+      const max  = Math.max(...rows.map(r => r.calls), 1);
+      const hg   = document.getElementById('ps-hourgrid');
+      if (!hg) return;
+      hg.innerHTML = '';
+      rows.forEach(r => {
+        const d = document.createElement('div');
+        d.className = 'ps-hcell';
+        const intensity = r.calls / max;
+        d.style.background = `rgba(249, 115, 22, ${0.08 + intensity * 0.82})`;
+        d.title = String(r.hour).padStart(2, '0') + ':00 — ' + fmtNum(r.calls) + ' calls';
+        hg.appendChild(d);
+      });
+    }
+
+    function renderAll(data) {
+      clearStatus();
+      renderKpis(data);
+      renderCallsChart(data);
+      renderTopChart(data);
+      renderMethodChart(data);
+      renderErrorChart(data);
+      renderHeatmap(data);
+    }
+
+    /* ------- main entry: called by tab wiring ------- */
+    async function initProjectStats() {
+      ensureTheme();
+
+      /* resolve projectId from the URL (same pattern as view-project.js) */
+      if (!psState.projectId) {
+        const m = window.location.pathname.match(/\/project\/([^/]+)/);
+        psState.projectId = m ? decodeURIComponent(m[1]) : null;
+      }
+
+      /* wire range selector (only once) */
+      const sel = document.getElementById('ps-rangeSelect');
+      if (sel && !sel._psBound) {
+        sel._psBound = true;
+        sel.addEventListener('change', async e => {
+          psState.range = e.target.value;
+          await load();
+        });
+      }
+
+      await load();
+    }
+
+    async function load() {
+      showStatus('Loading statistics…', false);
+      try {
+        const data = await fetchStats();
+        renderAll(data);
+      } catch (err) {
+        console.error('[stats]', err);
+        showStatus('Could not load statistics. Please try again.', true);
+      }
+    }
+
+    window.initProjectStats = initProjectStats;
+  })();
+  </script>
+
+  <style>
+  /* =====================================================================
+     Project Stats tab — scoped styles (ps- prefix)
+  ===================================================================== */
+  #ps-root { padding: 0; }
+
+  /* controls bar */
+  .ps-controls {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 10px;
+    margin-bottom: 16px; padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .ps-controls__left  { display: flex; align-items: center; gap: 8px; }
+  .ps-controls__right { display: flex; align-items: center; gap: 8px; }
+
+  @keyframes ps-blink { 0%,100%{opacity:1;} 50%{opacity:.25;} }
+  .ps-live-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--success);
+    animation: ps-blink 1.6s ease-in-out infinite; flex-shrink: 0;
+  }
+  @media (prefers-reduced-motion: reduce) { .ps-live-dot { animation: none; } }
+  .ps-hint { font-size: 11px; color: var(--text-muted); }
+
+  .ps-select-wrap { position: relative; }
+  .ps-select-wrap select {
+    appearance: none; -webkit-appearance: none;
+    background: var(--surface-raised); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); color: var(--text);
+    font-size: 13px; padding: 6px 28px 6px 10px; cursor: pointer;
+  }
+  .ps-select-wrap select:focus { outline: 2px solid var(--accent); }
+  .ps-select-wrap svg {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    width: 14px; height: 14px; color: var(--text-muted); pointer-events: none;
+  }
+
+  /* status */
+  .ps-status {
+    padding: 12px 16px; border-radius: var(--radius-md);
+    font-size: 13px; margin-bottom: 16px;
+  }
+  .ps-status--loading { background: var(--surface); color: var(--text-muted); border: 1px solid var(--border); }
+  .ps-status--error   { background: rgba(248,113,113,0.08); color: var(--error); border: 1px solid var(--error); }
+
+  /* KPI strip */
+  .ps-kpi-strip { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 20px; }
+  @media (max-width: 600px) { .ps-kpi-strip { grid-template-columns: 1fr 1fr; } }
+  .ps-kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; }
+  .ps-kpi__label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+  .ps-kpi__value { font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; }
+
+  /* color helpers */
+  .ps-text-success { color: var(--success); }
+  .ps-text-accent  { color: var(--accent); }
+  .ps-text-error   { color: var(--error); }
+  .ps-text-purple  { color: #a78bfa; }
+
+  /* charts grid */
+  .ps-charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; transition: opacity .2s; }
+  @media (max-width: 900px) { .ps-charts-grid { grid-template-columns: 1fr; } }
+
+  .ps-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+  .ps-card--full { grid-column: 1 / -1; }
+
+  .ps-card__head {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border);
+  }
+  .ps-card__title { font-family: var(--font-display); font-weight: 600; font-size: 13px; }
+  .ps-card__sub   { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+  .ps-card__canvas-wrap { padding: 16px; height: 220px; }
+  .ps-card__canvas-wrap--tall { height: 260px; }
+  .ps-card__canvas-center { display: flex; align-items: center; justify-content: center; }
+
+  /* heatmap */
+  .ps-heatmap-wrap { padding: 16px; }
+  .ps-hourgrid { display: grid; grid-template-columns: repeat(24,1fr); gap: 3px; }
+  .ps-hcell { height: 28px; border-radius: 3px; cursor: default; }
+  .ps-hourlabels { display: grid; grid-template-columns: repeat(17,1fr); gap: 0; margin-top: 6px; font-size: 9px; color: var(--text-muted); }
+
+  /* empty */
+  .ps-empty { font-size: 12px; color: var(--text-muted); padding: 16px; }
+  </style>
 </body>
 </html>

@@ -184,6 +184,7 @@ function initTabs() {
     'tab-apis':     { panel: 'panel-apis',     load: loadApis },
     'tab-cors':     { panel: 'panel-cors',     load: loadCorsOrigins },
     'tab-logs':     { panel: 'panel-logs',   load: loadProjectLogs },
+    'tab-stats':    { panel: 'panel-stats',  load: () => { if (typeof window.initProjectStats === 'function') window.initProjectStats(); } },
     'tab-collab':   { panel: 'panel-collab',   load: loadCollaborators },
     'tab-settings': { panel: 'panel-settings' },
   };

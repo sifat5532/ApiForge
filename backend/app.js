@@ -11,7 +11,8 @@ const apiRoutes = require('./routes/api');
 const serveApiRoutes = require('./routes/serve.api');
 const profileRoutes = require('./routes/profile');
 const dashboardRoutes = require('./routes/dashboard');
-const paymentRoutes = require('./routes/payment');
+const paymentRoutes    = require('./routes/payment');
+const statisticsRoutes = require('./routes/statistics');
 const { requireAuth, requireGuest } = require('./routes/auth');
 const errorHandler = require('./middleware/errorHandler');
 const verifyPendingPayments = require('./utils/verifyPendingPayments');
@@ -34,7 +35,8 @@ app.use('/new/api', apiRoutes);
 app.use('/api', serveApiRoutes);
 app.use('/profile', profileRoutes);
 app.use('/dashboard', dashboardRoutes);
-app.use('/payment', paymentRoutes);
+app.use('/payment',    paymentRoutes);
+app.use('/statistics', statisticsRoutes);
 
 app.get('/', requireAuth, (req, res) => {
   res.send('Hello World! You are logged in.' + '\n' + 'id: ' + req.loggedInUser.id + '\n' + 'name: ' + req.loggedInUser.name + '\n' + 'email: ' + req.loggedInUser.email + '\n' + 'username: ' + req.loggedInUser.username);
