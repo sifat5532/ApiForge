@@ -1218,12 +1218,22 @@ DECLARE
     api_table_dep RECORD ;
     api_col_dep RECORD ;
     api_def_id INTEGER;
+    v_template_name VARCHAR;
+    v_changed_by INTEGER;
 BEGIN
     IF NEW.is_clone = FALSE OR NEW.cloned_from_id IS NULL THEN
         RETURN NEW;
     END IF;
+
     INSERT INTO template_clones(user_id, template_id, cloned_project_id)
     VALUES (NEW.author_id, NEW.cloned_from_id, NEW.id);
+
+    -- Suppress the per-row schema/api log triggers (and the clone's own
+    -- "create" log) fired while we copy the template's structure into this
+    -- clone. We write a single "clone" log instead. The flag is transaction
+    -- local and is discarded when this transaction commits, so the clone logs
+    -- normally on every later operation.
+    PERFORM set_config('app.suppress_project_log', 'true', true);
 
     DROP TABLE IF EXISTS tmp_table_map;
     CREATE TEMP TABLE IF NOT EXISTS tmp_table_map (
@@ -1294,7 +1304,18 @@ BEGIN
           INSERT INTO api_column_dependencies(api_definition_id , schema_col_id , usage_context) 
           VALUES (api_def_id , (v_col_map ->> api_col_dep.schema_col_id::text)::integer , api_col_dep.usage_context);
           END LOOP;
-    END LOOP;
+     END LOOP;
+
+    -- Write a single "clone" log describing where this project came from,
+    -- instead of duplicating the source template's entire change history.
+    -- The suppression flag set above is transaction-local and is automatically
+    -- discarded when this transaction commits, so the clone is logged as a
+    -- normal project on every subsequent operation.
+    SELECT name INTO v_template_name FROM projects WHERE id = NEW.cloned_from_id;
+    v_changed_by := NULLIF(current_setting('app.current_user_id', true), '')::INTEGER;
+    INSERT INTO project_logs (project_id, changed_by, created_at, entity_type, entity_id, change_type, old_data, new_data)
+    VALUES (NEW.id, v_changed_by, now(), 'project', NEW.id, 'clone',
+        NULL, jsonb_build_object('cloned_from_id', NEW.cloned_from_id, 'template_name', v_template_name));
 
     RETURN NEW;
 END;
@@ -1474,12 +1495,23 @@ CREATE OR REPLACE FUNCTION func_log_project_change (
 ) RETURNS void LANGUAGE plpgsql AS $$
 DECLARE
    v_changed_by INTEGER;
+   v_is_template BOOLEAN;
 BEGIN
-   -- If the project is already gone (e.g. this is being called from a cascade
-   -- delete of one of its child rows), skip: project_logs rows for this project
-   -- are removed by ON DELETE CASCADE anyway, and inserting would violate
-   -- fk_project_logs_project.
-   IF NOT EXISTS (SELECT 1 FROM projects WHERE id = p_project_id) THEN
+   -- Templates must never have any project logs. Template creation copies
+   -- schema tables/columns/FKs and API definitions into a new template project,
+   -- which otherwise fires every tg_log_* trigger and duplicates the source
+   -- project's log entries onto the template.
+   SELECT is_template INTO v_is_template FROM projects WHERE id = p_project_id;
+   IF NOT FOUND OR v_is_template THEN
+      RETURN;
+   END IF;
+
+   -- While a project is being cloned from a template, the clone trigger copies
+   -- the source's schema/columns/FKs/API definitions, which would otherwise fire
+   -- every tg_log_* trigger and duplicate the source project's history onto the
+   -- clone. tgfunc_clone_template sets this transaction-local flag and writes a
+   -- single "clone" log itself instead.
+   IF current_setting('app.suppress_project_log', true) = 'true' THEN
       RETURN;
    END IF;
 

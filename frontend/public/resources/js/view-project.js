@@ -92,9 +92,23 @@ async function loadProjectHeader() {
     const leaveBtn = document.getElementById('vp-leave-project');
     const regenBtn = document.getElementById('vp-regen-key');
     const createTemplateBtn = document.getElementById('vp-create-template');
+    const originTemplateBtn = document.getElementById('vp-origin-template');
     if (leaveBtn) leaveBtn.hidden = vpState.isAuthor;
     if (regenBtn) regenBtn.hidden = !vpState.isAuthor;
     if (createTemplateBtn) createTemplateBtn.hidden = !vpState.isAuthor;
+
+    // "Origin Template" is shown on any cloned project and links to the source
+    // template. It is not author-gated — collaborators may view it too.
+    if (originTemplateBtn) {
+      const originId = p.cloned_from_id != null ? String(p.cloned_from_id) : null;
+      originTemplateBtn.hidden = !(p.is_clone && originId);
+      if (!originTemplateBtn.dataset.bound && originId) {
+        originTemplateBtn.addEventListener('click', () => {
+          window.location.href = `/template/${encodeURIComponent(originId)}`;
+        });
+        originTemplateBtn.dataset.bound = '1';
+      }
+    }
 
     // Apply all author-only action button visibility immediately after role is known.
     // These buttons live in the panel action bars and should not wait for lazy tab load.
@@ -2533,12 +2547,14 @@ const LOG_CHANGE_LABEL = {
   update: 'Updated',
   delete: 'Deleted',
   remove: 'Removed',
+  clone: 'Cloned',
 };
 
 function changeTypeClass(changeType) {
   switch (changeType) {
     case 'create': return 'is-create';
     case 'insert': return 'is-create';
+    case 'clone': return 'is-create';
     case 'update': return 'is-update';
     case 'delete': return 'is-delete';
     case 'remove': return 'is-delete';
@@ -2552,6 +2568,16 @@ function logDescription(log) {
 
   const newData = log.new_data || {};
   const oldData = log.old_data || {};
+
+  // Project cloned from a template — show a friendly one-line summary.
+  if (log.entity_type === 'project' && log.change_type === 'clone') {
+    const templateName = newData.template_name || oldData.template_name || 'a template';
+    const templateId = newData.cloned_from_id || oldData.cloned_from_id;
+    const tplHtml = templateId
+      ? `<a class="vp-log__subject" href="/template/${escHtml(String(templateId))}">${escHtml(templateName)}</a>`
+      : `<span class="vp-log__subject">${escHtml(templateName)}</span>`;
+    return `Project cloned from template ${tplHtml}`;
+  }
 
   // Collaborator special subject
   if (log.entity_type === 'collaborator') {
