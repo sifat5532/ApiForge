@@ -738,15 +738,15 @@ router.get('/popularTags', requireAuth, async (req, res) => {
                                         ( SELECT json_agg( row_to_json( sub ))
                                             FROM (SELECT
                                                  P.id ,
-                                                 P.name ,
+                                                 P.name AS name ,
                                                  P.description ,
                                                  P.created_at , 
                                                  COALESCE((SELECT ROUND(AVG(tr.rating),2) FROM template_ratings tr WHERE tr.template_id = P.id ), 0 ) AS avg_ratings , 
                                                  (SELECT COUNT(*) FROM template_clones tr WHERE tr.template_id = P.id )  AS clone_count,
                                                  (SELECT COUNT(*) FROM template_likes tr WHERE tr.template_id = P.id ) AS like_count,
                                                  P.author_id,
-                                                U.username ,
-                                                 U.name 
+                                                 U.username ,
+                                                 U.name AS author_name
                                                  FROM project_tags pt
                                                  JOIN projects P ON p.id = pt.project_id 
                                                  JOIN users U ON U.id = P.author_id

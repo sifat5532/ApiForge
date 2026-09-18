@@ -8,7 +8,7 @@ router.get('/stats', requireAuth, async (req, res) => {
     const userId = req.loggedInUser.id;
     const result = await query(
       `SELECT
-         (SELECT COUNT(*) FROM projects WHERE author_id = $1) AS total_projects,
+         (SELECT COUNT(*) FROM projects WHERE author_id = $1  AND is_template = $2 ) AS total_projects,
          (SELECT COUNT(*)
             FROM schema_tables T
             JOIN projects P ON T.project_id = P.id
