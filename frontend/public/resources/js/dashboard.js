@@ -32,7 +32,6 @@ async function loadDashboardData() {
     if (statsRes.ok) {
       const stats = await statsRes.json();
       renderStats(stats);
-      renderOnboarding(stats);
     }
     if (projectsRes.ok) {
       const data = await projectsRes.json();
