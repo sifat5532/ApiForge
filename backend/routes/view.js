@@ -329,6 +329,7 @@ router.get('/templateDetails/:templateId', async (req, res) => {
                          json_build_object (
                            'id' , ad.id ,
                            'name' , ad.name ,
+                           'method' , ad.method ,
                            'query_definition' , describe_api_definition(ad.id) ,
                            'rate_limit_per_day' , ad.rate_limit_per_day 
                          ) ORDER BY ad.name) AS definitions 
@@ -402,12 +403,13 @@ router.get('/viewAllForeignkeys/:projectId', requireAuth, async (req, res) => {
     res.status(200).json({ msg: "Successfully fetched foreign keys", data: result.rows })
 
 });
-router.post('/getUsername', async (req, res) => {
+router.post('/getUsername', requireAuth, async (req, res) => {
     const { username } = req.body;
     const result = await query(`SELECT
                                  u.id , u.name , u.username
                                  FROM users u
                                  WHERE u.username LIKE $1
+                                 ORDER BY u.name LIMIT 20
                                 ` , [`%${username}%`]);
     return res.status(200).json(result.rows);
 
@@ -839,5 +841,50 @@ router.get('/billingHistory', requireAuth, async (req, res) => {
         return res.status(500).json({ msg: 'There was a server side error, please try again later' });
     }
 });
+
+router.get('/searchTemplate', async (req, res) => {
+    const searchTerm = req.query.q;
+
+    if (!searchTerm) {
+        return res.status(400).json({
+            success: false,
+            message: "Search term is required"
+        });
+    }
+        const result = await query(`
+            SELECT
+                p.id            AS template_id,
+                p.name          AS template_name,
+                p.description,
+                p.auth_enabled,
+                p.created_at    AS template_created_at,
+                u.id            AS author_id,
+                u.name          AS author_name,
+                u.username      AS author_username
+            FROM projects p
+            JOIN users u ON u.id = p.author_id
+            WHERE p.is_template = $2 AND (
+                p.name ILIKE $1
+                OR p.description ILIKE $1
+                OR u.name ILIKE $1
+                OR u.username ILIKE $1
+                OR EXISTS (
+                    SELECT 1
+                    FROM tags t
+                    JOIN project_tags pt ON pt.tag_id = t.id
+                    WHERE pt.project_id = p.id AND t.name ILIKE $1
+                )
+            )
+            ORDER BY p.created_at DESC
+        `, [`%${searchTerm}%`, true]);
+
+        if (result.rows.length === 0) return res.status(404).json({ success: false, msg: "NO template found" });
+        return res.status(200).json({
+            success: true,
+            result: result.rows
+        });
+    
+});
+
 
 module.exports = router;
