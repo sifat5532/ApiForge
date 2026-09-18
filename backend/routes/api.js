@@ -848,4 +848,86 @@ router.post('/create', requireAuth, requireProjectAccess, isProjectActive, async
 
 });
 
+router.put('/update', requireAuth, requireProjectAccess, isProjectActive, async (req, res) => {
+  const proj_id  = req.params.projectId || req.query.projectId;
+  const api_id   = req.params.api_id    || req.query.api_id;
+  const api_name = req.params.api_name  || req.query.api_name;
+  const method   = req.params.method    || req.query.method;
+
+  if (!api_id || !api_name || !method) {
+    return res.status(400).json({ msg: 'api_id, api_name, and method are required' });
+  }
+  if (!/^[a-z][a-z0-9_]{0,29}$/.test(api_name)) {
+    return res.status(400).json({ msg: `Please give a valid name using only a-z, 0-9 and _` });
+  }
+  const method_upper = _.toUpper(method.trim());
+  if (!['POST', 'GET', 'PUT', 'DELETE'].includes(method_upper)) {
+    return res.status(400).json({ msg: `Invalid method name` });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE');
+    await client.query('SELECT set_config(\'app.current_user_id\', $1, true)', [String(req.loggedInUser.id)]);
+
+    // Verify the API belongs to this project and the caller has access
+    const existing = await client.query(
+      `SELECT id FROM api_definitions WHERE id = $1 AND project_id = $2`,
+      [api_id, proj_id]
+    );
+    if (existing.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ msg: 'API not found in this project' });
+    }
+
+    const projectCatalog = await loadProjectCatalog(client, proj_id);
+
+    let errors = [];
+    if (method_upper === 'GET')    errors = validateSelectPayload(req.body, projectCatalog);
+    else if (method_upper === 'POST')   errors = validateInsertPayload(req.body, projectCatalog);
+    else if (method_upper === 'PUT')    errors = validateUpdatePayload(req.body, projectCatalog);
+    else if (method_upper === 'DELETE') errors = validateDeletePayload(req.body, projectCatalog);
+
+    if (errors.length) {
+      await client.query('ROLLBACK');
+      return res.status(422).json({ valid: false, errors });
+    }
+
+    // Update the api_definitions row
+    await client.query(
+      `UPDATE api_definitions SET name = $1, method = $2, query_definition = $3 WHERE id = $4`,
+      [api_name, method_upper, req.body, api_id]
+    );
+
+    // Refresh dependencies: delete old, re-insert new
+    await client.query(`DELETE FROM api_table_dependencies  WHERE api_definition_id = $1`, [api_id]);
+    await client.query(`DELETE FROM api_column_dependencies WHERE api_definition_id = $1`, [api_id]);
+
+    const deps = collectApiDependencies(method_upper, req.body, projectCatalog);
+    if (deps.tables.size > 0) {
+      await client.query(`
+        INSERT INTO api_table_dependencies (api_definition_id, schema_table_id, usage_context)
+        SELECT $1, x.schema_table_id, x.usage_context
+        FROM unnest($2::int[], $3::text[]) AS x(schema_table_id, usage_context)
+      `, [api_id, [...deps.tables.keys()], [...deps.tables.values()]]);
+    }
+    if (deps.columns.size > 0) {
+      await client.query(`
+        INSERT INTO api_column_dependencies (api_definition_id, schema_col_id, usage_context)
+        SELECT $1, x.schema_col_id, x.usage_context
+        FROM unnest($2::int[], $3::text[]) AS x(schema_col_id, usage_context)
+      `, [api_id, [...deps.columns.keys()], [...deps.columns.values()]]);
+    }
+
+    await client.query('COMMIT');
+    return res.status(200).json({ valid: true, msg: 'API definition updated successfully' });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error(e);
+    res.status(e.status || 500).json({ msg: e.status ? e.message : 'There was a server side error, please try again later' });
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = router;

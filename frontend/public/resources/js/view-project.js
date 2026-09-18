@@ -23,6 +23,8 @@ const vpState = {
 const cabState = {
   tables: [],
   colsByTableId: {},
+  editMode: false,
+  editApiId: null,
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -994,8 +996,9 @@ function copyApiUrl(btn) {
 }
 
 function editApi(apiId) {
-  // The API query builder is not part of this view; direct the user to the builder.
-  showToast('API editing is available in the API builder (coming soon).', 'error');
+  const api = (vpState.apis || []).find(a => String(a.id) === String(apiId));
+  if (!api) { showToast('API not found', 'error'); return; }
+  openCreateApiModal(api);
 }
 
 /* ---- Dynamic parameter extraction from query_definition ----
@@ -2113,10 +2116,13 @@ function cabBuildPayload(errors) {
   return payload;
 }
 
-async function openCreateApiModal() {
+async function openCreateApiModal(apiToEdit = null) {
+  cabState.editMode  = apiToEdit != null;
+  cabState.editApiId = apiToEdit ? apiToEdit.id : null;
+
   const overlay = document.getElementById('vp-modal-overlay');
   if (overlay) overlay.classList.add('vp-modal--xl');
-  showModal('Create API', '<p class="vp-empty__text">Loading tables…</p>', '');
+  showModal(cabState.editMode ? 'Edit API' : 'Create API', '<p class="vp-empty__text">Loading tables…</p>', '');
 
   try {
     await cabLoadCatalog();
@@ -2276,7 +2282,7 @@ async function openCreateApiModal() {
 
   const footHtml = `
     <button class="btn btn--ghost btn--sm" id="cab-cancel" type="button">Cancel</button>
-    <button class="btn btn--primary btn--sm" id="cab-submit" type="button">Create API</button>
+    <button class="btn btn--primary btn--sm" id="cab-submit" type="button">${cabState.editMode ? 'Save changes' : 'Create API'}</button>
   `;
 
   setModalBody(bodyHtml);
@@ -2295,14 +2301,338 @@ async function openCreateApiModal() {
   document.getElementById('cab-add-orderby').addEventListener('click', cabCreateOrderByRow);
   document.getElementById('cab-add-returning').addEventListener('click', cabCreateReturningRow);
   document.getElementById('cab-cancel').addEventListener('click', closeModal);
-  document.getElementById('cab-submit').addEventListener('click', submitCreateApi);
+  document.getElementById('cab-submit').addEventListener('click', cabState.editMode ? submitEditApi : submitCreateApi);
 
   cabWireDyn(document.getElementById('cab-form'), 'limit');
   cabWireDyn(document.getElementById('cab-form'), 'offset');
 
   cabApplyMethodVisibility();
   cabRefreshAllColSelects();
+  if (cabState.editMode && apiToEdit) cabPrePopulateForm(apiToEdit);
   document.getElementById('cab-api-name')?.focus();
+}
+
+// ---------------------------------------------------------------------------
+// cabFillDyn — fill a cabDynHtml widget from a saved dynamic-value object/scalar
+// ---------------------------------------------------------------------------
+function cabFillDyn(container, prefix, val) {
+  if (!container || val == null) return;
+  const wrap = container.querySelector(`[data-dyn="${prefix}"]`);
+  if (!wrap) return;
+
+  if (typeof val === 'object' && val.is_dynamic) {
+    // Activate the dynamic toggle
+    const toggle = wrap.querySelector('[data-action="toggle-dyn"]');
+    const config = wrap.querySelector('[data-dyn-config]');
+    const staticInput = wrap.querySelector(`[data-field="${prefix}"]`);
+    if (toggle && !toggle.classList.contains('is-on')) {
+      toggle.classList.add('is-on');
+      if (config) config.classList.remove('cab-hidden');
+      if (staticInput) staticInput.classList.add('cab-hidden');
+    }
+    const srcEl  = wrap.querySelector(`[data-field="${prefix}_src"]`);
+    const nameEl = wrap.querySelector(`[data-field="${prefix}_name"]`);
+    const fbEl   = wrap.querySelector(`[data-field="${prefix}_default"]`);
+    const reqEl  = wrap.querySelector(`[data-field="${prefix}_required"]`);
+    if (srcEl)  srcEl.value  = val.dynamic_value_getting_type || 'query_param';
+    if (nameEl) nameEl.value = val.dynamic_field_name || '';
+    if (fbEl && val.fallback_value != null) fbEl.value = String(val.fallback_value);
+    if (reqEl) reqEl.checked = !!val.is_dynamic_required;
+  } else {
+    // Static value
+    const staticVal = typeof val === 'object' ? val.fallback_value : val;
+    const fbEl = wrap.querySelector(`[data-field="${prefix}"]`);
+    if (fbEl && staticVal != null) fbEl.value = String(staticVal);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// cabPopulateWhere — recursively populate where nodes into a DOM container
+// ---------------------------------------------------------------------------
+function cabPopulateWhere(container, nodes) {
+  if (!container || !Array.isArray(nodes) || nodes.length === 0) return;
+  nodes.forEach((node, i) => {
+    if (node.node_type === 'group') {
+      cabCreateGroupItem(container);
+      // cabCreateGroupItem appends a new .cab-where-item[data-kind="group"] with a default child condition
+      const groups = [...container.querySelectorAll(':scope > .cab-where-item[data-kind="group"]')];
+      const grp = groups[groups.length - 1];
+      if (!grp) return;
+      if (i > 0) {
+        const connEl = grp.querySelector(':scope > .cab-conn [data-field="conn"]');
+        if (connEl) connEl.value = node.logical_operator || 'and';
+      }
+      // cabCreateGroupItem seeds a default empty condition; remove it before populating
+      const children = grp.querySelector('.cab-where-children');
+      if (children) {
+        children.innerHTML = '';
+        cabPopulateWhere(children, node.children || []);
+      }
+    } else {
+      // condition
+      cabCreateConditionItem(container);
+      const conds = [...container.querySelectorAll(':scope > .cab-where-item[data-kind="condition"]')];
+      const cond = conds[conds.length - 1];
+      if (!cond || !node) return;
+      if (i > 0) {
+        const connEl = cond.querySelector(':scope > .cab-conn [data-field="conn"]');
+        if (connEl) connEl.value = node.logical_operator || 'and';
+      }
+      const colEl = cond.querySelector('[data-field="col"]');
+      if (colEl && node.table_alias != null && node.col_id != null) {
+        colEl.value = `${node.table_alias}|${node.col_id}`;
+      }
+      const opEl = cond.querySelector('[data-field="op"]');
+      if (opEl) {
+        opEl.value = node.operator || '=';
+        opEl.dispatchEvent(new Event('change')); // update val1/val2 visibility
+      }
+      if (node.val1 != null) cabFillDyn(cond, 'val1', node.val1);
+      if (node.val2 != null) cabFillDyn(cond, 'val2', node.val2);
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// cabPopulateReturning — populate returning columns
+// ---------------------------------------------------------------------------
+function cabPopulateReturning(colIds) {
+  (colIds || []).forEach(colId => {
+    cabCreateReturningRow();
+    const rows = document.querySelectorAll('#cab-returning-list .cab-returning-row');
+    const row = rows[rows.length - 1];
+    if (row && colId != null) row.querySelector('[data-field="col"]').value = String(colId);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// cabPrePopulateForm — fill the create/edit form from an existing API object
+// ---------------------------------------------------------------------------
+function cabPrePopulateForm(api) {
+  // Set API name
+  const nameEl = document.getElementById('cab-api-name');
+  if (nameEl) nameEl.value = api.name || '';
+
+  // Set method first, then re-apply visibility
+  const methodEl = document.getElementById('cab-method');
+  if (methodEl) {
+    methodEl.value = api.method || 'GET';
+    cabApplyMethodVisibility();
+  }
+
+  // Parse query_definition — may be an object already or a JSON string
+  let qd = api.query_definition;
+  if (typeof qd === 'string') { try { qd = JSON.parse(qd); } catch (_) { return; } }
+  if (!qd || typeof qd !== 'object') return;
+
+  const method = (api.method || 'GET').toUpperCase();
+
+  if (method === 'GET') {
+    // Main table + alias
+    const mainTableEl = document.getElementById('cab-from-table');
+    const mainAliasEl = document.getElementById('cab-from-alias');
+    if (mainTableEl && qd.select_obj?.table_id != null) mainTableEl.value = String(qd.select_obj.table_id);
+    if (mainAliasEl && qd.select_obj?.table_alias)      mainAliasEl.value = qd.select_obj.table_alias;
+    cabRefreshAllColSelects();
+
+    // Joins
+    (qd.join_obj_array || []).forEach(j => {
+      if (!j) return;
+      cabCreateJoinRow();
+      const jRows = document.querySelectorAll('#cab-joins-list .cab-join-row');
+      const jRow  = jRows[jRows.length - 1];
+      if (!jRow) return;
+      jRow.querySelector('[data-field="jointype"]').value = j.type || 'inner';
+      jRow.querySelector('[data-field="table"]').value    = String(j.table_id || '');
+      jRow.querySelector('[data-field="alias"]').value    = j.alias || '';
+      jRow.querySelector('[data-field="op"]').value       = j.join_operator || '=';
+      if (j.left)  jRow.querySelector('[data-field="left"]').value  = `${j.left.table_alias}|${j.left.col_id}`;
+      if (j.right) jRow.querySelector('[data-field="right"]').value = `${j.right.table_alias}|${j.right.col_id}`;
+      // Trigger alias/table change to update scoped columns
+      jRow.querySelector('[data-field="alias"]').dispatchEvent(new Event('input'));
+    });
+
+    // Select-all checkboxes: tick the ones present in the saved definition
+    const selectAllCols = (qd.select_obj?.cols_obj_array || []).filter(c => c.is_select_all);
+    selectAllCols.forEach(c => {
+      const cb = document.querySelector(`#cab-select-all-list input[data-alias="${CSS.escape(c.table_alias)}"]`);
+      if (cb) cb.checked = true;
+    });
+
+    // Regular select columns
+    const regularCols = (qd.select_obj?.cols_obj_array || []).filter(c => !c.is_select_all);
+    regularCols.forEach(c => {
+      if (!c) return;
+      cabCreateSelectColRow();
+      const sRows = document.querySelectorAll('#cab-select-list .cab-select-row');
+      const sRow  = sRows[sRows.length - 1];
+      if (!sRow) return;
+      if (c.table_alias != null && c.col_id != null) {
+        sRow.querySelector('[data-field="col"]').value = `${c.table_alias}|${c.col_id}`;
+      }
+      sRow.querySelector('[data-field="fn"]').value    = c.function || 'NONE';
+      sRow.querySelector('[data-field="alias"]').value = c.alias || '';
+    });
+
+    // Where
+    cabPopulateWhere(document.getElementById('cab-where-root'), qd.where || []);
+
+    // Group by
+    (qd.group_by_cols_array || []).forEach(g => {
+      if (!g) return;
+      cabCreateGroupByRow();
+      const gRows = document.querySelectorAll('#cab-groupby-list .cab-groupby-row');
+      const gRow  = gRows[gRows.length - 1];
+      if (gRow && g.table_alias != null && g.col_id != null) {
+        gRow.querySelector('[data-field="col"]').value = `${g.table_alias}|${g.col_id}`;
+      }
+    });
+
+    // Having
+    (qd.having || []).forEach((h, i) => {
+      if (!h) return;
+      cabCreateHavingRow();
+      const hRows = document.querySelectorAll('#cab-having-list .cab-having-row');
+      const hRow  = hRows[hRows.length - 1];
+      if (!hRow) return;
+      if (i > 0) {
+        const connEl = hRow.querySelector(':scope > .cab-conn [data-field="conn"]');
+        if (connEl) connEl.value = h.logical_operator || 'and';
+      }
+      hRow.querySelector('[data-field="fn"]').value  = h.function_name || 'COUNT';
+      if (h.table_alias != null && h.col_id != null) {
+        hRow.querySelector('[data-field="col"]').value = `${h.table_alias}|${h.col_id}`;
+      }
+      hRow.querySelector('[data-field="op"]').value  = h.having_operator || '>';
+      cabFillDyn(hRow, 'val', h);
+    });
+
+    // Order by
+    (qd.order_by_array || []).forEach(o => {
+      if (!o) return;
+      cabCreateOrderByRow();
+      const oRows = document.querySelectorAll('#cab-orderby-list .cab-orderby-row');
+      const oRow  = oRows[oRows.length - 1];
+      if (!oRow) return;
+      if (o.table_alias != null && o.col_id != null) {
+        oRow.querySelector('[data-field="col"]').value = `${o.table_alias}|${o.col_id}`;
+      }
+      oRow.querySelector('[data-field="dir"]').value = (o.order || 'asc').toLowerCase();
+    });
+
+    // Limit / offset
+    const form = document.getElementById('cab-form');
+    if (qd.limit  != null) cabFillDyn(form, 'limit',  qd.limit);
+    if (qd.offset != null) cabFillDyn(form, 'offset', qd.offset);
+
+  } else if (method === 'POST') {
+    const tEl = document.getElementById('cab-from-table');
+    if (tEl && qd.table_id != null) tEl.value = String(qd.table_id);
+    cabRefreshAllColSelects();
+
+    // Write columns (value_obj_array)
+    (qd.value_obj_array || []).forEach(v => {
+      if (!v) return;
+      cabCreateWriteColRow();
+      const wRows = document.querySelectorAll('#cab-write-list .cab-write-row');
+      const wRow  = wRows[wRows.length - 1];
+      if (!wRow) return;
+      if (v.col_id != null) wRow.querySelector('[data-field="col"]').value = String(v.col_id);
+      const srcEl = wRow.querySelector('[data-field="src"]');
+      if (srcEl) { srcEl.value = v.source || 'body_field'; srcEl.dispatchEvent(new Event('change')); }
+      const nameEl    = wRow.querySelector('[data-field="name"]');
+      const defaultEl = wRow.querySelector('[data-field="default"]');
+      const reqEl     = wRow.querySelector('[data-field="required"]');
+      if (v.is_dynamic) {
+        if (nameEl)    nameEl.value    = v.dynamic_field_name || '';
+        if (defaultEl && v.default_value != null) defaultEl.value = String(v.default_value);
+        if (reqEl)     reqEl.checked   = !!(v.is_dynamic_required ?? true);
+      } else {
+        // static_value: the "value" goes in the name field (literal value)
+        if (nameEl && v.default_value != null) nameEl.value = String(v.default_value);
+      }
+    });
+
+    cabPopulateReturning(qd.returning_cols_id || []);
+
+  } else if (method === 'PUT' || method === 'DELETE') {
+    const tEl = document.getElementById('cab-from-table');
+    const aEl = document.getElementById('cab-from-alias');
+    if (tEl && qd.table_id   != null) tEl.value = String(qd.table_id);
+    if (aEl && qd.table_alias)        aEl.value = qd.table_alias;
+    cabRefreshAllColSelects();
+
+    if (method === 'PUT') {
+      (qd.value_obj_array || []).forEach(v => {
+        if (!v) return;
+        cabCreateWriteColRow();
+        const wRows = document.querySelectorAll('#cab-write-list .cab-write-row');
+        const wRow  = wRows[wRows.length - 1];
+        if (!wRow) return;
+        if (v.col_id != null) wRow.querySelector('[data-field="col"]').value = String(v.col_id);
+        const srcEl = wRow.querySelector('[data-field="src"]');
+        if (srcEl) { srcEl.value = v.source || 'body_field'; srcEl.dispatchEvent(new Event('change')); }
+        const nameEl    = wRow.querySelector('[data-field="name"]');
+        const defaultEl = wRow.querySelector('[data-field="default"]');
+        const reqEl     = wRow.querySelector('[data-field="required"]');
+        if (v.is_dynamic) {
+          if (nameEl)    nameEl.value    = v.dynamic_field_name || '';
+          if (defaultEl && v.default_value != null) defaultEl.value = String(v.default_value);
+          if (reqEl)     reqEl.checked   = !!(v.is_dynamic_required ?? true);
+        } else {
+          if (nameEl && v.default_value != null) nameEl.value = String(v.default_value);
+        }
+      });
+    }
+
+    cabPopulateWhere(document.getElementById('cab-where-root'), qd.where || []);
+    cabPopulateReturning(qd.returning_cols_id || []);
+  }
+}
+
+async function submitEditApi() {
+  const submitBtn = document.getElementById('cab-submit');
+  const apiName   = (document.getElementById('cab-api-name')?.value || '').trim();
+  const method    = document.getElementById('cab-method')?.value;
+  const errors    = [];
+
+  if (!apiName) errors.push('API name is required');
+  else if (!CAB_API_NAME_RE.test(apiName)) errors.push('API name must start with a–z and use only lowercase letters, digits, or underscores (max 30)');
+
+  const payload = cabBuildPayload(errors);
+  if (errors.length) { cabShowErrors(errors); return; }
+
+  setLoading(submitBtn, true);
+  cabShowErrors([]);
+  try {
+    const qs = new URLSearchParams({
+      projectId: String(vpState.projectId),
+      api_id:    String(cabState.editApiId),
+      api_name:  apiName,
+      method,
+    });
+    const res = await apiFetch(`/new/api/update?${qs.toString()}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.valid !== false) {
+      closeModal();
+      showToast(data.msg || 'API definition updated successfully', 'success');
+      vpState.loaded.apis = false;
+      loadApis();
+      return;
+    }
+    const backendErrors = Array.isArray(data.errors) && data.errors.length
+      ? data.errors
+      : [data.msg || data.error || 'Failed to update API'];
+    cabShowErrors(backendErrors);
+    setLoading(submitBtn, false);
+  } catch (_) {
+    cabShowErrors(['Network error. Is the backend reachable?']);
+    setLoading(submitBtn, false);
+  }
 }
 
 async function submitCreateApi() {
