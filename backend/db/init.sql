@@ -1438,7 +1438,7 @@ BEGIN
 
       IF v_current_plan_id = NEW.plan_id THEN
          UPDATE subscriptions
-         SET end_date = now() + (NEW.month_count || ' months')::INTERVAL
+         SET end_date = end_date + (NEW.month_count || ' months')::INTERVAL
          WHERE user_id = NEW.user_id AND status = 'active';
       ELSE
          UPDATE subscriptions
