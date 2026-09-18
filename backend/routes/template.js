@@ -32,7 +32,7 @@ router.post('/like', requireAuth, templateExistence, async (req, res) => {
         return res.status(200).json({ msg: "Successfully removed like in the template" });
     }
 
-    await query('INSERT INTO template_likes(template_id, user_id) VALUES($1, $2)', [template_id, req.loggedInUser.id]);
+    await query('IfNSERT INTO template_likes(template_id, user_id) VALUES($1, $2)', [template_id, req.loggedInUser.id]);
     res.status(200).json({ msg: "Successfully liked the template" });
 });
 

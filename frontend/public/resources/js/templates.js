@@ -5,229 +5,14 @@
    pagination for templates.html.
    =================================================================== */
 
-// ─── Mock dataset ──────────────────────────────────────────────────────────────
-const MOCK_TEMPLATES = [
-  {
-    id: 'tpl1',
-    name: 'Auth & Permissions Starter',
-    description: 'JWT-based authentication with role-based access control (RBAC), refresh token rotation, and audit log endpoints.',
-    author: { name: 'Sarah Okafor', username: 'sarahokafor', initials: 'SO' },
-    tags: ['auth', 'JWT', 'RBAC', 'security'],
-    authEnabled: true,
-    stars: 504,
-    rating: 4.9,
-    ratingCount: 148,
-    createdAt: 'Jun 22, 2026',
-    createdTimestamp: 1750550400000,
-    useCount: 3210,
-  },
-  {
-    id: 'tpl2',
-    name: 'E-Commerce Checkout API',
-    description: 'Cart, coupon, and checkout pipeline with Stripe & PayPal webhook handlers, tax calculation engine, and order state machine.',
-    author: { name: 'Dave Kim', username: 'davekim', initials: 'DK' },
-    tags: ['e-commerce', 'payments', 'REST', 'webhooks'],
-    authEnabled: true,
-    stars: 763,
-    rating: 4.8,
-    ratingCount: 210,
-    createdAt: 'May 28, 2026',
-    createdTimestamp: 1748390400000,
-    useCount: 5870,
-  },
-  {
-    id: 'tpl3',
-    name: 'Real-Time Chat Backend',
-    description: 'WebSocket-based messaging API with rooms, typing indicators, read receipts, message history, and file attachment endpoints.',
-    author: { name: 'Julian Moreno', username: 'julianm', initials: 'JM' },
-    tags: ['real-time', 'WebSocket', 'chat', 'messaging'],
-    authEnabled: true,
-    stars: 612,
-    rating: 4.7,
-    ratingCount: 187,
-    createdAt: 'May 15, 2026',
-    createdTimestamp: 1747267200000,
-    useCount: 4120,
-  },
-  {
-    id: 'tpl4',
-    name: 'Multi-Tenant SaaS Scaffold',
-    description: 'Workspace isolation, per-tenant plan enforcement, usage metering API, and team member invitation system.',
-    author: { name: 'Ryan Patel', username: 'ryanp', initials: 'RP'},
-    tags: ['SaaS', 'auth', 'billing', 'teams'],
-    authEnabled: true,
-    stars: 447,
-    rating: 4.7,
-    ratingCount: 131,
-    createdAt: 'Apr 12, 2026',
-    createdTimestamp: 1744416000000,
-    useCount: 2980,
-  },
-  {
-    id: 'tpl5',
-    name: 'AI Content Generator API',
-    description: 'Wrapper API over OpenAI and Anthropic models with streaming support, prompt caching, token metering, and safety filters.',
-    author: { name: 'Priya Sharma', username: 'priyasharma', initials: 'PS' },
-    tags: ['AI', 'REST', 'streaming', 'LLM'],
-    authEnabled: true,
-    stars: 891,
-    rating: 4.9,
-    ratingCount: 274,
-    createdAt: 'Jul 01, 2026',
-    createdTimestamp: 1751328000000,
-    useCount: 7460,
-  },
-  {
-    id: 'tpl6',
-    name: 'Blog CMS API',
-    description: 'Headless CMS REST API with markdown parsing, media asset management, category taxonomy, and nested comment threads.',
-    author: { name: 'Sifat Hossain', username: 'sifat5532', initials: 'SH' },
-    tags: ['CMS', 'REST', 'headless', 'media'],
-    authEnabled: true,
-    stars: 381,
-    rating: 4.5,
-    ratingCount: 112,
-    createdAt: 'Jun 10, 2026',
-    createdTimestamp: 1749513600000,
-    useCount: 2450,
-  },
-  {
-    id: 'tpl7',
-    name: 'Inventory Manager Pro',
-    description: 'Full-featured inventory API with SKU tracking, low-stock alerts, multi-warehouse support, and automated reorder triggers.',
-    author: { name: 'Alex Rivera', username: 'alexr', initials: 'AR' },
-    tags: ['inventory', 'e-commerce', 'REST', 'alerts'],
-    authEnabled: true,
-    stars: 218,
-    rating: 4.3,
-    ratingCount: 64,
-    createdAt: 'Jul 14, 2026',
-    createdTimestamp: 1752537600000,
-    useCount: 1740,
-  },
-  {
-    id: 'tpl8',
-    name: 'Analytics & Reporting Engine',
-    description: 'Clickstream event collector, funnel aggregation, custom report builder, and automated CSV/JSON export pipeline.',
-    author: { name: 'Laura Chen', username: 'laurachen', initials: 'LC'},
-    tags: ['analytics', 'AI', 'metrics', 'export'],
-    authEnabled: false,
-    stars: 299,
-    rating: 4.4,
-    ratingCount: 88,
-    createdAt: 'Apr 30, 2026',
-    createdTimestamp: 1746057600000,
-    useCount: 2100,
-  },
-  {
-    id: 'tpl9',
-    name: 'Notification Hub',
-    description: 'Omnichannel router for FCM push, Twilio SMS, and SendGrid email with template engine and delivery tracking.',
-    author: { name: 'Julian Moreno', username: 'julianm', initials: 'JM' },
-    tags: ['notifications', 'REST', 'email', 'SMS'],
-    authEnabled: true,
-    stars: 334,
-    rating: 4.5,
-    ratingCount: 97,
-    createdAt: 'Mar 25, 2026',
-    createdTimestamp: 1742860800000,
-    useCount: 2600,
-  },
-  {
-    id: 'tpl10',
-    name: 'OAuth 2.0 Provider',
-    description: 'Full OAuth 2.0 authorization server with PKCE, client credentials, device flow, and OpenID Connect discovery endpoint.',
-    author: { name: 'Sarah Okafor', username: 'sarahokafor', initials: 'SO' },
-    tags: ['auth', 'OAuth', 'security', 'OpenID'],
-    authEnabled: true,
-    stars: 572,
-    rating: 4.8,
-    ratingCount: 165,
-    createdAt: 'Mar 10, 2026',
-    createdTimestamp: 1741564800000,
-    useCount: 3890,
-  },
-  {
-    id: 'tpl11',
-    name: 'File Storage & CDN API',
-    description: 'S3-compatible file upload, chunked transfers, CDN URL signing, image resizing pipeline, and folder management endpoints.',
-    author: { name: 'Alex Rivera', username: 'alexr', initials: 'AR' },
-    tags: ['storage', 'REST', 'CDN', 'media'],
-    authEnabled: true,
-    stars: 406,
-    rating: 4.6,
-    ratingCount: 122,
-    createdAt: 'Jul 20, 2026',
-    createdTimestamp: 1753056000000,
-    useCount: 2870,
-  },
-  {
-    id: 'tpl12',
-    name: 'AI Image Generation API',
-    description: 'Stable Diffusion and DALL-E wrapper with prompt queuing, style presets, variation endpoints, and credit metering.',
-    author: { name: 'Priya Sharma', username: 'priyasharma', initials: 'PS' },
-    tags: ['AI', 'image', 'REST', 'queuing'],
-    authEnabled: false,
-    stars: 748,
-    rating: 4.8,
-    ratingCount: 221,
-    createdAt: 'Jul 05, 2026',
-    createdTimestamp: 1751673600000,
-    useCount: 6120,
-  },
-  {
-    id: 'tpl13',
-    name: 'Booking & Scheduling API',
-    description: 'Calendar availability engine, appointment booking, timezone handling, reminders, and cancellation flow with webhook hooks.',
-    author: { name: 'Dave Kim', username: 'davekim', initials: 'DK'},
-    tags: ['scheduling', 'REST', 'calendar', 'webhooks'],
-    authEnabled: true,
-    stars: 283,
-    rating: 4.4,
-    ratingCount: 76,
-    createdAt: 'Jun 05, 2026',
-    createdTimestamp: 1749081600000,
-    useCount: 1950,
-  },
-  {
-    id: 'tpl14',
-    name: 'Realtime Leaderboard API',
-    description: 'Redis-backed score board with live rank updates over SSE, seasonal resets, player stats, and embeddable widget endpoints.',
-    author: { name: 'Ryan Patel', username: 'ryanp', initials: 'RP'},
-    tags: ['real-time', 'gaming', 'REST', 'Redis'],
-    authEnabled: false,
-    stars: 197,
-    rating: 4.2,
-    ratingCount: 53,
-    createdAt: 'May 02, 2026',
-    createdTimestamp: 1746230400000,
-    useCount: 1380,
-  },
-  {
-    id: 'tpl15',
-    name: 'No-Auth Public API Starter',
-    description: 'Rate-limited public read-only API template — perfect for open datasets, static config delivery, and public status endpoints.',
-    author: { name: 'Laura Chen', username: 'laurachen', initials: 'LC' },
-    tags: ['public', 'REST', 'rate-limiting', 'starter'],
-    authEnabled: false,
-    stars: 164,
-    rating: 4.1,
-    ratingCount: 41,
-    createdAt: 'Apr 18, 2026',
-    createdTimestamp: 1744934400000,
-    useCount: 1120,
-  },
-];
-
 // ─── State ──────────────────────────────────────────────────────────────────────
 let _page = 1;
 let _perPage = 10;
 let _searchQuery = '';
 let _popularityFilter = 'popular'; // 'popular' | 'recent'
-let _activeTags = new Set();       // multi-select; empty = all tags
-let _sortBy = 'popular';           // 'popular' | 'recent' | 'name'
-let _sortDir = 'desc';             // 'asc' | 'desc'
 let _activeTab = 'all';            // 'all' | 'mine'
+let _allTemplates = null;          // cached backend dataset for "all" tab (null = not loaded)
+let _allTemplatesLoading = false;
 let _myTemplates = null;           // cached backend dataset for "mine" tab (null = not loaded)
 let _myTemplatesLoading = false;
 
@@ -288,47 +73,6 @@ function bindTemplateEvents() {
     });
   });
 
-  // Sort select
-  const sortSel = document.getElementById('tmpl-sort');
-  if (sortSel) {
-    sortSel.addEventListener('change', () => {
-      _sortBy = sortSel.value;
-      _page = 1;
-      renderTemplates();
-    });
-  }
-
-  // Sort direction toggle button
-  const sortDirBtn = document.getElementById('tmpl-sort-dir');
-  if (sortDirBtn) {
-    sortDirBtn.addEventListener('click', () => {
-      _sortDir = _sortDir === 'desc' ? 'asc' : 'desc';
-      sortDirBtn.dataset.dir = _sortDir;
-      const iconDesc = document.getElementById('tmpl-sort-icon-desc');
-      const iconAsc  = document.getElementById('tmpl-sort-icon-asc');
-      if (iconDesc) iconDesc.style.display = _sortDir === 'desc' ? '' : 'none';
-      if (iconAsc)  iconAsc.style.display  = _sortDir === 'asc'  ? '' : 'none';
-      _page = 1;
-      renderTemplates();
-    });
-  }
-
-  // Tag chips — multi-select (click to toggle; all deselected = show all)
-  document.querySelectorAll('.tmpl-chip[data-tag]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const tag = btn.dataset.tag;
-      if (_activeTags.has(tag)) {
-        _activeTags.delete(tag);
-        btn.classList.remove('is-active');
-      } else {
-        _activeTags.add(tag);
-        btn.classList.add('is-active');
-      }
-      _page = 1;
-      renderTemplates();
-    });
-  });
-
   // Per-page select
   const pageSizeSel = document.getElementById('tmpl-items-per-page');
   if (pageSizeSel) {
@@ -348,40 +92,29 @@ function bindTemplateEvents() {
 
 // ─── Filtering & sorting ────────────────────────────────────────────────────────
 function getFilteredTemplates() {
-  let results = [...MOCK_TEMPLATES];
+  let results = [...(_allTemplates || [])];
 
-  // Search
+  // Search (client-side fallback when a search query is present but the
+  // realtime backend search has no results yet — primarily used after the
+  // backend has already returned a normalized set).
   if (_searchQuery) {
     results = results.filter(t =>
       t.name.toLowerCase().includes(_searchQuery) ||
       t.description.toLowerCase().includes(_searchQuery) ||
-      t.author.name.toLowerCase().includes(_searchQuery) ||
-      t.author.username.toLowerCase().includes(_searchQuery) ||
+      (t.author && t.author.name.toLowerCase().includes(_searchQuery)) ||
+      (t.author && t.author.username.toLowerCase().includes(_searchQuery)) ||
       t.tags.some(tag => tag.toLowerCase().includes(_searchQuery))
     );
   }
 
-  // Multi-tag filter — template must match ALL selected tags
-  if (_activeTags.size > 0) {
-    results = results.filter(t =>
-      [..._activeTags].every(activeTag =>
-        t.tags.some(tag => tag.toLowerCase() === activeTag.toLowerCase())
-      )
-    );
+  // Popularity quick filter — mirrors the backend sort intent locally
+  if (_popularityFilter === 'recent') {
+    results.sort((a, b) => b.createdTimestamp - a.createdTimestamp);
+    return results;
   }
 
-
-  // Sort — key driven by _sortBy, direction by _sortDir
-  results.sort((a, b) => {
-    let cmp;
-    switch (_sortBy) {
-      case 'recent': cmp = b.createdTimestamp - a.createdTimestamp; break;
-      case 'name':   cmp = a.name.localeCompare(b.name);            break;
-      case 'popular':
-      default:       cmp = b.useCount - a.useCount;                 break;
-    }
-    return _sortDir === 'asc' ? -cmp : cmp;
-  });
+  // Default: keep the backend's popularity ordering (clone count desc)
+  results.sort((a, b) => b.useCount - a.useCount);
 
   return results;
 }
@@ -426,11 +159,18 @@ function renderTemplates() {
   }
 
   // Realtime backend search mode: when there is a search query we render
-  // results fetched from /view/searchTemplate instead of the mock dataset.
+  // results fetched from /view/searchTemplate instead of the cached dataset.
   if (_searchQuery) {
     renderSearchResults();
     return;
   }
+
+  // All Templates tab — fetch from backend (/view/allTemplates) on first load.
+  if (_allTemplates === null && !_allTemplatesLoading) {
+    renderAllTemplates();
+    return;
+  }
+  if (_allTemplatesLoading) return;
 
   toggleToolbarForTab();
 
@@ -541,13 +281,16 @@ function normalizeSearchRow(row) {
       username: row.author_username || '',
       initials: buildInitials(row.author_name || '?')
     },
-    tags: [],
+    tags: Array.isArray(row.template_tags)
+      ? row.template_tags.map(t => (typeof t === 'string' ? t : t.name))
+      : [],
     authEnabled: row.auth_enabled === true || row.auth_enabled === 'true',
     stars: 0,
-    rating: 0,
-    ratingCount: 0,
+    rating: Number(row.avg_ratings) || 0,
+    ratingCount: Number(row.count_ratings) || 0,
     createdAt: formatOwnDate(row.template_created_at),
-    useCount: 0
+    createdTimestamp: row.template_created_at ? new Date(row.template_created_at).getTime() : 0,
+    useCount: Number(row.total_clone) || 0
   };
 }
 
@@ -619,6 +362,72 @@ function renderShimmerOnly() {
   container.innerHTML = shimmerHtml;
   const infoEl = document.getElementById('tmpl-pagination-info');
   if (infoEl) infoEl.textContent = 'Searching…';
+}
+
+// ─── All Templates (fetched from backend via /view/allTemplates) ─────────────────
+function renderAllTemplates() {
+  const container = document.getElementById('tmpl-container');
+  if (!container) return;
+
+  _allTemplatesLoading = true;
+  toggleToolbarForTab();
+  const shimmerHtml = [...Array(6)].map(() =>
+    '<div class="tmpl-card tmpl-card--shimmer" aria-hidden="true">' +
+      '<div class="tmpl-shimmer-line tmpl-shimmer-line--short"></div>' +
+      '<div class="tmpl-shimmer-line tmpl-shimmer-line--long"></div>' +
+      '<div class="tmpl-shimmer-line tmpl-shimmer-line--long"></div>' +
+      '<div class="tmpl-shimmer-tags">' +
+        '<div class="tmpl-shimmer-tag"></div><div class="tmpl-shimmer-tag"></div><div class="tmpl-shimmer-tag"></div>' +
+      '</div>' +
+      '<div class="tmpl-shimmer-footer"></div>' +
+    '</div>'
+  ).join('');
+  container.innerHTML = shimmerHtml;
+  const infoEl = document.getElementById('tmpl-pagination-info');
+  if (infoEl) infoEl.textContent = 'Loading…';
+
+  fetchAllTemplates().then(data => {
+    _allTemplatesLoading = false;
+    _allTemplates = data;
+    if (_activeTab === 'all' && !_searchQuery) renderTemplates();
+  }).catch(err => {
+    _allTemplatesLoading = false;
+    _allTemplates = [];
+    console.error('Failed to load templates:', err);
+    if (_activeTab === 'all' && !_searchQuery) renderTemplates();
+  });
+}
+
+function fetchAllTemplates() {
+  const backendUrl = window.BACKEND_URL || 'http://localhost:3000';
+  return fetch(`${backendUrl}/view/allTemplates?page=1&limit=1000`, {
+    credentials: 'include'
+  })
+    .then(res => res.json())
+    .then(payload => {
+      const templates = (payload && payload.templates) || [];
+      return templates.map(row => ({
+        id: row.id,
+        name: row.template_name,
+        description: row.description,
+        author: {
+          id: row.author_id,
+          name: row.author_name || 'Unknown',
+          username: row.author_username || '',
+          initials: buildInitials(row.author_name || '?')
+        },
+        tags: Array.isArray(row.template_tags)
+          ? row.template_tags.map(t => (typeof t === 'string' ? t : t.name))
+          : [],
+        authEnabled: !!row.auth_enabled,
+        stars: 0,
+        rating: Number(row.avg_ratings) || 0,
+        ratingCount: Number(row.count_ratings) || 0,
+        createdAt: formatOwnDate(row.created_at),
+        createdTimestamp: row.created_at ? new Date(row.created_at).getTime() : 0,
+        useCount: Number(row.total_clone) || 0
+      }));
+    });
 }
 
 // ─── My Templates (fetched from backend via /view/ownTemplates) ─────────────────
@@ -703,7 +512,9 @@ function fetchOwnTemplates() {
         rating: Number(row.avg_ratings) || 0,
         useCount: Number(row.clone_count) || 0,
         createdAt: formatOwnDate(row.created_at),
-        tags: Array.isArray(row.template_tags) ? row.template_tags.map(t => t.name) : []
+        tags: Array.isArray(row.template_tags)
+          ? row.template_tags.map(t => (typeof t === 'string' ? t : t.name))
+          : []
       }));
     });
 }
@@ -855,36 +666,16 @@ function clearAllFilters() {
   _searchLoading = false;
   _searchToken++;
   if (_searchDebounce) { clearTimeout(_searchDebounce); _searchDebounce = null; }
-  _activeTags.clear();
-  _sortBy = 'popular';
-  _sortDir = 'desc';
   _popularityFilter = 'popular';
   _page = 1;
 
   const searchInput = document.getElementById('tmpl-search');
   if (searchInput) searchInput.value = '';
 
-  // Reset sort select
-  const sortSel = document.getElementById('tmpl-sort');
-  if (sortSel) sortSel.value = 'popular';
-
-  // Reset direction button
-  const sortDirBtn = document.getElementById('tmpl-sort-dir');
-  if (sortDirBtn) {
-    sortDirBtn.dataset.dir = 'desc';
-    const iconDesc = document.getElementById('tmpl-sort-icon-desc');
-    const iconAsc  = document.getElementById('tmpl-sort-icon-asc');
-    if (iconDesc) iconDesc.style.display = '';
-    if (iconAsc)  iconAsc.style.display  = 'none';
-  }
-
   // Reset popularity chips
   document.querySelectorAll('.tmpl-chip[data-filter]').forEach(b => {
     b.classList.toggle('is-active', b.dataset.filter === 'popular');
   });
-
-  // Reset tag chips
-  document.querySelectorAll('.tmpl-chip[data-tag]').forEach(b => b.classList.remove('is-active'));
 
   renderTemplates();
 }

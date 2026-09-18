@@ -761,8 +761,8 @@ router.get('/popularTags', requireAuth, async (req, res) => {
                                     WHERE  (SELECT COUNT(*)  FROM project_tags WHERE tag_id = t.id ) > 0
                                     ORDER BY tag_used DESC
                                     LIMIT $1
-                                ` ,[LIMIT]);
-return res.status(200).json({tags : result.rows});
+                                ` , [LIMIT]);
+    return res.status(200).json({ tags: result.rows });
 });
 
 router.get('/billingOverview', requireAuth, async (req, res) => {
@@ -851,7 +851,7 @@ router.get('/searchTemplate', async (req, res) => {
             message: "Search term is required"
         });
     }
-        const result = await query(`
+    const result = await query(`
             SELECT
                 p.id            AS template_id,
                 p.name          AS template_name,
@@ -860,9 +860,24 @@ router.get('/searchTemplate', async (req, res) => {
                 p.created_at    AS template_created_at,
                 u.id            AS author_id,
                 u.name          AS author_name,
-                u.username      AS author_username
-            FROM projects p
-            JOIN users u ON u.id = p.author_id
+                u.username      AS author_username ,
+                COALESCE((SELECT AVG(tr.rating) FROM template_ratings tr WHERE tr.template_id = P.id ), 0 ) AS avg_ratings,
+                COALESCE((SELECT count(*) FROM template_ratings tr WHERE tr.template_id = P.id ), 0 ) AS count_ratings,
+                COALESCE((SELECT count(*) FROM template_clones tr WHERE tr.template_id = P.id ), 0 ) AS total_clone,
+                COALESCE(
+                        ( SELECT json_agg(
+                         json_build_object (
+                           'id' , t.id , 'tag_id' , pt.tag_id ,
+                           'name' , t.name
+                                ) ORDER BY t.name
+                               )
+                                FROM project_tags pt
+                                JOIN tags t ON t.id = pt.tag_id
+                                WHERE pt.project_id = p.id
+                                        ) , '[]' :: json
+                                    ) AS template_tags
+             FROM projects p
+             JOIN users u ON u.id = p.author_id
             WHERE p.is_template = $2 AND (
                 p.name ILIKE $1
                 OR p.description ILIKE $1
@@ -878,13 +893,54 @@ router.get('/searchTemplate', async (req, res) => {
             ORDER BY p.created_at DESC
         `, [`%${searchTerm}%`, true]);
 
-        if (result.rows.length === 0) return res.status(404).json({ success: false, msg: "NO template found" });
-        return res.status(200).json({
-            success: true,
-            result: result.rows
-        });
-    
-});
+    if (result.rows.length === 0) return res.status(404).json({ success: false, msg: "NO template found" });
+    return res.status(200).json({
+        success: true,
+        result: result.rows
+    });
 
+});
+router.get('/allTemplates', requireAuth, async (req, res) => {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.max(1, Number(req.query.limit) || 10);
+
+    const offset = (page - 1) * limit;
+    const result = await query(`
+                                SELECT
+                                    P.id,
+                                    P.name AS template_name,
+                                    P.description,
+                                    P.auth_enabled,
+                                    P.created_at,
+                                    U.name AS author_name,
+                                    U.username AS author_username,
+                                    COALESCE((SELECT AVG(tr.rating) FROM template_ratings tr WHERE tr.template_id = P.id ), 0 ) AS avg_ratings,
+                                    COALESCE((SELECT count(*) FROM template_clones tr WHERE tr.template_id = P.id ), 0 ) AS total_clone,
+                                    COALESCE(
+                                        ( SELECT json_agg(
+                                            json_build_object (
+                                                'id' , t.id , 'tag_id' , pt.tag_id ,
+                                                'name' , t.name
+                                            ) ORDER BY t.name
+                                        )
+                                        FROM project_tags pt
+                                        JOIN tags t ON t.id = pt.tag_id
+                                        WHERE pt.project_id = p.id
+                                        ) , '[]' :: json
+                                    ) AS template_tags
+                                FROM
+                                
+                                    projects P 
+                                    JOIN users U ON U.id = P.author_id
+                                WHERE
+                                    p.is_template = $3
+                                ORDER BY P.created_at DESC , avg_ratings DESC , total_clone
+                                LIMIT $1 
+                                OFFSET $2 ` , [ limit , offset , true]);
+
+    const total = parseInt(result.rows.length, 10) || 0;
+
+    return res.status(200).json({ templates: result.rows, total });
+});
 
 module.exports = router;
