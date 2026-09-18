@@ -330,7 +330,7 @@
           '<span class="vt-table-card__chevron" aria-hidden="true"></span>' +
         '</button>' +
         '<div class="vt-api-card__body">' +
-          renderQueryDefinitionVisual(api.query_definition) +
+          renderQueryDefinitionVisual(api.query_definition, method) +
         '</div>' +
       '</article>';
     }).join('');
@@ -360,7 +360,7 @@
    *  Query Definition Visual Renderer
    * ------------------------------------------------------------------ */
 
-  function renderQueryDefinitionVisual(def) {
+  function renderQueryDefinitionVisual(def, method) {
     var d = def;
     if (typeof d === 'string') {
       try { d = JSON.parse(d); } catch (_) { d = null; }
@@ -369,39 +369,243 @@
       return '<p class="qv-empty-inline" style="padding:12px 0;">No query definition available.</p>';
     }
 
-    var selectObj       = d.select_obj || null;
-    var joinArr         = Array.isArray(d.join_obj_array) ? d.join_obj_array : [];
-    var whereArr        = Array.isArray(d.where) ? d.where : [];
-    var groupByArr      = Array.isArray(d.group_by_cols_array) ? d.group_by_cols_array : [];
-    var havingArr       = Array.isArray(d.having) ? d.having : [];
-
+    var m = String(method || 'GET').toUpperCase();
     var html = '<div class="qv-root">';
 
-    /* ── SELECT / FROM ── */
-    html += qvSection('SELECT', renderSelectSection(selectObj), true);
+    if (m === 'GET') {
+      var selectObj       = d.select_obj || null;
+      var joinArr         = Array.isArray(d.join_obj_array) ? d.join_obj_array : [];
+      var whereArr        = Array.isArray(d.where) ? d.where : [];
+      var groupByArr      = Array.isArray(d.group_by_cols_array) ? d.group_by_cols_array : [];
+      var havingArr       = Array.isArray(d.having) ? d.having : [];
+      var orderByArr      = Array.isArray(d.order_by_array) ? d.order_by_array : [];
 
-    /* ── JOINs ── */
-    if (joinArr.length > 0) {
-      html += qvSection('JOINs', renderJoinsSection(joinArr), true, joinArr.length);
-    }
+      /* ── SELECT / FROM ── */
+      html += qvSection('SELECT', renderSelectSection(selectObj), true);
 
-    /* ── WHERE ── */
-    if (whereArr.length > 0) {
-      html += qvSection('WHERE filters', renderFilterGroup(whereArr, 0), true, whereArr.length);
-    }
+      /* ── JOINs ── */
+      if (joinArr.length > 0) {
+        html += qvSection('JOINs', renderJoinsSection(joinArr), true, joinArr.length);
+      }
 
-    /* ── GROUP BY ── */
-    if (groupByArr.length > 0) {
-      html += qvSection('GROUP BY', renderGroupBySection(groupByArr), true, groupByArr.length);
-    }
+      /* ── WHERE ── */
+      if (whereArr.length > 0) {
+        html += qvSection('WHERE filters', renderFilterGroup(whereArr, 0), true, whereArr.length);
+      }
 
-    /* ── HAVING ── */
-    if (havingArr.length > 0) {
-      html += qvSection('HAVING filters', renderFilterGroup(havingArr, 0), true, havingArr.length);
+      /* ── GROUP BY ── */
+      if (groupByArr.length > 0) {
+        html += qvSection('GROUP BY', renderGroupBySection(groupByArr), true, groupByArr.length);
+      }
+
+      /* ── HAVING ── */
+      if (havingArr.length > 0) {
+        html += qvSection('HAVING filters', renderHavingSection(havingArr), true, havingArr.length);
+      }
+
+      /* ── ORDER BY ── */
+      if (orderByArr.length > 0) {
+        html += qvSection('ORDER BY', renderOrderBySection(orderByArr), true, orderByArr.length);
+      }
+
+      /* ── LIMIT / OFFSET / PAGING ── */
+      if( d.limit !=null || d.offset !=null  )
+      html += qvSection('Paging', renderPagingSection(d), true);
+
+    } else if (m === 'POST') {
+      html += qvSection('Target table', renderInsertTargetSection(d), true);
+
+      var valueArr = Array.isArray(d.value_obj_array) ? d.value_obj_array : [];
+      if (valueArr.length > 0) {
+        html += qvSection('Values', renderValueObjSection(valueArr), true, valueArr.length);
+      }
+
+      var retCols = Array.isArray(d.returning_cols_id) ? d.returning_cols_id : [];
+      if (retCols.length > 0) {
+        html += qvSection('Returning columns', renderReturningColsSection(retCols), true, retCols.length);
+      }
+
+    } else if (m === 'PUT') {
+      html += qvSection('Target table', renderUpdateTargetSection(d), true);
+
+      var putValueArr = Array.isArray(d.value_obj_array) ? d.value_obj_array : [];
+      if (putValueArr.length > 0) {
+        html += qvSection('Set values', renderValueObjSection(putValueArr), true, putValueArr.length);
+      }
+
+      var putWhereArr = Array.isArray(d.where) ? d.where : [];
+      if (putWhereArr.length > 0) {
+        html += qvSection('WHERE filters', renderFilterGroup(putWhereArr, 0), true, putWhereArr.length);
+      }
+
+      var putRetCols = Array.isArray(d.returning_cols_id) ? d.returning_cols_id : [];
+      if (putRetCols.length > 0) {
+        html += qvSection('Returning columns', renderReturningColsSection(putRetCols), true, putRetCols.length);
+      }
+
+    } else if (m === 'DELETE') {
+      html += qvSection('Target table', renderDeleteTargetSection(d), true);
+
+      var delWhereArr = Array.isArray(d.where) ? d.where : [];
+      if (delWhereArr.length > 0) {
+        html += qvSection('WHERE filters', renderFilterGroup(delWhereArr, 0), true, delWhereArr.length);
+      }
+
+      var delRetCols = Array.isArray(d.returning_cols_id) ? d.returning_cols_id : [];
+      if (delRetCols.length > 0) {
+        html += qvSection('Returning columns', renderReturningColsSection(delRetCols), true, delRetCols.length);
+      }
     }
 
     html += '</div>';
     return html;
+  }
+
+  /* ── POST: target table info ── */
+  function renderInsertTargetSection(d) {
+    var tableName = resolveTableLabel(d);
+    /* column_id_array is annotated by the backend into [{col_id, col_name}, ...] */
+    var colObjs = Array.isArray(d.column_id_array) ? d.column_id_array : [];
+    var html = '<div class="qv-from" style="margin-bottom:10px;">' +
+      '<span style="font-family:var(--font-mono);font-size:0.68rem;color:var(--text-faint);font-weight:700;letter-spacing:0.07em;">INSERT INTO</span>' +
+      '<span class="qv-col-chip"><span class="qv-col-chip__col">' + esc(tableName) + '</span></span>' +
+    '</div>';
+    if (colObjs.length > 0) {
+      html += '<div style="font-size:0.72rem;color:var(--text-faint);margin-bottom:4px;">Columns: ' +
+        colObjs.map(function(c) {
+          /* each entry is {col_id, col_name} after annotation */
+          var name = resolveColLabel(c);
+          return '<span class="qv-col-chip" style="font-size:0.74rem;"><span class="qv-col-chip__col">' + esc(name) + '</span></span>';
+        }).join('') +
+      '</div>';
+    }
+    return html;
+  }
+
+  /* ── PUT: target table info ── */
+  function renderUpdateTargetSection(d) {
+    var tableName = resolveTableLabel(d);
+    var alias   = d.table_alias ? ' as ' + d.table_alias : '';
+    return '<div class="qv-from">' +
+      '<span style="font-family:var(--font-mono);font-size:0.68rem;color:var(--text-faint);font-weight:700;letter-spacing:0.07em;">UPDATE</span>' +
+      '<span class="qv-col-chip"><span class="qv-col-chip__col">' + esc(tableName) + '</span>' +
+        (alias ? '<span class="qv-col-chip__alias"> as ' + esc(d.table_alias) + '</span>' : '') +
+      '</span>' +
+    '</div>';
+  }
+
+  /* ── DELETE: target table info ── */
+  function renderDeleteTargetSection(d) {
+    var tableName = resolveTableLabel(d);
+    var alias   = d.table_alias ? ' as ' + d.table_alias : '';
+    return '<div class="qv-from">' +
+      '<span style="font-family:var(--font-mono);font-size:0.68rem;color:var(--text-faint);font-weight:700;letter-spacing:0.07em;">DELETE FROM</span>' +
+      '<span class="qv-col-chip"><span class="qv-col-chip__col">' + esc(tableName) + '</span>' +
+        (alias ? '<span class="qv-col-chip__alias"> as ' + esc(d.table_alias) + '</span>' : '') +
+      '</span>' +
+    '</div>';
+  }
+
+  /* ── value_obj_array renderer (POST / PUT) ── */
+  function renderValueObjSection(valueArr) {
+    return '<div class="qv-filter-group">' + valueArr.map(function(v) {
+      /* col_name is annotated by the backend alongside col_id */
+      var colLabel  = resolveColLabel(v);
+      var sourceLabel = esc(v.source || '—');
+      var dynamicLabel = v.is_dynamic
+        ? '<span class="qv-cond__val" style="color:var(--accent-light);">:' + esc(v.dynamic_field_name || '?') + '</span>'
+        : '<span class="qv-cond__val">' + esc(String(v.default_value != null ? v.default_value : '—')) + '</span>';
+      return '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;">' +
+        '<div class="qv-cond">' +
+          '<span class="qv-cond__col">' + esc(colLabel) + '</span>' +
+          '<span class="qv-cond__op">&larr;</span>' +
+          '<span class="qv-logic-badge" style="font-size:0.65rem;">' + sourceLabel + '</span>' +
+          dynamicLabel +
+        '</div>' +
+      '</div>';
+    }).join('') + '</div>';
+  }
+
+  /* ── returning_cols_id renderer ──
+     After annotate_query_ids the array contains {col_id, col_name} objects. */
+  function renderReturningColsSection(colObjs) {
+    return '<div class="qv-groupby-chips">' + colObjs.map(function(c) {
+      var name = resolveColLabel(c);
+      return '<span class="qv-groupby-chip"><span class="qv-badge-col">' + esc(name) + '</span></span>';
+    }).join('') + '</div>';
+  }
+
+  /* ── ORDER BY renderer ── */
+  function renderOrderBySection(cols) {
+    return '<div class="qv-groupby-chips">' + cols.map(function(o) {
+      var tbl = resolveTableLabel(o);
+      var col = resolveColLabel(o);
+      var dir = String(o.order || 'asc').toUpperCase();
+      return '<span class="qv-groupby-chip">' +
+        '<span class="qv-badge-table">' + esc(tbl) + '</span>' +
+        '<span style="color:var(--text-faint);">.</span>' +
+        '<span class="qv-badge-col">' + esc(col) + '</span>' +
+        '<span class="qv-logic-badge" style="margin-left:4px;font-size:0.65rem;">' + esc(dir) + '</span>' +
+      '</span>';
+    }).join('') + '</div>';
+  }
+
+  /* ── HAVING renderer ── */
+  function renderHavingSection(havingArr) {
+    return '<div class="qv-filter-group">' + havingArr.map(function(h, idx) {
+      var tbl = resolveTableLabel(h);
+      var col = resolveColLabel(h);
+      var fn  = h.function_name ? String(h.function_name).toUpperCase() : '';
+      var op  = h.having_operator || '=';
+      var logic = (idx > 0 && h.logical_operator) ? h.logical_operator.toUpperCase() : null;
+      var logicBadge = logic
+        ? '<span class="qv-logic-badge qv-logic-badge--' + logic.toLowerCase() + '">' + esc(logic) + '</span>'
+        : '';
+      var valLabel = h.is_dynamic
+        ? '<span class="qv-cond__val" style="color:var(--accent-light);">:' + esc(h.dynamic_field_name || '?') + '</span>'
+        : '<span class="qv-cond__val">' + esc(String(h.fallback_value != null ? h.fallback_value : '—')) + '</span>';
+      return '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px;">' +
+        logicBadge +
+        '<div class="qv-cond">' +
+          (fn ? '<span class="qv-col-chip__agg">' + esc(fn) + '(</span>' : '') +
+          '<span class="qv-col-chip__table" style="font-family:var(--font-mono);font-size:0.76rem;">' + esc(tbl) + '</span>' +
+          '<span style="color:var(--text-faint);font-family:var(--font-mono);">.</span>' +
+          '<span class="qv-cond__col">' + esc(col) + '</span>' +
+          (fn ? '<span class="qv-col-chip__agg">)</span>' : '') +
+          '<span class="qv-cond__op">' + esc(op) + '</span>' +
+          valLabel +
+        '</div>' +
+      '</div>';
+    }).join('') + '</div>';
+  }
+
+  /* ── PAGING (limit/offset/allow_client_paging) renderer ── */
+  function renderPagingSection(d) {
+    function valLabel(v) {
+      if (v == null) return '—';
+      if (typeof v === 'object') {
+        return v.is_dynamic
+          ? '<span class="qv-cond__val" style="color:var(--accent-light);">:' + esc(v.dynamic_field_name || '?') + '</span>'
+          : '<span class="qv-cond__val">' + esc(String(v.fallback_value != null ? v.fallback_value : '—')) + '</span>';
+      }
+      return '<span class="qv-cond__val">' + esc(String(v)) + '</span>';
+    }
+    return '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;">' +
+      '<div style="display:flex;align-items:center;gap:4px;">' +
+        '<span style="font-family:var(--font-mono);font-size:0.68rem;color:var(--text-faint);font-weight:700;">LIMIT</span>' +
+        valLabel(d.limit) +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:4px;">' +
+        '<span style="font-family:var(--font-mono);font-size:0.68rem;color:var(--text-faint);font-weight:700;">OFFSET</span>' +
+        valLabel(d.offset) +
+      '</div>' +
+      (d.allow_client_paging != null
+        ? '<div style="display:flex;align-items:center;gap:4px;">' +
+            '<span style="font-size:0.72rem;color:var(--text-faint);">Client paging:</span>' +
+            '<span class="qv-cond__val">' + esc(String(d.allow_client_paging)) + '</span>' +
+          '</div>'
+        : '') +
+    '</div>';
   }
 
   function qvSection(label, bodyHtml, openByDefault, count) {
@@ -419,10 +623,49 @@
     '</div>';
   }
 
+  /* ── Name lookups (so the UI never shows ids) ──
+     The backend annotates query_definition with table_name / col_name, but as a
+     final safeguard we can resolve any remaining id from the template's own tables. */
+  function getTableNameById(tableId) {
+    var tables = (state.data && state.data.tables) || [];
+    for (var i = 0; i < tables.length; i++) {
+      if (String(tables[i].id) === String(tableId)) return tables[i].table_name;
+    }
+    return null;
+  }
+
+  function getColNameById(tableId, colId) {
+    var tables = (state.data && state.data.tables) || [];
+    for (var i = 0; i < tables.length; i++) {
+      var t = tables[i];
+      if (tableId != null && String(t.id) !== String(tableId)) continue;
+      var cols = Array.isArray(t.columns) ? t.columns : [];
+      for (var j = 0; j < cols.length; j++) {
+        if (String(cols[j].id) === String(colId)) return cols[j].name;
+      }
+    }
+    return null;
+  }
+
+  /* Resolve a table label from whatever is available: annotated name, alias, or id lookup. */
+  function resolveTableLabel(obj) {
+    if (obj.table_name && obj.table_name !== 'null') return obj.table_name;
+    if (obj.table_alias) return obj.table_alias;
+    if (obj.table_id != null) return getTableNameById(obj.table_id) || ('table #' + obj.table_id);
+    return '?';
+  }
+
+  /* Resolve a column label from whatever is available: annotated name, or id lookup. */
+  function resolveColLabel(obj) {
+    if (obj.col_name && obj.col_name !== 'null') return obj.col_name;
+    if (obj.col_id != null) return getColNameById(obj.table_id, obj.col_id) || ('col #' + obj.col_id);
+    return '?';
+  }
+
   function renderSelectSection(selectObj) {
     if (!selectObj) return '<p class="qv-empty-inline">No SELECT defined.</p>';
 
-    var tableName = selectObj.table_name || ('table #' + selectObj.table_id);
+    var tableName = resolveTableLabel(selectObj);
     var alias     = selectObj.table_alias ? ' <span class="qv-col-chip__alias">as ' + esc(selectObj.table_alias) + '</span>' : '';
 
     var fromHtml = '<div class="qv-from" style="margin-bottom:10px;">' +
@@ -439,7 +682,8 @@
   function renderColChip(c) {
     // c.is_select_all → render as  tablealias.*
     if (c.is_select_all) {
-      var tbl = c.table_name || c.table_alias || ('table #' + c.table_id);
+      /* prefer table_name (annotated), fall back to table_alias */
+      var tbl = c.table_name || c.table_alias || '?';
       return '<span class="qv-col-chip">' +
         '<span class="qv-col-chip__table">' + esc(tbl) + '</span>' +
         '<span class="qv-col-chip__dot">.</span>' +
@@ -447,10 +691,13 @@
       '</span>';
     }
 
-    var colName   = c.col_name   || ('col #' + c.col_id);
-    var tableName = c.table_name || c.table_alias || ('table #' + c.table_id);
-    var aggFn     = c.agg_func   ? String(c.agg_func).toUpperCase() : null;
-    var colAlias  = c.col_alias  || null;
+    /* col_name and table_name are annotated by the backend */
+    var colName   = resolveColLabel(c);
+    var tableName = resolveTableLabel(c);
+    /* The schema field is "function" (e.g. "COUNT"), not "agg_func" */
+    var aggFn     = c.function   ? String(c.function).toUpperCase()   : null;
+    /* The schema field is "alias" (the column's own output alias) */
+    var colAlias  = c.alias      || null;
 
     var inner = '';
     if (aggFn) {
@@ -472,13 +719,13 @@
   function renderJoinsSection(joins) {
     return '<div class="qv-joins">' + joins.map(function (j) {
       var joinType  = String(j.join_type || j.type || 'inner').toLowerCase();
-      var joinTable = j.table_name || ('table #' + j.table_id);
+      var joinTable = resolveTableLabel(j);
       var alias     = j.alias ? ' as ' + j.alias : '';
 
-      var leftCol   = (j.left && (j.left.col_name  || ('col #' + j.left.col_id)))  || '?';
-      var leftTbl   = (j.left && (j.left.table_name || j.left.table_alias)) || '';
-      var rightCol  = (j.right && (j.right.col_name || ('col #' + j.right.col_id))) || '?';
-      var rightTbl  = (j.right && (j.right.table_name || j.right.table_alias)) || '';
+      var leftCol   = (j.left && resolveColLabel(j.left))  || '?';
+      var leftTbl   = (j.left && resolveTableLabel(j.left)) || '';
+      var rightCol  = (j.right && resolveColLabel(j.right)) || '?';
+      var rightTbl  = (j.right && resolveTableLabel(j.right)) || '';
 
       var leftDesc  = leftTbl  ? leftTbl  + '.' + leftCol  : leftCol;
       var rightDesc = rightTbl ? rightTbl + '.' + rightCol : rightCol;
@@ -501,14 +748,30 @@
 
   function renderGroupBySection(cols) {
     return '<div class="qv-groupby-chips">' + cols.map(function (g) {
-      var tbl = g.table_name || g.table_alias || ('table #' + g.table_id);
-      var col = g.col_name   || ('col #' + g.col_id);
+      var tbl = resolveTableLabel(g);
+      var col = resolveColLabel(g);
       return '<span class="qv-groupby-chip">' +
         '<span class="qv-badge-table">' + esc(tbl) + '</span>' +
         '<span style="color:var(--text-faint);">.</span>' +
         '<span class="qv-badge-col">'  + esc(col)  + '</span>' +
       '</span>';
     }).join('') + '</div>';
+  }
+
+  /* Renders a val1/val2 dynamic value object from the API schema */
+  function renderDynamicVal(val) {
+    if (val == null) return '<span class="qv-cond__null">—</span>';
+    if (typeof val !== 'object') return '<span class="qv-cond__val">' + esc(String(val)) + '</span>';
+    if (val.is_dynamic) {
+      var srcLabel = val.dynamic_value_getting_type ? ' (' + esc(val.dynamic_value_getting_type) + ')' : '';
+      var fallback = val.fallback_value != null
+        ? '<span style="color:var(--text-faint);font-size:0.68rem;"> default: ' + esc(String(val.fallback_value)) + '</span>'
+        : '';
+      return '<span class="qv-cond__val" style="color:var(--accent-light);">:' + esc(val.dynamic_field_name || '?') + '</span>' +
+             '<span style="font-size:0.68rem;color:var(--text-faint);">' + srcLabel + '</span>' +
+             fallback;
+    }
+    return '<span class="qv-cond__val">' + esc(String(val.fallback_value != null ? val.fallback_value : '—')) + '</span>';
   }
 
   /* Recursively renders a WHERE / HAVING node array */
@@ -541,8 +804,8 @@
       }
 
       /* Leaf condition node */
-      var tbl = node.table_name || node.table_alias || ('table #' + node.table_id);
-      var col = node.col_name   || ('col #' + node.col_id);
+      var tbl = resolveTableLabel(node);
+      var col = resolveColLabel(node);
       var op  = String(node.operator || '=');
 
       var logic2 = (idx > 0 && node.logical_operator)
@@ -555,7 +818,14 @@
       var valHtml = '';
       if (op === 'IS NULL' || op === 'IS NOT NULL') {
         valHtml = '<span class="qv-cond__null">—</span>';
-      } else if (op === 'BETWEEN' && node.value_from != null && node.value_to != null) {
+      } else if (op === 'BETWEEN' && node.val1 != null && node.val2 != null) {
+        valHtml = renderDynamicVal(node.val1) +
+                  '<span style="color:var(--text-faint);font-size:0.7rem;"> &amp; </span>' +
+                  renderDynamicVal(node.val2);
+      } else if (node.val1 != null) {
+        valHtml = renderDynamicVal(node.val1);
+      } else if (node.value_from != null && node.value_to != null) {
+        /* legacy field names fallback */
         valHtml = '<span class="qv-cond__val">' + esc(String(node.value_from)) + '</span>' +
                   '<span style="color:var(--text-faint);font-size:0.7rem;"> &amp; </span>' +
                   '<span class="qv-cond__val">' + esc(String(node.value_to)) + '</span>';
@@ -1355,6 +1625,9 @@
   }
 
   function inferMethod(api) {
+    // api.method is stored directly on the API object by the backend (separate DB column)
+    if (api && api.method) return String(api.method).toUpperCase();
+    // Fallback: check inside query_definition (not standard, but kept for safety)
     var def = api && api.query_definition;
     if (def && typeof def === 'object' && def.method) return String(def.method).toUpperCase();
     var name = String(api && api.name || '').toLowerCase();

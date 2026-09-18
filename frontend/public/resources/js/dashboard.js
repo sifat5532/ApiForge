@@ -13,7 +13,6 @@ const MOBILE_BREAKPOINT = '(max-width: 840px)';
 document.addEventListener('DOMContentLoaded', () => {
   initSidebarToggle();
   initAccountMenu();
-  initOnboardingCard();
   loadDashboardData();
 });
 
@@ -307,54 +306,4 @@ function initAccountMenu() {
       window.location.href = '/login';
     });
   }
-}
-
-/* ------------------------- getting-started checklist -------------------------
-    Dismissing hides the card and remembers the choice in localStorage.
-    The pre-paint <script> in dashboard.html's <head> reads the same key
-    so a returning visitor who dismissed it never sees it flash back in. */
-function renderOnboarding(stats) {
-  const card = document.getElementById('onboarding-card');
-  if (!card) return;
-
-  const steps = {
-    project: stats.projects > 0,
-    table: stats.tables > 0,
-    api: stats.apis > 0
-  };
-
-  let done = 0;
-  const total = Object.keys(steps).length;
-  for (const [key, completed] of Object.entries(steps)) {
-    const stepEl = card.querySelector(`.onboarding-step[data-step="${key}"]`);
-    if (!stepEl) continue;
-    stepEl.classList.toggle('is-done', completed);
-    stepEl.classList.toggle('is-pending', !completed);
-    if (completed) done++;
-  }
-
-  const progressEl = document.getElementById('onboarding-progress');
-  if (progressEl) {
-    progressEl.textContent = `${done} of ${total} steps complete`;
-  }
-
-  const fillEl = document.getElementById('onboarding-fill');
-  if (fillEl) {
-    fillEl.style.width = `${Math.round((done / total) * 100)}%`;
-  }
-}
-
-function initOnboardingCard() {
-  const card = document.getElementById('onboarding-card');
-  const dismissBtn = document.getElementById('onboarding-dismiss');
-  if (!card || !dismissBtn) return;
-
-  dismissBtn.addEventListener('click', () => {
-    card.classList.add('is-dismissed');
-    try {
-      localStorage.setItem(ONBOARDING_STORAGE_KEY, 'true');
-    } catch (e) {
-      /* localStorage unavailable — dismissal just won't persist */
-    }
-  });
 }

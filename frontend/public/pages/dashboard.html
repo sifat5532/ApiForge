@@ -22,9 +22,7 @@
         if (localStorage.getItem('apiforge-sidebar-collapsed') === 'true') {
           document.documentElement.classList.add('sidebar-collapsed');
         }
-        if (localStorage.getItem('apiforge-onboarding-dismissed') === 'true') {
-          document.documentElement.classList.add('onboarding-dismissed');
-        }
+      
       } catch (e) { /* localStorage unavailable — default to expanded/visible */ }
     })();
   </script>
@@ -197,47 +195,6 @@
         <h1>Dashboard</h1>
         <p class="dash-main__subtitle">Here's what's happening across your projects.</p>
       </div>
-
-      <!-- GETTING STARTED CHECKLIST -->
-      <section class="onboarding-card" id="onboarding-card" aria-label="Getting started">
-        <div class="onboarding-card__body">
-          <div class="onboarding-card__top">
-            <span class="onboarding-card__title">Getting started</span>
-            <span class="onboarding-card__progress" id="onboarding-progress">—</span>
-          </div>
-          <div class="onboarding-card__track">
-            <div class="onboarding-card__fill" id="onboarding-fill" style="width: 0%;"></div>
-          </div>
-          <div class="onboarding-steps">
-            <div class="onboarding-step" data-step="project">
-              <span class="onboarding-step__icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M5 13l4 4L19 7"></path>
-                </svg>
-              </span>
-              <span class="step-label">Create your first project</span>
-            </div>
-            <div class="onboarding-step" data-step="table">
-              <span class="onboarding-step__icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M5 13l4 4L19 7"></path>
-                </svg>
-              </span>
-              <span class="step-label">Design your first table</span>
-            </div>
-            <div class="onboarding-step" data-step="api">
-              <span class="onboarding-step__icon" aria-hidden="true"></span>
-              <span class="step-label">Create your first API</span>
-              <a href="/new-project?from=dashboard" class="btn btn--primary btn--sm onboarding-step__cta">Create an API →</a>
-            </div>
-          </div>
-        </div>
-        <button class="onboarding-card__dismiss" id="onboarding-dismiss" type="button" aria-label="Dismiss getting started checklist">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
-            <path d="M6 6l12 12M18 6L6 18"></path>
-          </svg>
-        </button>
-      </section>
 
       <!-- USAGE SNAPSHOT -->
       <section class="stat-grid" aria-label="Usage snapshot">

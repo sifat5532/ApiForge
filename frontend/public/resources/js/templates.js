@@ -231,6 +231,12 @@ let _activeTab = 'all';            // 'all' | 'mine'
 let _myTemplates = null;           // cached backend dataset for "mine" tab (null = not loaded)
 let _myTemplatesLoading = false;
 
+// Realtime backend search state
+let _searchResults = null;         // array of normalized templates from /view/searchTemplate (null = not searching)
+let _searchLoading = false;
+let _searchToken = 0;              // guards against out-of-order responses
+let _searchDebounce = null;
+
 // ─── Entry point ────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   initTemplatesPage();
@@ -260,13 +266,14 @@ function bindTemplateEvents() {
     });
   });
 
-  // Search
+  // Search — realtime backend search via /view/searchTemplate
   const searchInput = document.getElementById('tmpl-search');
   if (searchInput) {
     searchInput.addEventListener('input', () => {
-      _searchQuery = searchInput.value.trim().toLowerCase();
+      const raw = searchInput.value.trim();
+      _searchQuery = raw.toLowerCase();
       _page = 1;
-      renderTemplates();
+      runRealtimeSearch(raw);
     });
   }
 
@@ -418,6 +425,13 @@ function renderTemplates() {
     return;
   }
 
+  // Realtime backend search mode: when there is a search query we render
+  // results fetched from /view/searchTemplate instead of the mock dataset.
+  if (_searchQuery) {
+    renderSearchResults();
+    return;
+  }
+
   toggleToolbarForTab();
 
   const filtered = getFilteredTemplates();
@@ -459,6 +473,152 @@ function renderTemplates() {
 function toggleToolbarForTab() {
   const toolbar = document.querySelector('.tmpl-toolbar');
   if (toolbar) toolbar.style.display = _activeTab === 'mine' ? 'none' : '';
+}
+
+// ─── Realtime backend search (wired to /view/searchTemplate) ────────────────────
+function runRealtimeSearch(rawQuery) {
+  // Empty query → fall back to the normal mock listing immediately.
+  if (!rawQuery) {
+    _searchResults = null;
+    if (_searchDebounce) clearTimeout(_searchDebounce);
+    renderTemplates();
+    return;
+  }
+
+  const token = ++_searchToken;
+
+  // Debounce the network call so we only hit the backend when typing pauses.
+  if (_searchDebounce) clearTimeout(_searchDebounce);
+  _searchDebounce = setTimeout(() => {
+    _searchLoading = true;
+    fetchSearchTemplates(rawQuery).then(data => {
+      if (token !== _searchToken) return; // a newer search superseded this one
+      _searchLoading = false;
+      _searchResults = data;
+      if (_activeTab === 'all') renderSearchResults();
+    }).catch(err => {
+      if (token !== _searchToken) return;
+      _searchLoading = false;
+      _searchResults = [];
+      if (err && err.notFound) {
+        // 404 — simply no matches; render the empty state
+        if (_activeTab === 'all') renderSearchResults();
+      } else {
+        console.error('Template search failed:', err);
+        if (_activeTab === 'all') renderSearchResults();
+      }
+    });
+  }, 250);
+}
+
+function fetchSearchTemplates(queryStr) {
+  const backendUrl = window.BACKEND_URL || 'http://localhost:3000';
+  return fetch(`${backendUrl}/view/searchTemplate?q=${encodeURIComponent(queryStr)}`, {
+    credentials: 'include'
+  }).then(res => {
+    if (res.status === 404) {
+      const e = new Error('NO template found');
+      e.notFound = true;
+      return Promise.reject(e);
+    }
+    if (!res.ok) return Promise.reject(new Error('Search request failed'));
+    return res.json();
+  }).then(payload => {
+    const rows = (payload && payload.result) || [];
+    return rows.map(normalizeSearchRow);
+  });
+}
+
+// Map the backend search row into the card shape used by createTemplateCardHtml.
+function normalizeSearchRow(row) {
+  return {
+    id: row.template_id,
+    name: row.template_name || row.name,
+    description: row.description || '',
+    author: {
+      id: row.author_id,
+      name: row.author_name || 'Unknown',
+      username: row.author_username || '',
+      initials: buildInitials(row.author_name || '?')
+    },
+    tags: [],
+    authEnabled: row.auth_enabled === true || row.auth_enabled === 'true',
+    stars: 0,
+    rating: 0,
+    ratingCount: 0,
+    createdAt: formatOwnDate(row.template_created_at),
+    useCount: 0
+  };
+}
+
+function buildInitials(name) {
+  if (!name) return '?';
+  return name.trim().split(/\s+/).map(p => p[0]).join('').slice(0, 2).toUpperCase();
+}
+
+// Render the backend search results (replacing the mock dataset listing).
+function renderSearchResults() {
+  const container = document.getElementById('tmpl-container');
+  if (!container) return;
+
+  // While a request is in flight and we have no prior results yet, show shimmer.
+  if (_searchLoading && !_searchResults) {
+    renderShimmerOnly();
+    return;
+  }
+
+  toggleToolbarForTab();
+
+  const results = _searchResults || [];
+  const total = results.length;
+  const totalPages = Math.max(1, Math.ceil(total / _perPage));
+  if (_page > totalPages) _page = totalPages;
+  if (_page < 1) _page = 1;
+
+  const start = (_page - 1) * _perPage;
+  const end = Math.min(start + _perPage, total);
+  const slice = results.slice(start, end);
+
+  const countEl = document.getElementById('tmpl-total-count');
+  if (countEl) {
+    countEl.textContent = total > 0 ? total + ' template' + (total !== 1 ? 's' : '') : '';
+  }
+
+  if (slice.length === 0) {
+    container.innerHTML =
+      '<div class="tmpl-empty">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" width="40" height="40" aria-hidden="true">' +
+      '<circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>' +
+      '</svg>' +
+      '<p>No templates match "' + escapeHtml(_searchQuery) + '".</p>' +
+      '<button type="button" class="btn btn--ghost" id="tmpl-clear-filters">Clear search</button>' +
+      '</div>';
+    const clearBtn = document.getElementById('tmpl-clear-filters');
+    if (clearBtn) clearBtn.addEventListener('click', clearAllFilters);
+  } else {
+    container.innerHTML = slice.map(t => createTemplateCardHtml(t)).join('');
+  }
+
+  updatePaginationUI(total, start, end, totalPages);
+}
+
+function renderShimmerOnly() {
+  const container = document.getElementById('tmpl-container');
+  if (!container) return;
+  let shimmerHtml = '';
+  for (let i = 0; i < 6; i++) {
+    shimmerHtml +=
+      '<div class="tmpl-card tmpl-card--shimmer" aria-hidden="true">' +
+      '<div class="tmpl-shimmer-line tmpl-shimmer-line--short"></div>' +
+      '<div class="tmpl-shimmer-line tmpl-shimmer-line--long"></div>' +
+      '<div class="tmpl-shimmer-line tmpl-shimmer-line--long"></div>' +
+      '<div class="tmpl-shimmer-tags"><div class="tmpl-shimmer-tag"></div><div class="tmpl-shimmer-tag"></div><div class="tmpl-shimmer-tag"></div></div>' +
+      '<div class="tmpl-shimmer-footer"></div>' +
+      '</div>';
+  }
+  container.innerHTML = shimmerHtml;
+  const infoEl = document.getElementById('tmpl-pagination-info');
+  if (infoEl) infoEl.textContent = 'Searching…';
 }
 
 // ─── My Templates (fetched from backend via /view/ownTemplates) ─────────────────
@@ -691,6 +851,10 @@ function updatePaginationUI(total, start, end, totalPages) {
 // ─── Helpers ────────────────────────────────────────────────────────────────────
 function clearAllFilters() {
   _searchQuery = '';
+  _searchResults = null;
+  _searchLoading = false;
+  _searchToken++;
+  if (_searchDebounce) { clearTimeout(_searchDebounce); _searchDebounce = null; }
   _activeTags.clear();
   _sortBy = 'popular';
   _sortDir = 'desc';
