@@ -15,6 +15,7 @@ const paymentRoutes = require('./routes/payment');
 const { requireAuth, requireGuest } = require('./routes/auth');
 const errorHandler = require('./middleware/errorHandler');
 const verifyPendingPayments = require('./utils/verifyPendingPayments');
+const { startSubscriptionCron } = require('./utils/subscriptionCron');
 
 const app = express();
 
@@ -45,6 +46,7 @@ app.use(errorHandler);
 app.listen(process.env.PORT, () => {
   console.log(`Server running at http://localhost:${process.env.PORT}`);
   verifyPendingPayments();
+  startSubscriptionCron();
 });
 
 

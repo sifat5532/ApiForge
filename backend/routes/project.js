@@ -719,7 +719,7 @@ router.post('/cloneTemplate', requireAuth, async (req, res) => {
     }
 });
 
-router.put('/updateProject/:projectId', requireAuth, requireOwner, async (req, res) => {
+router.put('/updateProject/:projectId', requireAuth, requireOwner, isProjectActive, async (req, res) => {
     const { proj_name, description, enable_auth, tags } = req.body;
     const author_id = req.loggedInUser.id;
     if (!proj_name && !description && enable_auth == null && !tags) {

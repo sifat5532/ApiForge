@@ -38,7 +38,7 @@ async function checkPlanLimit(client, actingUserId, type, projId = null) {
     if (type === 'project') {
         if (plan.project_count === null) return; // unlimited
         const countResult = await client.query(
-            'SELECT COUNT(*) FROM projects WHERE author_id = $1',
+            'SELECT COUNT(*) FROM projects WHERE author_id = $1 AND is_template = false',
             [actingUserId]
         );
         const currentCount = parseInt(countResult.rows[0].count, 10);
