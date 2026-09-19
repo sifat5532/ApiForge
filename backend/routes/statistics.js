@@ -20,8 +20,8 @@
    ========================================================================= */
 
 const express = require('express');
-const pool    = require('../db/connection');
-const query   = require('../db/query');
+const pool = require('../db/connection');
+const query = require('../db/query');
 const { requireAuth } = require('./auth');
 const { requireProjectAccess } = require('./project');
 
@@ -58,7 +58,7 @@ async function resolveProjectIdParam(req, res, next) {
    Validate the ?range query param
    ------------------------------------------------------------------------- */
 function parseDays(rangeParam) {
-    if (rangeParam === '7d')  return 7;
+    if (rangeParam === '7d') return 7;
     if (rangeParam === '30d') return 30;
     return 30;
 }
@@ -73,7 +73,7 @@ router.get(
     requireProjectAccess,
     async (req, res) => {
         const projectId = parseInt(req.params.projectId, 10);
-        const days      = parseDays(req.query.range);
+        const days = parseDays(req.query.range);
 
         const client = await pool.connect();
         try {
@@ -201,40 +201,40 @@ router.get(
             const hourMap = {};
             hoursRes.rows.forEach(r => { hourMap[r.hour] = parseInt(r.calls, 10); });
             const peakHours = Array.from({ length: 24 }, (_, h) => ({
-                hour:  h,
+                hour: h,
                 calls: hourMap[h] ?? 0,
             }));
 
             return res.status(200).json({
                 kpis: {
-                    total_calls:     parseInt(kpiRes.rows[0]?.total_calls     ?? 0, 10),
+                    total_calls: parseInt(kpiRes.rows[0]?.total_calls ?? 0, 10),
                     avg_response_ms: parseInt(kpiRes.rows[0]?.avg_response_ms ?? 0, 10),
-                    error_rate_pct:  parseFloat(kpiRes.rows[0]?.error_rate_pct ?? 0),
+                    error_rate_pct: parseFloat(kpiRes.rows[0]?.error_rate_pct ?? 0),
                 },
                 calls_over_time: callsRes.rows.map(r => ({
-                    day:   r.day,
+                    day: r.day,
                     calls: parseInt(r.calls, 10),
-                    ma7:   parseInt(r.ma7,   10),
+                    ma7: parseInt(r.ma7, 10),
                 })),
                 top_endpoints: topRes.rows.map(r => ({
                     method: r.method,
-                    path:   r.path,
-                    calls:  parseInt(r.calls, 10),
+                    path: r.path,
+                    calls: parseInt(r.calls, 10),
                 })),
                 method_dist: methodRes.rows.map(r => ({
                     method: r.method,
-                    calls:  parseInt(r.calls, 10),
+                    calls: parseInt(r.calls, 10),
                 })),
                 error_rates: errorRes.rows.map(r => ({
-                    method:    r.method,
-                    path:      r.path,
+                    method: r.method,
+                    path: r.path,
                     error_pct: parseFloat(r.error_pct ?? 0),
                 })),
                 peak_hours: peakHours,
             });
 
         } catch (err) {
-            await client.query('ROLLBACK').catch(() => {});
+            await client.query('ROLLBACK').catch(() => { });
             console.error('[statistics] error:', err);
             return res.status(500).json({ msg: 'There was a server side error, please try again later' });
         } finally {

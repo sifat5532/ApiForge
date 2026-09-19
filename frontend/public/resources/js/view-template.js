@@ -931,24 +931,75 @@
       'tab-feedback': 'panel-feedback',
       'tab-settings': 'panel-settings'
     };
+    var hashMap = {
+      tables: 'tab-tables',
+      apis: 'tab-apis',
+      reviews: 'tab-reviews',
+      feedback: 'tab-feedback',
+      settings: 'tab-settings'
+    };
+
     tabs.forEach(function (tab) {
       tab.addEventListener('click', function () {
-        tabs.forEach(function (t) {
-          t.classList.remove('is-active');
-          t.setAttribute('aria-selected', 'false');
-        });
-        tab.classList.add('is-active');
-        tab.setAttribute('aria-selected', 'true');
-        Object.keys(panels).forEach(function (id) {
-          var panel = document.getElementById(panels[id]);
-          if (!panel) return;
-          var on = id === tab.id;
-          panel.classList.toggle('is-active', on);
-          panel.hidden = !on;
-        });
-        if (tab.id === 'tab-feedback') loadFeedback();
+        activateTemplateTab(tab.id);
       });
     });
+
+    window.addEventListener('hashchange', function () {
+      var hash = (window.location.hash || '').replace(/^#/, '');
+      if (hashMap[hash]) activateTemplateTab(hashMap[hash], { updateHash: false });
+    });
+
+    // Restore from URL hash on first load (feedback/settings are owner-only but
+    // may legitimately be linked to; only activate if the tab is visible).
+    var initialHash = (window.location.hash || '').replace(/^#/, '');
+    if (hashMap[initialHash]) {
+      var initialTab = document.getElementById(hashMap[initialHash]);
+      if (initialTab && !initialTab.hidden) activateTemplateTab(hashMap[initialHash]);
+    }
+  }
+
+  function activateTemplateTab(tabId, opts) {
+    opts = opts || {};
+    var tabs = document.querySelectorAll('.vt-tabs .vp-tab');
+    var panels = {
+      'tab-tables': 'panel-tables',
+      'tab-apis': 'panel-apis',
+      'tab-reviews': 'panel-reviews',
+      'tab-feedback': 'panel-feedback',
+      'tab-settings': 'panel-settings'
+    };
+    var hashMap = {
+      tables: 'tab-tables',
+      apis: 'tab-apis',
+      reviews: 'tab-reviews',
+      feedback: 'tab-feedback',
+      settings: 'tab-settings'
+    };
+
+    tabs.forEach(function (t) {
+      t.classList.remove('is-active');
+      t.setAttribute('aria-selected', 'false');
+    });
+    var activeTab = document.getElementById(tabId);
+    if (activeTab) {
+      activeTab.classList.add('is-active');
+      activeTab.setAttribute('aria-selected', 'true');
+    }
+    Object.keys(panels).forEach(function (id) {
+      var panel = document.getElementById(panels[id]);
+      if (!panel) return;
+      var on = id === tabId;
+      panel.classList.toggle('is-active', on);
+      panel.hidden = !on;
+    });
+
+    if (opts.updateHash !== false) {
+      var hash = Object.keys(hashMap).find(function (k) { return hashMap[k] === tabId; });
+      try { history.replaceState(null, '', window.location.pathname + (hash ? '#' + hash : '')); } catch (e) {}
+    }
+
+    if (tabId === 'tab-feedback') loadFeedback();
   }
 
   function bindLike() {

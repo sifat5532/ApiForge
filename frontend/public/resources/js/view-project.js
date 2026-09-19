@@ -56,9 +56,27 @@ async function initViewProject() {
   bindGlobalActions();
   await loadProjectHeader();
 
-  // Load the default (active) tab's content on first paint
-  const activeTabBtn = document.querySelector('.vp-tab.is-active');
-  if (activeTabBtn) activeTabBtn.click();
+  // Restore tab from URL hash (#settings, #apis, …), else default to Tables
+  const initialTabId = vpTabIdFromHash() || 'tab-tables';
+  activateViewProjectTab(initialTabId);
+}
+
+/* Map a URL hash fragment to its tab element id, e.g. "#settings" -> "tab-settings". */
+const VP_TAB_HASH_MAP = {
+  tables: 'tab-tables',
+  fk: 'tab-fk',
+  apis: 'tab-apis',
+  cors: 'tab-cors',
+  logs: 'tab-logs',
+  stats: 'tab-stats',
+  collab: 'tab-collab',
+  settings: 'tab-settings',
+};
+
+function vpTabIdFromHash() {
+  const hash = (window.location.hash || '').replace(/^#/, '');
+  if (!hash) return null;
+  return VP_TAB_HASH_MAP[hash] || null;
 }
 
 function extractProjectId() {
@@ -194,24 +212,50 @@ function initTabs() {
     if (!tabBtn) return;
     const cfg = tabs[tabId];
     tabBtn.addEventListener('click', () => {
-      // toggle active states
-      Object.keys(tabs).forEach(otherId => {
-        const otherBtn = document.getElementById(otherId);
-        const otherPanel = document.getElementById(tabs[otherId].panel);
-        if (!otherBtn || !otherPanel) return;
-        const active = otherId === tabId;
-        otherBtn.classList.toggle('is-active', active);
-        otherBtn.setAttribute('aria-selected', active ? 'true' : 'false');
-        otherPanel.classList.toggle('is-active', active);
-        otherPanel.hidden = !active;
-      });
-
-      // Re-fetch data on each visit to stay in sync with the server
-      if (cfg.load) {
-        cfg.load();
-      }
+      activateViewProjectTab(tabId);
     });
   });
+
+  // Keep the active tab in sync when the URL hash changes (back/forward, manual edit)
+  window.addEventListener('hashchange', () => {
+    const tabId = vpTabIdFromHash();
+    if (tabId) activateViewProjectTab(tabId, { updateHash: false });
+  });
+}
+
+/* Toggle the active tab by id, sync the URL hash, and (re)load its content. */
+function activateViewProjectTab(tabId, opts = {}) {
+  const tabs = {
+    'tab-tables':   { panel: 'panel-tables',   load: loadTables },
+    'tab-fk':       { panel: 'panel-fk',       load: loadForeignKeys },
+    'tab-apis':     { panel: 'panel-apis',     load: loadApis },
+    'tab-cors':     { panel: 'panel-cors',     load: loadCorsOrigins },
+    'tab-logs':     { panel: 'panel-logs',   load: loadProjectLogs },
+    'tab-stats':    { panel: 'panel-stats',  load: () => { if (typeof window.initProjectStats === 'function') window.initProjectStats(); } },
+    'tab-collab':   { panel: 'panel-collab',   load: loadCollaborators },
+    'tab-settings': { panel: 'panel-settings' },
+  };
+  const cfg = tabs[tabId];
+  if (!cfg) return;
+
+  Object.keys(tabs).forEach(otherId => {
+    const otherBtn = document.getElementById(otherId);
+    const otherPanel = document.getElementById(tabs[otherId].panel);
+    if (!otherBtn || !otherPanel) return;
+    const active = otherId === tabId;
+    otherBtn.classList.toggle('is-active', active);
+    otherBtn.setAttribute('aria-selected', active ? 'true' : 'false');
+    otherPanel.classList.toggle('is-active', active);
+    otherPanel.hidden = !active;
+  });
+
+  if (opts.updateHash !== false) {
+    const hash = Object.keys(VP_TAB_HASH_MAP).find(k => VP_TAB_HASH_MAP[k] === tabId);
+    try { history.replaceState(null, '', window.location.pathname + (hash ? '#' + hash : '')); } catch (e) {}
+  }
+
+  // Re-fetch data on each visit to stay in sync with the server
+  if (cfg.load) cfg.load();
 }
 
 /* -----------------------------------------------------------------------

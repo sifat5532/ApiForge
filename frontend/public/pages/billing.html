@@ -883,17 +883,30 @@
       var tabs    = document.querySelectorAll('.billing-tab');
       var panels  = document.querySelectorAll('.billing-panel');
 
-      function activateTab(name) {
+      function activateTab(name, opts) {
+        opts = opts || {};
         tabs.forEach(function (t) {
           t.classList.toggle('is-active', t.dataset.tab === name);
         });
         panels.forEach(function (p) {
           p.classList.toggle('is-active', p.id === 'tab-' + name);
         });
+        if (opts.updateHash !== false) {
+          try { history.replaceState(null, '', window.location.pathname + (name ? '#' + name : '')); } catch (e) {}
+        }
       }
 
       tabs.forEach(function (tab) {
         tab.addEventListener('click', function () { activateTab(tab.dataset.tab); });
+      });
+
+      /* Keep the active tab in sync when the URL hash changes (back/forward, manual edit) */
+      window.addEventListener('hashchange', function () {
+        var h = window.location.hash.slice(1);
+        if (h && document.getElementById('tab-' + h)) {
+          activateTab(h, { updateHash: false });
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
       });
 
       /* "Upgrade plan →" button on Overview tab jumps to Plans tab */
