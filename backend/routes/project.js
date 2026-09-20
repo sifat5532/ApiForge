@@ -753,7 +753,7 @@ router.put('/updateProject/:projectId', requireAuth, requireOwner, isProjectActi
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-
+        await client.query('SELECT set_config(\'app.current_user_id\', $1, true)', [String(req.loggedInUser.id)]);
         await client.query(`
             UPDATE projects
             SET 
