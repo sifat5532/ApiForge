@@ -39,7 +39,7 @@ app.use('/payment',    paymentRoutes);
 app.use('/statistics', statisticsRoutes);
 
 app.get('/', requireAuth, (req, res) => {
-  res.send('Hello World! You are logged in.' + '\n' + 'id: ' + req.loggedInUser.id + '\n' + 'name: ' + req.loggedInUser.name + '\n' + 'email: ' + req.loggedInUser.email + '\n' + 'username: ' + req.loggedInUser.username);
+  res.send('Hello! You are logged in.' + '\n' + 'id: ' + req.loggedInUser.id + '\n' + 'name: ' + req.loggedInUser.name + '\n' + 'email: ' + req.loggedInUser.email + '\n' + 'username: ' + req.loggedInUser.username);
 });
 
 // it must be the last middleware

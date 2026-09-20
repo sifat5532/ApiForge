@@ -62,6 +62,78 @@ function attachRouteParams(req, definition) {
     });
 }
 
+/**
+ * Looks up the CORS allowlist for a project by username/projectname.
+ * Does NOT require the apiname to exist yet — this runs before we know
+ * whether the API route itself is valid, so it only needs the project.
+ */
+async function getAllowedOrigins(username, projectname) {
+    const result = await query(`
+        SELECT pco.origin
+        FROM project_cors_origin pco
+        JOIN projects p ON p.id = pco.project_id
+        JOIN users u ON u.id = p.author_id
+        WHERE u.username = $1 AND p.name = $2`,
+        [username, projectname]
+    );
+    return result.rows.map(row => row.origin);
+}
+
+/**
+ * Real CORS enforcement:
+ *  - Answers preflight OPTIONS requests directly (these never had an
+ *    Origin-based body, and were previously falling through to a 404
+ *    because there was no OPTIONS route at all).
+ *  - Sets Access-Control-Allow-Origin on the actual response, which is
+ *    what makes the browser allow client-side JS to read the response.
+ *    Without this header, a disallowed origin's browser would already
+ *    block reading the response even if your server returned 200 — but
+ *    a request with NO Origin header (curl, Postman, server-to-server
+ *    calls, pasting the URL in the address bar) was always slipping
+ *    through the old check, since `requestOrigin &&` short-circuited.
+ *  - Explicitly 403s any *browser* cross-origin request (Origin header
+ *    present) that isn't on the allowlist.
+ */
+async function corsMiddleware(req, res, next) {
+    const { username, projectname } = req.params;
+    const requestOrigin = req.headers.origin;
+
+    try {
+        const allowedOrigins = await getAllowedOrigins(username, projectname);
+        const restricted = allowedOrigins.length > 0;
+
+        if (restricted) {
+            if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
+                res.header('Access-Control-Allow-Origin', requestOrigin);
+                res.header('Vary', 'Origin');
+            } else if (requestOrigin) {
+                // Browser sent an Origin we don't allow — block outright,
+                // including preflight, so the browser never even fires
+                // the real request.
+                return res.status(403).json({ error: 'Origin not allowed' });
+            }
+            // No Origin header at all: non-browser caller, let it through
+            // to the normal auth/validation logic below.
+        } else if (requestOrigin) {
+            // No allowlist configured for this project -> allow any origin.
+            res.header('Access-Control-Allow-Origin', requestOrigin);
+            res.header('Vary', 'Origin');
+        }
+
+        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+        res.header('Access-Control-Allow-Headers', 'Content-Type, x-api-key');
+
+        if (req.method === 'OPTIONS') {
+            return res.status(204).end();
+        }
+
+        next();
+    } catch (err) {
+        console.error('corsMiddleware error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+}
+
 async function validateApiRoute(req, res, next) {
     const { username, projectname, apiname } = req.params;
 
@@ -102,21 +174,6 @@ async function validateApiRoute(req, res, next) {
 
         if (apiDefinition.subscription_status !== 'active') {
             return res.status(402).json({ error: 'Project subscription is not active' });
-        }
-
-        const corsResult = await query(`
-            SELECT origin
-            FROM project_cors_origin
-            WHERE project_id = $1`,
-            [apiDefinition.project_id]
-        );
-        const allowedOrigins = corsResult.rows.map(row => row.origin);
-
-        if (allowedOrigins.length > 0) {
-            const requestOrigin = req.headers.origin;
-            if (requestOrigin && !allowedOrigins.includes(requestOrigin)) {
-                return res.status(403).json({ error: 'Origin not allowed' });
-            }
         }
 
         if (apiDefinition.auth_enabled) {
@@ -239,9 +296,10 @@ async function handleDelete(req, res, apiDefinition) {
     return executeApiQuery(req, res, apiDefinition, buildDeleteSQL, 200);
 }
 
-router.get('/:username/:projectname/:apiname{/*splat}', validateApiRoute, handleApiRequest);
-router.post('/:username/:projectname/:apiname{/*splat}', validateApiRoute, handleApiRequest);
-router.put('/:username/:projectname/:apiname{/*splat}', validateApiRoute, handleApiRequest);
-router.delete('/:username/:projectname/:apiname{/*splat}', validateApiRoute, handleApiRequest);
+router.options('/:username/:projectname/:apiname{/*splat}', corsMiddleware);
+router.get('/:username/:projectname/:apiname{/*splat}', corsMiddleware, validateApiRoute, handleApiRequest);
+router.post('/:username/:projectname/:apiname{/*splat}', corsMiddleware, validateApiRoute, handleApiRequest);
+router.put('/:username/:projectname/:apiname{/*splat}', corsMiddleware, validateApiRoute, handleApiRequest);
+router.delete('/:username/:projectname/:apiname{/*splat}', corsMiddleware, validateApiRoute, handleApiRequest);
 
 module.exports = router;
