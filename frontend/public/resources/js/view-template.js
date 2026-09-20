@@ -92,8 +92,10 @@
       state.templateId = data.id != null ? data.id : state.templateId;
       state.myRating = findMyReview(data.template_reviews || []);
       if (state.myRating) state.cloned = true;
+      if (data.is_liked != null) state.liked = !!data.is_liked;
       renderPage(data);
       if (state.isOwner) fillSettingsForm(data);
+      if (data.is_liked == null) refreshLikedState();
     } catch (_) {
       renderLoadError('Network error. Is the backend reachable?');
     }
@@ -1002,12 +1004,47 @@
     if (tabId === 'tab-feedback') loadFeedback();
   }
 
+  async function refreshLikedState() {
+    var templateId = state.templateId || (state.data && state.data.id);
+    if (!templateId || state.likeBusy) return;
+    try {
+      var page = 1;
+      var limit = 100;
+      var liked = false;
+      while (page <= 20) {
+        var res = await apiFetch('/view/likedTemplates?page=' + page + '&limit=' + limit);
+        if (!res.ok) break;
+        var payload = await readJson(res);
+        var items = asArray(payload && payload.templates);
+        for (var i = 0; i < items.length; i++) {
+          if (String(items[i].id) === String(templateId)) {
+            liked = true;
+            break;
+          }
+        }
+        if (liked) break;
+        var total = Number(payload && payload.total) || 0;
+        if (!items.length || page * limit >= total) break;
+        page += 1;
+      }
+      if (state.likeBusy) return;
+      applyLikeState(liked, state.data && state.data.total_likes);
+    } catch (_) { /* non-fatal — button still toggles from click */ }
+  }
+
+  function parseLikedFromMsg(msg, fallback) {
+    var text = String(msg || '');
+    if (/removed like/i.test(text)) return false;
+    if (/liked the template/i.test(text)) return true;
+    return fallback;
+  }
+
   function bindLike() {
     var btn = document.getElementById('vt-like-btn');
     if (!btn) return;
     syncLikeBtn();
     btn.addEventListener('click', async function () {
-      var templateId = state.data && state.data.id;
+      var templateId = (state.data && state.data.id) || state.templateId;
       if (!templateId) {
         showToast('You should input a template_id', 'error');
         return;
@@ -1015,6 +1052,12 @@
       if (state.likeBusy) return;
       state.likeBusy = true;
       btn.disabled = true;
+
+      var prevLiked = !!state.liked;
+      var prevLikes = Number(state.data && state.data.total_likes) || 0;
+      var nextLiked = !prevLiked;
+      applyLikeState(nextLiked, prevLikes + (nextLiked ? 1 : -1));
+
       try {
         var res = await apiFetch('/template/like', {
           method: 'POST',
@@ -1025,19 +1068,16 @@
         var payload = await readJson(res);
         var msg = routeMsg(payload, res.ok ? 'Successfully liked the template' : 'Failed to like template');
         if (!res.ok) {
+          applyLikeState(prevLiked, prevLikes);
           showToast(msg, 'error');
           return;
         }
-        var likedNow = /liked the template/i.test(msg) && !/removed like/i.test(msg);
-        state.liked = likedNow;
-        var likes = Number(state.data.total_likes) || 0;
-        if (likedNow) state.data.total_likes = likes + 1;
-        else state.data.total_likes = Math.max(0, likes - 1);
-        state.data.is_liked = likedNow;
-        syncLikeBtn();
-        renderStats(state.data);
+        var likedNow = parseLikedFromMsg(msg, nextLiked);
+        var likes = prevLikes + (likedNow === prevLiked ? 0 : (likedNow ? 1 : -1));
+        applyLikeState(likedNow, likes);
         showToast(msg, 'success');
       } catch (_) {
+        applyLikeState(prevLiked, prevLikes);
         showToast(NETWORK_ERROR, 'error');
       } finally {
         state.likeBusy = false;
@@ -1046,12 +1086,25 @@
     });
   }
 
+  function applyLikeState(liked, likes) {
+    state.liked = !!liked;
+    if (state.data) {
+      state.data.is_liked = state.liked;
+      if (likes != null && !isNaN(Number(likes))) {
+        state.data.total_likes = Math.max(0, Number(likes) || 0);
+      }
+    }
+    syncLikeBtn();
+    if (state.data) renderStats(state.data);
+  }
+
   function syncLikeBtn() {
     var btn = document.getElementById('vt-like-btn');
     var label = document.getElementById('vt-like-label');
     if (!btn) return;
     btn.classList.toggle('is-liked', state.liked);
     btn.setAttribute('aria-pressed', String(state.liked));
+    btn.title = state.liked ? 'Unlike this template' : 'Like this template';
     if (label) label.textContent = state.liked ? 'Liked' : 'Like';
   }
 

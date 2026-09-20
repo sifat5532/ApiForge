@@ -251,7 +251,7 @@ router.get('/apis/:projectId', requireAuth, requireProjectAccess, async (req, re
 
 });
 
-router.get('/templateDetails/:templateId', async (req, res) => {
+router.get('/templateDetails/:templateId', requireAuth, async (req, res) => {
     const { templateId } = req.params;// ** I think ids  are not required to send to backend . Confirm me .
     const result = await query(`
                      SELECT 
@@ -842,7 +842,7 @@ router.get('/billingHistory', requireAuth, async (req, res) => {
     }
 });
 
-router.get('/searchTemplate', async (req, res) => {
+router.get('/searchTemplate', requireAuth, async (req, res) => {
     const searchTerm = req.query.q;
 
     if (!searchTerm) {
