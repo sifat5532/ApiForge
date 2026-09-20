@@ -5,19 +5,9 @@ const { requireAuth } = require('./auth');
 const bcrypt = require('bcrypt');
 const router = express.Router();
 
+const { ALLOWED_SETTINGS, DEFAULT_SETTINGS } = require('./../utils/userSettings');
+
 const saltRounds = 10;
-const ALLOWED_SETTINGS = {
-    login_notifications: 'boolean',
-    feedback_notifications: 'boolean',
-    rating_notifications: 'boolean'
-
-};
-const DEFAULT_SETTINGS = {
-    login_notifications: true,
-    feedback_notifications: true,
-    rating_notifications: true
-
-};
 router.patch('/updateProfile', requireAuth, async (req, res) => {
     const { username, name, email } = req.body;
     if (!name || !email || !username) {

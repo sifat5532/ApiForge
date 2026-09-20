@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const query = require('./../db/query');
+const { DEFAULT_SETTINGS } = require('./../utils/userSettings');
 const router = express.Router();
 
 const saltRounds = 10;
@@ -78,7 +79,10 @@ router.post('/register', requireGuest, async (req, res) => { // need to check wh
     }
 
     const hashedPassword = await bcrypt.hash(password, saltRounds);
-    await query('INSERT INTO users (name, email, username, password_hash) VALUES ($1, $2, $3, $4)', [name, email, username, hashedPassword]);
+    await query(
+        'INSERT INTO users (name, email, username, password_hash, settings) VALUES ($1, $2, $3, $4, $5::jsonb)',
+        [name, email, username, hashedPassword, JSON.stringify(DEFAULT_SETTINGS)]
+    );
 
     res.status(201).json({ msg: 'User registered successfully' });
 });

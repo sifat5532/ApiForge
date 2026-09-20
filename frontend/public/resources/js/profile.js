@@ -312,7 +312,7 @@ function initPreferences() {
 
   loadSettings().then((settings) => {
     if (ratingToggle) {
-      const on = settings.rating_noticifations !== false;
+      const on = settings.rating_notifications !== false;
       ratingToggle.checked = on;
     }
     if (feedbackToggle) {
@@ -333,7 +333,7 @@ function initPreferences() {
   };
 
   if (ratingToggle) {
-    ratingToggle.addEventListener('change', () => savePref('rating_noticifations', ratingToggle.checked));
+    ratingToggle.addEventListener('change', () => savePref('rating_notifications', ratingToggle.checked));
   }
   if (feedbackToggle) {
     feedbackToggle.addEventListener('change', () => savePref('feedback_notifications', feedbackToggle.checked));

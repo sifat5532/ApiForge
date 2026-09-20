@@ -475,6 +475,7 @@ EXECUTE FUNCTION tgfunc_notification_on_collaboration ();
 CREATE OR REPLACE FUNCTION tgfunc_notification_on_feedback_rating () RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE
    receiver_user_id INTEGER;
+   receiver_settings JSONB;
 BEGIN
    SELECT author_id
    INTO receiver_user_id
@@ -485,7 +486,16 @@ BEGIN
     RETURN NEW;
    END IF;
 
+   SELECT settings
+   INTO receiver_settings
+   FROM users
+   WHERE id = receiver_user_id;
+
    IF TG_ARGV[0] = 'feedback' THEN
+      IF COALESCE((receiver_settings->>'feedback_notifications')::boolean, true) IS NOT TRUE THEN
+         RETURN NEW;
+      END IF;
+
       INSERT INTO notifications
       (sender_id, receiver_id, type, related_entity_name, related_entity_id, data)
       VALUES
@@ -497,6 +507,10 @@ BEGIN
       );
    
    ELSIF TG_ARGV[0] = 'rating' THEN
+      IF COALESCE((receiver_settings->>'rating_notifications')::boolean, true) IS NOT TRUE THEN
+         RETURN NEW;
+      END IF;
+
       INSERT INTO notifications
       (sender_id, receiver_id, type, related_entity_name, related_entity_id, data)
       VALUES
@@ -526,7 +540,18 @@ EXECUTE FUNCTION tgfunc_notification_on_feedback_rating ('rating');
 
 -- Insert notification for login
 CREATE OR REPLACE FUNCTION tgfunc_notification_on_login () RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+   user_settings JSONB;
 BEGIN
+   SELECT settings
+   INTO user_settings
+   FROM users
+   WHERE id = NEW.user_id;
+
+   IF COALESCE((user_settings->>'login_notifications')::boolean, false) IS NOT TRUE THEN
+      RETURN NEW;
+   END IF;
+
    INSERT INTO notifications
    (sender_id, receiver_id, type, related_entity_name, related_entity_id)
    VALUES
