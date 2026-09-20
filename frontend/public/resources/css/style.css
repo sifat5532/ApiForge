@@ -3730,6 +3730,39 @@ html.onboarding-dismissed .onboarding-card,
 .vp-meta-chip__value {
   color: var(--text);
 }
+.vp-meta-chip--tip {
+  position: relative;
+  cursor: help;
+}
+.vp-meta-chip__tooltip {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  width: min(280px, 72vw);
+  padding: 8px 10px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.45;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 80;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.vp-meta-chip--tip:hover .vp-meta-chip__tooltip,
+.vp-meta-chip--tip:focus-visible .vp-meta-chip__tooltip {
+  opacity: 1;
+  transform: translateY(0);
+}
 .vp-tags {
   display: flex;
   flex-wrap: wrap;

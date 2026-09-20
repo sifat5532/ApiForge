@@ -103,10 +103,10 @@ async function loadNotifications() {
 function transformNotification(n) {
   const entityName = n.entityName || (n.relatedEntityName === 'projects' ? 'your project' : 'an item');
   const entityId = n.relatedEntityId;
-  const isTemplate = n.relatedEntityName === 'projects' && n.type === 'feedback' || n.type === 'rating';
+  const isTemplate = n.type === 'feedback' || n.type === 'rating';
   const entityHref = isTemplate
-    ? `/view-project?id=${encodeURIComponent(entityId)}`
-    : `/project/${encodeURIComponent(entityName)}`;
+    ? `/template/${encodeURIComponent(entityId)}`
+    : `/project/${encodeURIComponent(entityId)}`;
 
   const base = {
     id: String(n.id),

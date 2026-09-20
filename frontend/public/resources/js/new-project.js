@@ -438,6 +438,8 @@ function showApiKeyModal(apiKey) {
 
       <div style="padding:0.75rem 1rem;background:rgba(245,166,35,0.08);border:1px solid rgba(245,166,35,0.25);border-radius:8px;margin-bottom:1.5rem;font-size:0.8rem;color:var(--text-secondary,#a0a0b8);line-height:1.5;">
         Store this key in a secure place (e.g. environment variables). You can regenerate it later from your project settings, but the old key will stop working immediately.
+        <br><br>
+        When authentication is enabled, include this key in every request to your project's APIs as the <code style="font-family:monospace;color:var(--text-primary,#e8e8f0);">x-api-key</code> header.
       </div>
 
       <button id="akm-continue-btn" class="btn btn--primary btn--block" style="width:100%;">

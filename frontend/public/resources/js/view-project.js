@@ -149,7 +149,7 @@ async function loadProjectHeader() {
 
     if (metaEl) {
       metaEl.innerHTML = [
-        metaChip('API key', p.api_key_prefix ? `${escHtml(p.api_key_prefix)}…` : '—'),
+        apiKeyPrefixChip(p.api_key_prefix),
         metaChip('Auth', p.auth_enabled ? 'Enabled' : 'Disabled'),
         metaChip('Cloned', p.is_clone ? 'Yes' : 'No'),
         metaChip('Created', formatDate(p.created_at)),
@@ -187,8 +187,19 @@ function renderHeaderError(msg) {
   if (metaEl) metaEl.innerHTML = '';
 }
 
+const API_KEY_USAGE_TIP = 'When authentication is enabled, include this API key in every request to your project\'s APIs as the x-api-key header.';
+
 function metaChip(label, value) {
   return `<span class="vp-meta-chip"><span class="vp-meta-chip__label">${escHtml(label)}</span><span class="vp-meta-chip__value">${escHtml(value)}</span></span>`;
+}
+
+function apiKeyPrefixChip(prefix) {
+  if (!prefix) return metaChip('API key', '—');
+  return `<span class="vp-meta-chip vp-meta-chip--tip" tabindex="0" aria-describedby="vp-api-key-tip">
+    <span class="vp-meta-chip__label">API key</span>
+    <span class="vp-meta-chip__value">${escHtml(prefix)}…</span>
+    <span class="vp-meta-chip__tooltip" id="vp-api-key-tip" role="tooltip">${escHtml(API_KEY_USAGE_TIP)}</span>
+  </span>`;
 }
 
 /* -----------------------------------------------------------------------
@@ -4494,6 +4505,7 @@ async function regenerateApiKey() {
               <code id="new-api-key-value" class="vp-api-key-code">${escHtml(data.api_key || '')}</code>
               <button class="btn btn--ghost btn--sm" id="copy-new-api-key" type="button">Copy</button>
             </div>
+            <p class="vp-confirm-msg" style="margin-top:14px;">When authentication is enabled, include this key in every request to your project's APIs as the <code>x-api-key</code> header.</p>
           `, `<button class="btn btn--primary btn--sm" id="close-regen-modal" type="button">Done</button>`);
           document.getElementById('copy-new-api-key')?.addEventListener('click', () => {
             navigator.clipboard?.writeText(data.api_key || '').then(() => {
