@@ -1130,9 +1130,7 @@ BEGIN
               arr := '[]'::jsonb;
               FOR elem IN SELECT * FROM jsonb_array_elements(v) LOOP 
                  arr := arr||jsonb_build_array(
-                  jsonb_build_array(
-                      COALESCE(col_map -> (elem #>> '{}'), elem)
-                  )
+                     COALESCE(col_map -> (elem #>> '{}'), elem)
                  );
          END LOOP;
          result := result || jsonb_build_object(k , arr);

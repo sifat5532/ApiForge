@@ -166,14 +166,51 @@ function initPasswordForm() {
         throw new Error(payload.msg || 'Could not update password. Check your current password.');
       }
       form.reset();
-      if (success) success.textContent = 'Password updated.';
-      setTimeout(() => { if (success) success.textContent = ''; }, 3000);
+      openSignOutModal();
     } catch (err2) {
       showError(err, err2.message || 'Could not update password. Check your current password.');
     } finally {
       setLoading(btn, false);
     }
   });
+}
+
+/* ----- Post-password-change: ask to sign out other devices ----- */
+function openSignOutModal() {
+  const modal = document.getElementById('pw-signout-modal');
+  if (!modal) return;
+  const success = document.getElementById('password-success');
+  if (success) success.textContent = 'Password updated.';
+  setTimeout(() => { if (success) success.textContent = ''; }, 3000);
+
+  modal.hidden = false;
+
+  const close = () => { modal.hidden = true; };
+  const keepBtn = document.getElementById('pw-signout-keep');
+  const confirmBtn = document.getElementById('pw-signout-confirm');
+  const closeBtn = document.getElementById('pw-signout-close');
+
+  const onKeep = () => close();
+  const onConfirm = async () => {
+    setLoading(confirmBtn, true, 'Signing out…');
+    try {
+      const res = await apiFetch('/profile/logoutothersSessions', { method: 'POST' });
+      if (!res.ok) throw new Error();
+      if (success) success.textContent = 'Password updated. Signed out of other devices.';
+      setTimeout(() => { if (success) success.textContent = ''; }, 3000);
+      loadSessions();
+    } catch (e) {
+      alert('Could not sign out other devices. Your password was still changed.');
+    } finally {
+      setLoading(confirmBtn, false);
+      close();
+    }
+  };
+
+  keepBtn.onclick = onKeep;
+  confirmBtn.onclick = onConfirm;
+  closeBtn.onclick = close;
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); }, { once: true });
 }
 
 /* ----- Login history ----- */

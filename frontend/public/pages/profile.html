@@ -246,6 +246,7 @@
         <div class="panel">
           <div class="panel__head">
             <h2 class="panel__title">Change password</h2>
+          
           </div>
 
           <form id="password-form" novalidate>
@@ -298,14 +299,14 @@
             <h2 class="panel__title">Login history</h2>
             
           </div>
+              <button class="btn btn--ghost" type="button" id="revoke-all">
+              Sign out of all other devices
+            </button>
           <p class="field__hint">Sign-ins from the last month. If something looks wrong, sign out of that device or change your password.</p>
           <div class="session-list" id="session-list">
             <div class="session-empty">Loading login history…</div>
           </div>
           <div class="settings-actions">
-            <button class="btn btn--ghost" type="button" id="revoke-all">
-              Sign out of all other devices
-            </button>
           </div>
         </div>
       </section>
@@ -343,6 +344,23 @@
         </div>
       </section>
     </main>
+  </div>
+
+  <!-- Sign out other devices — shown after a successful password change -->
+  <div class="vp-modal-overlay" id="pw-signout-modal" hidden>
+    <div class="vp-modal" role="dialog" aria-modal="true" aria-labelledby="pw-signout-title">
+      <div class="vp-modal__head">
+        <h2 class="vp-modal__title" id="pw-signout-title">Password updated</h2>
+        <button class="vp-modal__close" type="button" id="pw-signout-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="vp-modal__body">
+        <p class="field__hint">Your password was changed. Do you also want to sign out of all other devices? You'll stay signed in here.</p>
+      </div>
+      <div class="vp-modal__foot">
+        <button class="btn btn--ghost" type="button" id="pw-signout-keep">Keep them signed in</button>
+        <button class="btn btn--primary" type="button" id="pw-signout-confirm">Sign out other devices</button>
+      </div>
+    </div>
   </div>
 
   <script src="js/config.js"></script>

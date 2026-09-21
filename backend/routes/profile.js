@@ -56,11 +56,6 @@ router.patch('/changePassword', requireAuth, async (req, res) => {
     const hashedPassword = await bcrypt.hash(new_password, saltRounds);
     await query(`UPDATE users SET password_hash = $2  WHERE id = $1 ` ,
                 [req.loggedInUser.id, hashedPassword]);
-    await query(`UPDATE user_sessions
-             SET revoked_at = now()
-             WHERE user_id = $1 AND id != $2 AND revoked_at IS NULL
-            `,[req.loggedInUser.id, req.currentSession.id]
-    );
 
     res.status(200).json({ msg: 'Password successfully changed' });
 
