@@ -611,9 +611,6 @@ ApiForge/
 - [x] Collaboration & audit trail
 - [x] Analytics dashboard
 - [x] Subscription plans & payments
-- [ ] GitHub OAuth sign-in
-- [ ] OpenAPI / Swagger export for generated endpoints
-- [ ] Automated test suite
 
 ---
 
