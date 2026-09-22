@@ -296,14 +296,14 @@ async function loadTables() {
 
     const rows = tables.map(t => `
       <tr>
-        <td>
+        <td data-label="Table">
           <button class="vp-table__link" type="button" data-table-id="${t.id}" data-stub="table-structure">
             ${escHtml(t.table_name)} <span aria-hidden="true">→</span>
           </button>
         </td>
-        <td>${escHtml(t.total_columns != null ? t.total_columns : '0')}</td>
-        <td>${escHtml(formatDate(t.created_at))}</td>
-        <td>
+        <td data-label="Columns">${escHtml(t.total_columns != null ? t.total_columns : '0')}</td>
+        <td data-label="Created">${escHtml(formatDate(t.created_at))}</td>
+        <td data-label="Data">
           <button class="btn btn--ghost btn--sm vp-table-view-data" type="button" data-table-id="${t.id}" title="View table data">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;">
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
@@ -323,7 +323,7 @@ async function loadTables() {
             Clear
           </button>
         </td>
-        <td>
+        <td data-label="Actions">
           <div class="vp-table-actions">
             <button class="btn btn--ghost btn--sm vp-table-edit" type="button" data-table-id="${t.id}" title="Edit table">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;">
@@ -561,12 +561,12 @@ async function loadForeignKeys() {
 
     const rows = fks.map(fk => `
       <tr>
-        <td>${escHtml(fk.fk_name)}</td>
-        <td>${escHtml(fk.child_table_name)}.${escHtml(fk.child_col_name)} <span style="color:var(--text-faint)">→</span> ${escHtml(fk.parent_table_name)}.${escHtml(fk.parent_col_name)}</td>
-        <td>${escHtml(fk.on_delete)}</td>
-        <td>${escHtml(fk.on_update)}</td>
-        <td>${escHtml(formatDate(fk.created_at))}</td>
-        <td>
+        <td data-label="Constraint">${escHtml(fk.fk_name)}</td>
+        <td data-label="Relationship">${escHtml(fk.child_table_name)}.${escHtml(fk.child_col_name)} <span style="color:var(--text-faint)">→</span> ${escHtml(fk.parent_table_name)}.${escHtml(fk.parent_col_name)}</td>
+        <td data-label="On Delete">${escHtml(fk.on_delete)}</td>
+        <td data-label="On Update">${escHtml(fk.on_update)}</td>
+        <td data-label="Created">${escHtml(formatDate(fk.created_at))}</td>
+        <td data-label="Actions">
           <button class="btn btn--ghost btn--sm vp-fk-update" type="button"
             data-child-col-id="${fk.child_col_id}"
             data-schema-table-id="${fk.child_table_id}"
