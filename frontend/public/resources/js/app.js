@@ -8,6 +8,7 @@
 document.addEventListener('DOMContentLoaded', () => {
   initNavToggle();
   initTerminalTyping();
+  initPricingPlans();
 });
 
 /* ------------------------- mobile nav ------------------------- */
@@ -102,5 +103,78 @@ function escapeHtml(str) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+}
+
+function initPricingPlans() {
+  const grid = document.getElementById('pricing-grid');
+  if (!grid) return;
+
+  const backendUrl = window.BACKEND_URL || 'http://localhost:3000';
+
+  function fmtLimit(value, singular, plural) {
+    if (value == null) return 'Unlimited ' + plural;
+    const n = Number(value);
+    if (n === 1) return '1 ' + singular;
+    return n.toLocaleString() + ' ' + plural;
+  }
+
+  function planTagline(name, price) {
+    const key = String(name || '').toLowerCase();
+    if (price === 0 || key === 'free') return 'For trying ApiForge out.';
+    if (key === 'lite') return 'For growing projects.';
+    if (key === 'pro') return 'For everything else.';
+    return name + ' plan.';
+  }
+
+  fetch(backendUrl + '/view/billingPlans', { credentials: 'include' })
+    .then((r) => {
+      if (!r.ok) throw new Error('Failed to load plans');
+      return r.json();
+    })
+    .then((data) => {
+      const plans = data.plans || [];
+      if (!plans.length) {
+        grid.innerHTML = '<p class="pricing__status">No plans available right now.</p>';
+        return;
+      }
+
+      const heroMeta = document.querySelector('.hero__meta span:first-child');
+      if (heroMeta) {
+        const cheapest = plans.reduce((min, p) => {
+          const cost = Number(p.cost_per_month) || 0;
+          return cost < min ? cost : min;
+        }, Infinity);
+        const from = cheapest === 0 ? 'from free' : 'from ৳' + cheapest;
+        heroMeta.innerHTML = '<strong>' + plans.length + '</strong> plans, ' + from;
+      }
+
+      grid.innerHTML = plans.map((p) => {
+        const key = String(p.name || '').toLowerCase();
+        const price = Number(p.cost_per_month) || 0;
+        const highlight = key === 'lite';
+        const displayName = p.name
+          ? p.name.charAt(0).toUpperCase() + p.name.slice(1)
+          : 'Plan';
+        const btnClass = highlight ? 'btn btn--primary btn--block' : 'btn btn--ghost btn--block';
+        const btnLabel = price === 0 ? 'Start free' : 'Get ' + escapeHtml(displayName);
+        return ''
+          + '<div class="plan' + (highlight ? ' plan--highlight' : '') + '">'
+          +   (highlight ? '<span class="plan__badge">Most popular</span>' : '')
+          +   '<div class="plan__name">' + escapeHtml(displayName) + '</div>'
+          +   '<p class="plan__price">' + (price === 0 ? 'Free' : '৳' + price + '<span> / mo</span>') + '</p>'
+          +   '<p class="plan__tagline">' + escapeHtml(planTagline(displayName, price)) + '</p>'
+          +   '<ul class="plan__list">'
+          +     '<li>' + escapeHtml(fmtLimit(p.project_count, 'project', 'projects')) + '</li>'
+          +     '<li>' + escapeHtml(fmtLimit(p.table_per_project, 'table per project', 'tables per project')) + '</li>'
+          +     '<li>' + escapeHtml(fmtLimit(p.api_per_project, 'API per project', 'APIs per project')) + '</li>'
+          +     '<li>' + escapeHtml(fmtLimit(p.api_call_per_day, 'API call per day', 'API calls per day')) + '</li>'
+          +   '</ul>'
+          +   '<a href="/signup" class="' + btnClass + '">' + btnLabel + '</a>'
+          + '</div>';
+      }).join('');
+    })
+    .catch(() => {
+      grid.innerHTML = '<p class="pricing__status">Unable to load plans. Try again later.</p>';
+    });
 }
 

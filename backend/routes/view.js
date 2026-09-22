@@ -796,7 +796,7 @@ router.get('/billingOverview', requireAuth, async (req, res) => {
     }
 });
 
-router.get('/billingPlans', requireAuth, async (req, res) => {
+router.get('/billingPlans', async (req, res) => {
     try {
         const result = await query(`
             SELECT
