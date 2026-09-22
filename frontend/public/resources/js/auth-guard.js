@@ -17,6 +17,14 @@
     const data = await res.json();
     if (!data || !data.user) {
       window.location.replace('/login');
+      return;
+    }
+
+    window.__apiforgeUser = data.user;
+    const avatar = document.getElementById('nav-avatar');
+    if (avatar) {
+      const source = data.user.name || data.user.username || 'U';
+      avatar.textContent = source.trim().charAt(0).toUpperCase() || 'U';
     }
   } catch (err) {
     console.error('Connection error with backend:', err);
