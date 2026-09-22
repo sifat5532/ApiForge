@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS user_sessions (
    CONSTRAINT uq_session_token_hashed UNIQUE (session_token_hashed)
 );
 
-CREATE INDEX IF NOT EXISTS user_session_token ON user_sessions (session_token_hashed , expires_at , revoked_at);
+CREATE INDEX IF NOT EXISTS user_session_token ON user_sessions (session_token_hashed, expires_at, revoked_at);
 
 CREATE TABLE IF NOT EXISTS notifications (
    id serial PRIMARY KEY,
@@ -41,9 +41,7 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 
 -- CREATE INDEX IF NOT EXISTS idx_notifications_receiver_created ON notifications (receiver_id, created_at DESC);
-
 -- CREATE INDEX IF NOT EXISTS idx_notifications_entity_sorting ON notifications (related_entity_name, related_entity_id, type);
-
 CREATE TABLE IF NOT EXISTS projects (
    id serial PRIMARY KEY,
    author_id INTEGER NOT NULL,
@@ -84,7 +82,6 @@ CREATE TABLE IF NOT EXISTS projects (
    )
 );
 
-
 CREATE TABLE IF NOT EXISTS project_cors_origin (
    project_id INTEGER NOT NULL,
    origin VARCHAR(100) NOT NULL,
@@ -124,7 +121,6 @@ CREATE TABLE IF NOT EXISTS project_logs (
 CREATE INDEX IF NOT EXISTS idx_project_logs_project_id_created_at ON project_logs (project_id, created_at DESC);
 
 -- CREATE INDEX IF NOT EXISTS idx_project_logs_entity_type_entity_id ON project_logs (entity_type, entity_id, created_at DESC);
-
 CREATE TABLE IF NOT EXISTS project_collaborators (
    project_id INTEGER NOT NULL,
    user_id INTEGER NOT NULL,
@@ -138,7 +134,7 @@ CREATE TABLE IF NOT EXISTS project_collaborators (
    PRIMARY KEY (project_id, user_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_collaborators_user_id ON project_collaborators (user_id , status , project_id);
+CREATE INDEX IF NOT EXISTS idx_collaborators_user_id ON project_collaborators (user_id, status, project_id);
 
 CREATE TABLE IF NOT EXISTS schema_tables (
    id serial PRIMARY KEY,
@@ -199,7 +195,8 @@ CREATE TABLE IF NOT EXISTS schema_foreign_keys (
    CONSTRAINT fk_schema_fks_child FOREIGN KEY (child_col_id) REFERENCES schema_columns (id) ON DELETE CASCADE,
    CONSTRAINT fk_schema_fks_parent FOREIGN KEY (parent_col_id) REFERENCES schema_columns (id) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_schema_foreign_keys_parent_col_id ON  schema_foreign_keys( parent_col_id );
+
+CREATE INDEX IF NOT EXISTS idx_schema_foreign_keys_parent_col_id ON schema_foreign_keys (parent_col_id);
 
 CREATE TABLE IF NOT EXISTS api_definitions (
    id serial PRIMARY KEY,
@@ -225,6 +222,7 @@ CREATE TABLE IF NOT EXISTS api_logs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_api_logs_status_code ON api_logs (status_code);
+
 CREATE INDEX IF NOT EXISTS idx_api_logs_created_at ON api_logs (created_at);
 
 CREATE TABLE IF NOT EXISTS api_table_dependencies (
@@ -233,7 +231,8 @@ CREATE TABLE IF NOT EXISTS api_table_dependencies (
    usage_context VARCHAR(30), -- check constraint should be added later
    created_at TIMESTAMP(0) NOT NULL DEFAULT now(),
    CONSTRAINT fk_api_table_dependencies_api_definition_id FOREIGN KEY (api_definition_id) REFERENCES api_definitions (id) ON DELETE CASCADE,
-   CONSTRAINT fk_api_table_dependencies_api_schema_table_id FOREIGN KEY (schema_table_id) REFERENCES schema_tables (id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED
+   CONSTRAINT fk_api_table_dependencies_api_schema_table_id FOREIGN KEY (schema_table_id) REFERENCES schema_tables (id) ON DELETE RESTRICT
+   DEFERRABLE INITIALLY DEFERRED
 );
 
 CREATE TABLE IF NOT EXISTS api_column_dependencies (
@@ -242,7 +241,8 @@ CREATE TABLE IF NOT EXISTS api_column_dependencies (
    usage_context VARCHAR(30),
    created_at TIMESTAMP(0) NOT NULL DEFAULT now(),
    CONSTRAINT fk_api_column_dependencies_api_definition_id FOREIGN KEY (api_definition_id) REFERENCES api_definitions (id) ON DELETE CASCADE,
-   CONSTRAINT fk_api_column_dependencies_schema_col_id FOREIGN KEY (schema_col_id) REFERENCES schema_columns (id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED
+   CONSTRAINT fk_api_column_dependencies_schema_col_id FOREIGN KEY (schema_col_id) REFERENCES schema_columns (id) ON DELETE RESTRICT
+   DEFERRABLE INITIALLY DEFERRED
 );
 
 CREATE TABLE IF NOT EXISTS template_clones (
@@ -316,6 +316,29 @@ CREATE TABLE IF NOT EXISTS plans (
       OR api_call_per_day IS NULL
    )
 );
+
+INSERT INTO
+   plans (
+      plan_id,
+      name,
+      cost_per_month,
+      project_count,
+      table_per_project,
+      api_per_project,
+      api_call_per_day
+   )
+VALUES
+   (1, 'free', 0, 2, 10, 30, 1000),
+   (2, 'lite', 300, 5, NULL, 150, 50000),
+   (3, 'pro', 600, NULL, NULL, NULL, NULL)
+ON CONFLICT (plan_id) DO UPDATE
+SET
+   name = EXCLUDED.name,
+   cost_per_month = EXCLUDED.cost_per_month,
+   project_count = EXCLUDED.project_count,
+   table_per_project = EXCLUDED.table_per_project,
+   api_per_project = EXCLUDED.api_per_project,
+   api_call_per_day = EXCLUDED.api_call_per_day;
 
 CREATE TABLE IF NOT EXISTS subscriptions (
    subscription_id serial PRIMARY KEY,
@@ -391,8 +414,6 @@ BEGIN
          WHERE sender_id = collab_sender_user_id AND receiver_id = collab_receiver_user_id AND related_entity_name = 'projects' AND related_entity_id = action_project_id AND data->>'status' = 'pending';
       END IF;
       
-      -- We need to update project log here, skipping it now deliberately
-
       RETURN;
 END;
 $$;
@@ -451,7 +472,6 @@ BEGIN
             (sender_id, receiver_id, type, related_entity_name, related_entity_id)
             VALUES
             (sender_user_id, NEW.user_id, 'author_collab_remove', 'projects', NEW.project_id);
-            -- We need to update project log here, skipping it now deliberately
          END IF;
          
          DELETE FROM project_collaborators WHERE project_id = NEW.project_id AND user_id = NEW.user_id;
@@ -606,7 +626,6 @@ AFTER INSERT OR DELETE ON projects FOR EACH ROW
 EXECUTE FUNCTION tgfunc_create_schema ();
 
 DROP TRIGGER IF EXISTS tg_insert_project_clone ON projects;
-
 
 CREATE OR REPLACE FUNCTION tgfunc_create_schema_table () RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE
@@ -818,6 +837,7 @@ BEGIN
     RETURN COALESCE(NEW, OLD);
 END;
 $$;
+
 DROP TRIGGER IF EXISTS tg_insert_schema_column ON schema_columns;
 
 CREATE TRIGGER tg_insert_schema_column
@@ -828,9 +848,9 @@ EXECUTE FUNCTION tgfunc_add_columns ();
 -- the current set of primary-key columns. Used by tgfunc_add_columns on column
 -- delete (the dropped column may have been a PK) and on PK-status change in update.
 CREATE OR REPLACE FUNCTION tgfunc_rebuild_pk_for_table (
-    p_table_id INTEGER,
-    p_schema TEXT,
-    p_table_name VARCHAR
+   p_table_id INTEGER,
+   p_schema TEXT,
+   p_table_name VARCHAR
 ) RETURNS void LANGUAGE plpgsql AS $$
 DECLARE
     v_pk_cols TEXT;
@@ -870,8 +890,7 @@ BEGIN
 END;
 $$;
 
-
-CREATE OR REPLACE FUNCTION  tgfunc_rebuild_pk() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+CREATE OR REPLACE FUNCTION tgfunc_rebuild_pk () RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE 
    r RECORD;
    v_schema TEXT;
@@ -936,12 +955,12 @@ BEGIN
     RETURN NULL;
 END;
 $$;
+
 DROP TRIGGER IF EXISTS tg_rebuild_pk_insert ON schema_columns;
+
 CREATE TRIGGER tg_rebuild_pk_insert
-AFTER INSERT ON schema_columns
-REFERENCING NEW TABLE AS new_rows 
-FOR EACH STATEMENT 
-EXECUTE FUNCTION tgfunc_rebuild_pk();
+AFTER INSERT ON schema_columns REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT
+EXECUTE FUNCTION tgfunc_rebuild_pk ();
 
 -- we need to insert a row into the project_logs table that a new column has been inserted, it will be implemented later. But it should be ensured that only when an actual alter table is called (adding col to existing tabel), it will insert into logs
 -- CREATE OR REPLACE FUNCTION tgfunc_create_cloned_proj () RETURNS TRIGGER plpgsql AS $$ 
@@ -1097,13 +1116,13 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS tg_remove_schema_fks ON schema_foreign_keys;
+
 CREATE TRIGGER tg_remove_schema_fks
 AFTER DELETE ON schema_foreign_keys FOR EACH ROW
 EXECUTE FUNCTION tgfunc_remove_fks ();
 
 ----FUNCTION to remap table id , column id in api_definition of colne and template project--------------------
- CREATE OR REPLACE FUNCTION remap_query_ids( input jsonb , table_map jsonb , col_map jsonb)
- RETURNS jsonb LANGUAGE plpgsql AS $$
+CREATE OR REPLACE FUNCTION remap_query_ids (input JSONB, table_map JSONB, col_map JSONB) RETURNS JSONB LANGUAGE plpgsql AS $$
  DECLARE 
      result jsonb;
      k text ;
@@ -1144,11 +1163,10 @@ BEGIN
          RETURN input;
      END IF;
 END ;
-$$;                      
-         
- ----FUNCTIONs to describe api_definitions for templates the describe_api_definition will call in backend --------------------
- CREATE OR REPLACE FUNCTION annotate_query_ids( input jsonb , table_map jsonb , col_map jsonb)
- RETURNS jsonb LANGUAGE plpgsql AS $$
+$$;
+
+----FUNCTIONs to describe api_definitions for templates the describe_api_definition will call in backend --------------------
+CREATE OR REPLACE FUNCTION annotate_query_ids (input JSONB, table_map JSONB, col_map JSONB) RETURNS JSONB LANGUAGE plpgsql AS $$
  DECLARE 
      result jsonb;
      k text ;
@@ -1194,9 +1212,9 @@ BEGIN
          RETURN input;
      END IF;
 END ;
-$$;          
-CREATE OR REPLACE FUNCTION describe_api_definition( p_api_definition_id int)
-RETURNS jsonb LANGUAGE plpgsql AS $$ 
+$$;
+
+CREATE OR REPLACE FUNCTION describe_api_definition (p_api_definition_id INT) RETURNS JSONB LANGUAGE plpgsql AS $$ 
 DECLARE 
   v_project_id int ;
   v_query jsonb ;
@@ -1222,6 +1240,7 @@ BEGIN
 
 END;  
 $$;
+
 -- we need to insert a row into the project_logs table that a new table has been inserted, it will be implemented later
 -------------------------------Clone Template------------------------------------
 CREATE OR REPLACE FUNCTION tgfunc_clone_template () RETURNS TRIGGER LANGUAGE plpgsql AS $$
@@ -1339,7 +1358,9 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-DROP TRIGGER  IF EXISTS tg_clone_template ON PROJECTS;
+
+DROP TRIGGER IF EXISTS tg_clone_template ON PROJECTS;
+
 CREATE TRIGGER tg_clone_template
 AFTER INSERT ON projects FOR EACH ROW
 EXECUTE FUNCTION tgfunc_clone_template ();
@@ -1435,8 +1456,10 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-DROP TRIGGER IF EXISTS tg_create_template on PROJECTS;
-CREATE TRIGGER  tg_create_template
+
+DROP TRIGGER IF EXISTS tg_create_template ON PROJECTS;
+
+CREATE TRIGGER tg_create_template
 AFTER INSERT ON projects FOR EACH ROW
 EXECUTE FUNCTION tgfunc_create_template ();
 
@@ -1845,8 +1868,7 @@ DROP TRIGGER IF EXISTS tg_log_new_tables_finalize ON schema_tables;
 
 CREATE CONSTRAINT TRIGGER tg_log_new_tables_finalize
 AFTER INSERT ON schema_tables
-INITIALLY DEFERRED
-FOR EACH ROW
+INITIALLY DEFERRED FOR EACH ROW
 EXECUTE FUNCTION tgfunc_log_new_tables_finalize ();
 
 -- schema_columns : create (initial col of a new table) / insert (added to existing table) / update / delete
@@ -2033,4 +2055,5 @@ DROP TRIGGER IF EXISTS tg_log_api_definition ON api_definitions;
 CREATE TRIGGER tg_log_api_definition
 AFTER INSERT OR UPDATE OR DELETE ON api_definitions FOR EACH ROW
 EXECUTE FUNCTION tgfunc_log_api_definition ();
+
 -------------------------------- PROJECT LOGS TRIGGERS END HERE ----------------------------------
