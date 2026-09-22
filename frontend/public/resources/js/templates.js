@@ -1,7 +1,7 @@
 /* ===================================================================
    ApiForge — templates.js
    Handles search, Auth On/Off chip filter, multi-tag filter chips,
-   popularity chips, shimmer loading, dynamic card rendering, and
+    popularity chips, dynamic card rendering, and
    pagination for templates.html.
    =================================================================== */
 
@@ -31,7 +31,7 @@ function initTemplatesPage() {
   const container = document.getElementById('tmpl-container');
   if (!container) return;
   bindTemplateEvents();
-  renderWithShimmer();
+  renderTemplates();
 }
 
 // ─── Event bindings ─────────────────────────────────────────────────────────────
@@ -117,35 +117,6 @@ function getFilteredTemplates() {
   results.sort((a, b) => b.useCount - a.useCount);
 
   return results;
-}
-
-// ─── Shimmer loading ────────────────────────────────────────────────────────────
-function renderWithShimmer() {
-  const container = document.getElementById('tmpl-container');
-  if (!container) return;
-
-  const count = 6;
-  let shimmerHtml = '';
-  for (let i = 0; i < count; i++) {
-    shimmerHtml += `
-      <div class="tmpl-card tmpl-card--shimmer" aria-hidden="true">
-        <div class="tmpl-shimmer-line tmpl-shimmer-line--short"></div>
-        <div class="tmpl-shimmer-line tmpl-shimmer-line--long"></div>
-        <div class="tmpl-shimmer-line tmpl-shimmer-line--long"></div>
-        <div class="tmpl-shimmer-tags">
-          <div class="tmpl-shimmer-tag"></div>
-          <div class="tmpl-shimmer-tag"></div>
-          <div class="tmpl-shimmer-tag"></div>
-        </div>
-        <div class="tmpl-shimmer-footer"></div>
-      </div>`;
-  }
-  container.innerHTML = shimmerHtml;
-
-  const paginationInfo = document.getElementById('tmpl-pagination-info');
-  if (paginationInfo) paginationInfo.textContent = 'Loading\u2026';
-
-  setTimeout(() => renderTemplates(), 420);
 }
 
 // ─── Main render ────────────────────────────────────────────────────────────────
@@ -304,9 +275,10 @@ function renderSearchResults() {
   const container = document.getElementById('tmpl-container');
   if (!container) return;
 
-  // While a request is in flight and we have no prior results yet, show shimmer.
   if (_searchLoading && !_searchResults) {
-    renderShimmerOnly();
+    container.innerHTML = '';
+    const infoEl = document.getElementById('tmpl-pagination-info');
+    if (infoEl) infoEl.textContent = 'Searching…';
     return;
   }
 
@@ -345,25 +317,6 @@ function renderSearchResults() {
   updatePaginationUI(total, start, end, totalPages);
 }
 
-function renderShimmerOnly() {
-  const container = document.getElementById('tmpl-container');
-  if (!container) return;
-  let shimmerHtml = '';
-  for (let i = 0; i < 6; i++) {
-    shimmerHtml +=
-      '<div class="tmpl-card tmpl-card--shimmer" aria-hidden="true">' +
-      '<div class="tmpl-shimmer-line tmpl-shimmer-line--short"></div>' +
-      '<div class="tmpl-shimmer-line tmpl-shimmer-line--long"></div>' +
-      '<div class="tmpl-shimmer-line tmpl-shimmer-line--long"></div>' +
-      '<div class="tmpl-shimmer-tags"><div class="tmpl-shimmer-tag"></div><div class="tmpl-shimmer-tag"></div><div class="tmpl-shimmer-tag"></div></div>' +
-      '<div class="tmpl-shimmer-footer"></div>' +
-      '</div>';
-  }
-  container.innerHTML = shimmerHtml;
-  const infoEl = document.getElementById('tmpl-pagination-info');
-  if (infoEl) infoEl.textContent = 'Searching…';
-}
-
 // ─── All Templates (fetched from backend via /view/allTemplates) ─────────────────
 function renderAllTemplates() {
   const container = document.getElementById('tmpl-container');
@@ -371,18 +324,7 @@ function renderAllTemplates() {
 
   _allTemplatesLoading = true;
   toggleToolbarForTab();
-  const shimmerHtml = [...Array(6)].map(() =>
-    '<div class="tmpl-card tmpl-card--shimmer" aria-hidden="true">' +
-      '<div class="tmpl-shimmer-line tmpl-shimmer-line--short"></div>' +
-      '<div class="tmpl-shimmer-line tmpl-shimmer-line--long"></div>' +
-      '<div class="tmpl-shimmer-line tmpl-shimmer-line--long"></div>' +
-      '<div class="tmpl-shimmer-tags">' +
-        '<div class="tmpl-shimmer-tag"></div><div class="tmpl-shimmer-tag"></div><div class="tmpl-shimmer-tag"></div>' +
-      '</div>' +
-      '<div class="tmpl-shimmer-footer"></div>' +
-    '</div>'
-  ).join('');
-  container.innerHTML = shimmerHtml;
+  container.innerHTML = '';
   const infoEl = document.getElementById('tmpl-pagination-info');
   if (infoEl) infoEl.textContent = 'Loading…';
 
@@ -442,18 +384,7 @@ function renderMyTemplates() {
 
   if (_myTemplates === null) {
     _myTemplatesLoading = true;
-    const shimmerHtml = [...Array(6)].map(() =>
-      '<div class="tmpl-card tmpl-card--shimmer" aria-hidden="true">' +
-        '<div class="tmpl-shimmer-line tmpl-shimmer-line--short"></div>' +
-        '<div class="tmpl-shimmer-line tmpl-shimmer-line--long"></div>' +
-        '<div class="tmpl-shimmer-line tmpl-shimmer-line--long"></div>' +
-        '<div class="tmpl-shimmer-tags">' +
-          '<div class="tmpl-shimmer-tag"></div><div class="tmpl-shimmer-tag"></div><div class="tmpl-shimmer-tag"></div>' +
-        '</div>' +
-        '<div class="tmpl-shimmer-footer"></div>' +
-      '</div>'
-    ).join('');
-    container.innerHTML = shimmerHtml;
+    container.innerHTML = '';
     const infoEl = document.getElementById('tmpl-pagination-info');
     if (infoEl) infoEl.textContent = 'Loading…';
 
