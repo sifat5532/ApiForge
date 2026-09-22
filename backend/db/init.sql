@@ -224,7 +224,8 @@ CREATE TABLE IF NOT EXISTS api_logs (
    CONSTRAINT fk_api_logs_api_definitions FOREIGN KEY (api_definition_id) REFERENCES api_definitions (id) ON DELETE CASCADE
 );
 
--- CREATE INDEX IF NOT EXISTS idx_api_logs_api_definition_id ON api_logs (api_definition_id);
+CREATE INDEX IF NOT EXISTS idx_api_logs_status_code ON api_logs (status_code);
+CREATE INDEX IF NOT EXISTS idx_api_logs_created_at ON api_logs (created_at);
 
 CREATE TABLE IF NOT EXISTS api_table_dependencies (
    api_definition_id INTEGER NOT NULL,
@@ -328,11 +329,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
    CONSTRAINT chk_subscription_duration CHECK (end_date > start_date)
 );
 
--- CREATE UNIQUE INDEX IF NOT EXISTS one_active_subscription_per_user ON subscriptions (user_id)
--- WHERE
---    status = 'active';
-
--- CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions (user_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions (user_id);
 
 CREATE TABLE IF NOT EXISTS subscription_log (
    log_id serial PRIMARY KEY,
@@ -359,7 +356,7 @@ CREATE TABLE IF NOT EXISTS subscription_log (
    )
 );
 
--- CREATE INDEX IF NOT EXISTS idx_subscriptions_log_subscription_id ON subscriptions (subscription_id);
+CREATE INDEX IF NOT EXISTS idx_subscription_log_history_view ON subscription_log (user_id, created_at DESC);
 
 /*##################################################################################
 
@@ -649,7 +646,6 @@ CREATE TRIGGER tg_insert_schema_table
 AFTER INSERT OR UPDATE OR DELETE ON schema_tables FOR EACH ROW
 EXECUTE FUNCTION tgfunc_create_schema_table ();
 
--- we need to insert a row into the project_logs table that a new table has been inserted, it will be implemented later
 CREATE OR REPLACE FUNCTION tgfunc_add_columns () RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE
     rec       RECORD;

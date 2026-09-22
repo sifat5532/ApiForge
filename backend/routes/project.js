@@ -25,9 +25,6 @@ const PG_RESERVED_WORDS = new Set([
     'when', 'where', 'window', 'with'
 ]);
 
-// ######################################################
-//
-// ######################################################
 
 async function validateColumnDefault(pool, pgType, defaultValue) {
     try {
@@ -92,7 +89,6 @@ const requireTemplateAuthor = async (req, res, next) => {
     next();
 };
 
-//it also chk is if the proj is not a template 
 const requireProjectAccess = async (req, res, next) => {
     const proj_id = req.body?.proj_id || req.params?.projectId || req.query?.projectId;
     if (!proj_id) return res.status(400).json({ msg: "You should insert a project id with your request" });
@@ -286,7 +282,7 @@ router.post('/removeCollaboration', requireAuth, async (req, res) => {
 
 });
 
-router.post('/createTable', requireAuth, requireProjectAccess, isProjectActive, async (req, res) => {   //requreAccesProject
+router.post('/createTable', requireAuth, requireProjectAccess, isProjectActive, async (req, res) => {
     const { proj_id, name, cols } = req.body;
     if (!proj_id || !name || !cols) {
         return res.status(400).json({ msg: "You should insert all necessary information" });
@@ -296,7 +292,7 @@ router.post('/createTable', requireAuth, requireProjectAccess, isProjectActive, 
         return res.status(400).json({ msg: "Please fill the table name" });
     }
     const table_name = name.trim().toLowerCase();
-    if (validateName(req, res, table_name, 'table', 'NULL').isResSent) return; // can be added table front end id here later
+    if (validateName(req, res, table_name, 'table', 'NULL').isResSent) return;
      
     if (cols == null || cols.length < 1) {
         return res.status(400).json({ msg: "You should create at least one column" });
@@ -632,7 +628,6 @@ router.post('/createTemplate', requireAuth, async (req, res) => {
             await client.query('ROLLBACK ');
             return res.status(404).json({ msg: 'You are not allowed to create template of this project ' });
         }
-        // await checkPlanLimit(client, author_id, 'project');
         const template = await client.query(`
             INSERT INTO projects
             (author_id, name, description, auth_enabled, is_template, originates_from_id )
@@ -793,9 +788,6 @@ router.delete('/deleteProject/:projectId', requireAuth, async (req, res) => {
     if (result.rowCount === 0) return res.status(400).json({ msg: "You don't have access to delete the project or the project doesn't exist." });
     return res.status(200).json({ msg: "Project was deleted successfully" });
 });
-// ######################################################
-//  Schema table related routes (DDL driven by triggers)
-// ######################################################
 
 router.put('/renameTable', requireAuth, requireProjectAccess, isProjectActive, async (req, res) => {
     const { proj_id, schema_table_id, name } = req.body;
@@ -886,10 +878,6 @@ router.delete('/deleteTable', requireAuth, requireProjectAccess, isProjectActive
         client.release();
     }
 });
-
-// ######################################################
-//  Schema column related routes (DDL driven by triggers)
-// ######################################################
 
 router.post('/addColumn', requireAuth, requireProjectAccess, isProjectActive, async (req, res) => {
     const { proj_id, schema_table_id, col_name, col_type, default_value, col_length, is_primary_key, is_auto_increment, is_nullable, is_unique } = req.body;
@@ -1076,10 +1064,6 @@ router.delete('/deleteColumn', requireAuth, requireProjectAccess, isProjectActiv
         client.release();
     }
 });
-
-// ######################################################
-//  Schema foreign key related routes
-// ######################################################
 
 router.post('/clearTableData', requireAuth, requireProjectAuthor, isProjectActive, async (req, res) => {
     const { proj_id, schema_table_id } = req.body;

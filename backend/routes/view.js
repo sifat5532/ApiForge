@@ -832,7 +832,7 @@ router.get('/billingHistory', requireAuth, async (req, res) => {
             FROM subscription_log sl
             JOIN plans p ON p.plan_id = sl.plan_id
             WHERE sl.user_id = $1
-            ORDER BY sl.log_id DESC
+            ORDER BY sl.created_at DESC
         `, [req.loggedInUser.id]);
 
         return res.status(200).json({ logs: result.rows });
