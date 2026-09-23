@@ -452,7 +452,7 @@ router.post('/addForeignKey', requireAuth, requireProjectAccess, isProjectActive
     
     const client = await pool.connect();
     try {
-        await client.query("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;");
+        await client.query("BEGIN");
         await client.query('SELECT set_config(\'app.current_user_id\', $1, true)', [String(req.loggedInUser.id)]);
         const isDuplicate = await client.query(`
                                      SELECT 

@@ -144,7 +144,6 @@ async function validateApiRoute(req, res, next) {
             a.method,
             a.is_active AS api_is_active,
             a.query_definition,
-            a.rate_limit_per_day,
             p.id AS project_id,
             p.author_id,
             p.auth_enabled,
@@ -225,14 +224,35 @@ async function handleApiRequest(req, res) {
 
 
 async function enforceRateLimit(client, apiDefinition) {
-    const usage = await client.query(`
-        SELECT COUNT(*)::int AS cnt
-        FROM api_logs
-        WHERE api_definition_id = $1
-        AND created_at >= now() - interval '1 day'`,
-        [apiDefinition.api_id]
+    const result = await client.query(`
+        SELECT
+            pl.api_call_per_day,
+            (
+                SELECT COUNT(*)::int
+                FROM api_logs l
+                JOIN api_definitions a ON a.id = l.api_definition_id
+                JOIN projects pr ON pr.id = a.project_id
+                WHERE pr.author_id = $1 AND pr.is_template = false
+                  AND l.created_at >= CURRENT_DATE
+            ) AS cnt
+        FROM subscriptions s
+        JOIN plans pl ON pl.plan_id = s.plan_id
+        WHERE s.user_id = $1 AND s.status = 'active'
+        ORDER BY s.subscription_id DESC
+        LIMIT 1`,
+        [apiDefinition.author_id]
     );
-    if (usage.rows[0].cnt >= apiDefinition.rate_limit_per_day) {
+
+    if (result.rows.length === 0) {
+        const err = new Error('No active subscription found');
+        err.status = 402;
+        throw err;
+    }
+
+    const { api_call_per_day, cnt } = result.rows[0];
+    if (api_call_per_day === null) return;
+
+    if (cnt >= api_call_per_day) {
         const err = new Error('Rate limit exceeded');
         err.status = 429;
         throw err;
@@ -296,7 +316,7 @@ async function handleDelete(req, res, apiDefinition) {
     return executeApiQuery(req, res, apiDefinition, buildDeleteSQL, 200);
 }
 
-router.options('/:username/:projectname/:apiname{/*splat}', corsMiddleware);
+router.options('/:username/:projectname/:apiname{/*splat}', corsMiddleware); 
 router.get('/:username/:projectname/:apiname{/*splat}', corsMiddleware, validateApiRoute, handleApiRequest);
 router.post('/:username/:projectname/:apiname{/*splat}', corsMiddleware, validateApiRoute, handleApiRequest);
 router.put('/:username/:projectname/:apiname{/*splat}', corsMiddleware, validateApiRoute, handleApiRequest);

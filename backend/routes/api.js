@@ -263,10 +263,10 @@ function validateSelectPayload(payload, catalog) {
     return errors;
   }
   if (select_obj.table_id == null) {
-    errors.push('select_obj.table_id is required');
+    errors.push('From table is required');
   }
   if (!Array.isArray(select_obj.cols_obj_array) || select_obj.cols_obj_array.length === 0) {
-    errors.push('select_obj.cols_obj_array must have at least one column');
+    errors.push('You must select at least one column');
   }
 
   if (!Array.isArray(join_obj_array)) errors.push('join_obj_array must be an array');
@@ -792,7 +792,7 @@ router.post('/create', requireAuth, requireProjectAccess, isProjectActive, async
   }
   const client = await pool.connect();
   try {
-    await client.query('BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE');
+    await client.query('BEGIN');
     await client.query('SELECT set_config(\'app.current_user_id\', $1, true)', [String(req.loggedInUser.id)]);
     await checkPlanLimit(client, req.projectAuthorId, 'api', proj_id);
     const projectCatalog = await loadProjectCatalog(client, proj_id);
@@ -867,7 +867,7 @@ router.put('/update', requireAuth, requireProjectAccess, isProjectActive, async 
 
   const client = await pool.connect();
   try {
-    await client.query('BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE');
+    await client.query('BEGIN');
     await client.query('SELECT set_config(\'app.current_user_id\', $1, true)', [String(req.loggedInUser.id)]);
 
     // Verify the API belongs to this project and the caller has access

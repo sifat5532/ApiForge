@@ -10,18 +10,19 @@ async function verifyPendingPayments() {
         // Fetch the last subscription_log row per user where payment_status is 'pending'
         // (outside any per-user txn — just a read to find work to do)
         const { rows: pendingLogs } = await pool.query(`
-            SELECT DISTINCT ON (user_id) user_id, log_id, trxn_id, plan_id
-            FROM subscription_log
+            SELECT user_id, log_id, trxn_id, plan_id, payment_status
+            FROM (
+                SELECT DISTINCT ON (user_id) user_id, log_id, trxn_id, plan_id, payment_status, created_at
+                FROM subscription_log
+                ORDER BY user_id, created_at DESC
+            ) latest
             WHERE payment_status = 'pending'
-            ORDER BY user_id, log_id DESC
         `);
 
         if (pendingLogs.length === 0) {
-            // console.log('[verifyPendingPayments] No pending payments found.');
+            // No pending payments found.
             return;
         }
-
-        // console.log(`[verifyPendingPayments] Found ${pendingLogs.length} pending payment(s). Verifying...`);
 
         for (const log of pendingLogs) {
             const { user_id, log_id, trxn_id, plan_id } = log;
@@ -56,7 +57,6 @@ async function verifyPendingPayments() {
                             const oldPlanId = oldSubRes.rows.length > 0 ? oldSubRes.rows[0].plan_id : null;
                             const direction = (oldPlanId === null || newPlan.plan_id > oldPlanId) ? 'upgrade' : 'downgrade';
 
-                            // REPEATABLE READ: see subscriptionEnforcer.js for the full rationale.
                             const client = await pool.connect();
                             try {
                                 await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
@@ -85,9 +85,6 @@ async function verifyPendingPayments() {
                         );
                     }
 
-                    // console.log(`[verifyPendingPayments] user_id=${user_id}, trxn_id=${trxn_id} -> ${paymentStatus}`);
-                } else {
-                    // console.log(`[verifyPendingPayments] user_id=${user_id}, trxn_id=${trxn_id} still pending (gateway status: ${paymentStatus})`);
                 }
             } catch (err) {
                 console.error(`[verifyPendingPayments] Failed to verify trxn_id=${trxn_id} for user_id=${user_id}:`, err.message);
