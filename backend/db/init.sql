@@ -389,13 +389,13 @@ feedback, rating
 new_session
 */
 -- Insert notification whenever collaboration request is sent, rejected, accepted or collaborator removed
-CREATE OR REPLACE FUNCTION func_collab_change_action ( -- maybe a procedure suits here better
+CREATE OR REPLACE PROCEDURE func_collab_change_action (
    collab_sender_user_id INTEGER,
    collab_receiver_user_id INTEGER,
    action_project_id INTEGER,
    updated_status VARCHAR,
    old_status VARCHAR
-) RETURNS void LANGUAGE plpgsql AS $$
+) LANGUAGE plpgsql AS $$
 BEGIN
       IF updated_status = 'rejected' THEN
          DELETE FROM project_collaborators WHERE project_id = action_project_id AND user_id = collab_receiver_user_id;
@@ -406,9 +406,7 @@ BEGIN
          UPDATE notifications
          SET data = jsonb_build_object('status', updated_status)
          WHERE sender_id = collab_sender_user_id AND receiver_id = collab_receiver_user_id AND related_entity_name = 'projects' AND related_entity_id = action_project_id AND data->>'status' = 'pending';
-      END IF;
-      
-      RETURN;
+      END IF;   
 END;
 $$;
 
@@ -444,7 +442,7 @@ BEGIN
          VALUES
          (NEW.user_id, sender_user_id, variable_type, 'projects', NEW.project_id);
 
-         PERFORM func_collab_change_action(sender_user_id, NEW.user_id, NEW.project_id, 'rejected', OLD.status);
+         CALL func_collab_change_action(sender_user_id, NEW.user_id, NEW.project_id, 'rejected', OLD.status);
 
       ELSIF NEW.status = 'accepted' AND OLD.status = 'pending' THEN
          INSERT INTO notifications
@@ -452,7 +450,7 @@ BEGIN
          VALUES
          (NEW.user_id, sender_user_id, 'collab_invitation_accept', 'projects', NEW.project_id);
 
-         PERFORM func_collab_change_action(sender_user_id, NEW.user_id, NEW.project_id, 'accepted', OLD.status);
+         CALL func_collab_change_action(sender_user_id, NEW.user_id, NEW.project_id, 'accepted', OLD.status);
             
       ELSIF NEW.status = 'removed' THEN
          IF OLD.status = 'pending' THEN
@@ -812,12 +810,12 @@ BEGIN
         -- Rebuild the primary key when a column's PK status changed, since the
         -- set of PK columns for the table is now different.
         IF NEW.is_primary_key IS DISTINCT FROM OLD.is_primary_key AND NOT rec.is_template THEN
-            PERFORM func_rebuild_pk_for_table(rec.table_id, v_schema, rec.TABLE_NAME);
+            CALL func_rebuild_pk_for_table(rec.table_id, v_schema, rec.TABLE_NAME);
         END IF;
     ELSIF TG_OP = 'DELETE' THEN
         IF NOT rec.is_template AND to_regclass(format('%I.%I', v_schema, rec.TABLE_NAME)) IS NOT NULL THEN
             EXECUTE FORMAT('ALTER TABLE %I.%I DROP COLUMN IF EXISTS %I', v_schema, rec.TABLE_NAME, OLD.col_name);
-            PERFORM func_rebuild_pk_for_table(rec.table_id, v_schema, rec.TABLE_NAME);
+            CALL func_rebuild_pk_for_table(rec.table_id, v_schema, rec.TABLE_NAME);
         END IF;
     END IF;
 
@@ -832,11 +830,11 @@ AFTER INSERT OR UPDATE OR DELETE ON schema_columns FOR EACH ROW
 EXECUTE FUNCTION tgfunc_add_columns ();
 
 -- Func to rebuild pk
-CREATE OR REPLACE FUNCTION func_rebuild_pk_for_table (
+CREATE OR REPLACE PROCEDURE func_rebuild_pk_for_table (
    p_table_id INTEGER,
    p_schema TEXT,
    p_table_name VARCHAR
-) RETURNS void LANGUAGE plpgsql AS $$
+) LANGUAGE plpgsql AS $$
 DECLARE
     v_pk_cols TEXT;
     v_existing_pk TEXT;
