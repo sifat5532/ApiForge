@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Documentation — ApiForge</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/responsive.css">
+
+  <!--
+    Read persisted UI state before paint so the correct layout renders
+    on the first frame (no flash of the wrong sidebar width).
+  -->
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem('apiforge-sidebar-collapsed') === 'true') {
+          document.documentElement.classList.add('sidebar-collapsed');
+        }
+      } catch (e) { /* localStorage unavailable — default to expanded */ }
+    })();
+  </script>
+
+  <!--
+    Small, page-scoped styles only. Everything else (shell, tabs, buttons,
+    pills, code rows) reuses classes already defined in
+    resources/css/style.css so this page stays visually consistent with
+    the rest of ApiForge. No new stylesheet is added.
+
+    This block is tuned for calm, comfortable reading: a narrower measure,
+    generous line-height, and fewer competing borders than a typical
+    dashboard screen.
+  -->
+  <style>
+    /* A single, consistent content width for every element on this page —
+       paragraphs, cards, grids, callouts, code blocks — so nothing drifts
+       out of alignment with anything else. Wider than a narrow reading
+       column, still capped so lines don't run edge-to-edge on large
+       screens; below the cap it simply follows .dash-main's own
+       responsive behavior (padding shrinks, sidebar collapses, etc.). */
+    .doc-main { max-width: 880px; }
+
+    .doc-lede {
+      color: var(--text-muted);
+      font-size: 0.96rem;
+      line-height: 1.75;
+      margin: 0 0 26px;
+    }
+
+    .doc-section { margin-bottom: 44px; }
+    .doc-section:last-child { margin-bottom: 4px; }
+    .doc-section h2 {
+      font-family: var(--font-display);
+      font-size: 1.02rem;
+      font-weight: 700;
+      margin: 0 0 6px;
+      letter-spacing: 0.01em;
+    }
+    .doc-section__sub {
+      color: var(--text-muted);
+      font-size: 0.88rem;
+      margin: 0 0 16px;
+      line-height: 1.7;
+    }
+
+    /* Numbered step cards (used sparingly — kept for the "how it works"
+       overview, where a grid reads faster than prose). */
+    .doc-steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 14px;
+    }
+    .doc-step {
+      background: var(--surface-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 18px 18px 17px;
+      transition: border-color 0.16s ease;
+    }
+    .doc-step:hover { border-color: var(--border-hover); }
+    .doc-step__num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--accent-glow);
+      color: var(--accent-light);
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 700;
+      margin-bottom: 11px;
+    }
+    .doc-step h3 {
+      font-family: var(--font-display);
+      font-size: 0.94rem;
+      font-weight: 700;
+      margin: 0 0 6px;
+    }
+    .doc-step p {
+      font-size: 0.83rem;
+      color: var(--text-muted);
+      line-height: 1.65;
+      margin: 0;
+    }
+
+    /* Generic bordered concept cards (2-up grid) */
+    .doc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 14px;
+    }
+    .doc-card {
+      background: var(--surface-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 18px 20px;
+    }
+    .doc-card h3 {
+      font-family: var(--font-display);
+      font-size: 0.9rem;
+      font-weight: 700;
+      margin: 0 0 7px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .doc-card p {
+      font-size: 0.84rem;
+      color: var(--text-muted);
+      line-height: 1.65;
+      margin: 0;
+    }
+
+    /* Soft, prose-like numbered list — used for step-by-step walkthroughs
+       (e.g. Postman) where a heavy card grid would feel busier than reading. */
+    .doc-ol {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .doc-ol li { display: flex; gap: 14px; align-items: flex-start; }
+    .doc-ol__num {
+      flex-shrink: 0;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--surface-raised);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--accent-light);
+      margin-top: 1px;
+    }
+    .doc-ol__body strong {
+      display: block;
+      font-family: var(--font-display);
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 3px;
+    }
+    .doc-ol__body span {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.7;
+    }
+    .doc-ol__body code {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--accent-light);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 6px;
+    }
+
+    /* Callouts — kept to one per tab so they still draw the eye */
+    .doc-callout {
+      display: flex;
+      gap: 11px;
+      align-items: flex-start;
+      padding: 13px 16px;
+      border-radius: var(--radius-md);
+      font-size: 0.85rem;
+      line-height: 1.65;
+      border: 1px solid var(--border);
+      margin: 18px 0 0;
+      color: var(--text-muted);
+    }
+    .doc-callout__icon { flex-shrink: 0; margin-top: 1px; font-size: 0.95rem; }
+    .doc-callout strong { color: var(--text); }
+    .doc-callout--info { background: var(--accent-glow); border-color: rgba(249, 115, 22, 0.22); }
+    .doc-callout--info strong { color: var(--accent-light); }
+    .doc-callout--warn { background: rgba(248, 113, 113, 0.07); border-color: rgba(248, 113, 113, 0.22); }
+    .doc-callout--warn strong { color: var(--error); }
+    .doc-callout--tip { background: rgba(34, 197, 94, 0.07); border-color: rgba(34, 197, 94, 0.2); }
+    .doc-callout--tip strong { color: var(--success); }
+
+    /* HTTP method + route line, reusing vp-api-url look */
+    .doc-route {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 4px 0 16px;
+      padding: 10px 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      overflow-x: auto;
+      max-width: 100%;
+    }
+    .doc-route code {
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    /* Quick-link chips on the Getting Started tab */
+    .doc-quicklinks {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .doc-chip {
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      color: var(--text-muted);
+      background: var(--surface-raised);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 7px 14px;
+      cursor: pointer;
+      transition: color 0.15s ease, border-color 0.15s ease;
+    }
+    .doc-chip:hover { color: var(--accent-light); border-color: var(--border-hover); }
+
+    /* Small labelled key/value list — "what a request needs", dynamic
+       value sources, etc. */
+    .doc-kv { display: flex; flex-direction: column; gap: 12px; margin-top: 4px; }
+    .doc-kv__row {
+      display: flex;
+      gap: 12px;
+      font-size: 0.85rem;
+      line-height: 1.65;
+      color: var(--text-muted);
+    }
+    .doc-kv__row code {
+      flex-shrink: 0;
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      color: var(--accent-light);
+      background: var(--surface-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 3px 8px;
+      height: fit-content;
+    }
+
+    /* Terminal code blocks get a little more breathing room here than
+       the compact dashboard usage. */
+    .doc-section .terminal { margin-top: 4px; }
+    .doc-section .terminal__body { line-height: 1.85; }
+
+  </style>
+</head>
+<body class="dashboard-body">
+
+  <!-- TOP NAVBAR -->
+  <header class="dash-nav">
+    <div class="dash-nav__inner">
+      <div class="dash-nav__left">
+        <button
+          class="sidebar-toggle"
+          id="sidebar-toggle"
+          type="button"
+          aria-label="Toggle sidebar"
+          aria-expanded="true"
+          aria-controls="sidebar"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+            <path d="M9 4v16"></path>
+          </svg>
+        </button>
+
+        <a href="/dashboard" class="brand">Api<span>Forge</span></a>
+
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+          <a href="/dashboard" class="breadcrumb__item">Home</a>
+          <span class="breadcrumb__sep">/</span>
+          <span class="breadcrumb__item breadcrumb__item--current" aria-current="page">Documentation</span>
+        </nav>
+      </div>
+
+      <div class="dash-nav__right">
+        <a href="/new-project?from=docs" class="btn btn--primary btn--sm">+ New project</a>
+
+        <div class="account-menu">
+          <button
+            class="account-menu__trigger"
+            id="account-menu-trigger"
+            type="button"
+            aria-haspopup="true"
+            aria-expanded="false"
+            aria-controls="account-dropdown"
+          >
+            <span class="avatar" id="nav-avatar" aria-hidden="true"></span>
+            <span class="sr-only">Account menu</span>
+          </button>
+
+          <div class="account-menu__dropdown" id="account-dropdown" role="menu" aria-label="Account">
+            <a href="/profile" role="menuitem">Profile</a>
+            <a href="/logout" role="menuitem" class="is-danger">Sign out</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="dash-shell">
+
+    <!-- LEFT SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+      <nav class="sidebar__nav" aria-label="Primary">
+        <div>
+          <div class="sidebar__group">
+            <span class="sidebar__group-label">Workspace</span>
+            <ul>
+              <li>
+                <a href="/dashboard" class="sidebar__link" data-tooltip="Dashboard">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="7" rx="1.3"></rect>
+                    <rect x="14" y="3" width="7" height="7" rx="1.3"></rect>
+                    <rect x="3" y="14" width="7" height="7" rx="1.3"></rect>
+                    <rect x="14" y="14" width="7" height="7" rx="1.3"></rect>
+                  </svg>
+                  <span>Dashboard</span>
+                </a>
+              </li>
+              <li>
+                <a href="/projects" class="sidebar__link" data-tooltip="Projects">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"></path>
+                  </svg>
+                  <span>Projects</span>
+                </a>
+              </li>
+              <li>
+                <a href="/liked" class="sidebar__link" data-tooltip="Liked">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l8.78-8.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                  </svg>
+                  <span>Liked</span>
+                </a>
+              </li>
+              <li>
+                <a href="/templates" class="sidebar__link" data-tooltip="Templates">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2 3 7l9 5 9-5-9-5z"></path>
+                    <path d="M3 12l9 5 9-5"></path>
+                    <path d="M3 17l9 5 9-5"></path>
+                  </svg>
+                  <span>Templates</span>
+                </a>
+              </li>
+              <li>
+                <a href="/leaderboard" class="sidebar__link" data-tooltip="Leaderboard">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="13" width="4" height="7" rx="1"></rect>
+                    <rect x="10" y="9" width="4" height="11" rx="1"></rect>
+                    <rect x="16" y="5" width="4" height="15" rx="1"></rect>
+                  </svg>
+                  <span>Leaderboard</span>
+                </a>
+              </li>
+              <li>
+                <a href="/notifications" class="sidebar__link" data-tooltip="Notifications">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 8a6 6 0 1 0-12 0c0 3-1.5 4.5-1.5 6.5h15C18 12.5 18 11 18 8z"></path>
+                    <path d="M9.5 17a2.5 2.5 0 0 0 5 0"></path>
+                  </svg>
+                  <span>Notifications</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+
+          <div class="sidebar__group">
+            <span class="sidebar__group-label">Account</span>
+            <ul>
+              <li>
+                <a href="/billing" class="sidebar__link" data-tooltip="Usage &amp; Billing">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+                    <path d="M2 10h20"></path>
+                  </svg>
+                  <span>Usage &amp; Billing</span>
+                </a>
+              </li>
+              <li>
+                <a href="/documentation" class="sidebar__link is-active" data-tooltip="Documentation" aria-current="page">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+                  </svg>
+                  <span>Documentation</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <ul class="sidebar__nav--secondary">
+          <li>
+            <a href="/profile" class="sidebar__link" data-tooltip="Profile">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="8" r="3.5"></circle>
+                <path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"></path>
+              </svg>
+              <span>Profile</span>
+            </a>
+          </li>
+        </ul>
+      </nav>
+    </aside>
+
+    <!-- backdrop for off-canvas sidebar on small screens -->
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+    <!-- MAIN CONTENT -->
+    <main class="dash-main doc-main">
+      <div class="dash-main__header">
+        <h1>Documentation</h1>
+        <p class="dash-main__subtitle">A short, calm guide to building an API in ApiForge and calling it from anywhere.</p>
+      </div>
+
+      <div class="doc-callout doc-callout--info" style="margin-top:-6px;margin-bottom:22px;">
+        <span><strong>Looking for a specific endpoint?</strong> This page covers the platform as a whole. Every project also generates its own documentation with its exact tables, columns, routes, and example requests — open it from that project's page.</span>
+      </div>
+
+      <!-- TABS -->
+      <nav class="vp-tabs" role="tablist" aria-label="Documentation sections" id="doc-tabs">
+        <button class="vp-tab is-active" id="tab-start"    type="button" role="tab" aria-selected="true"  aria-controls="panel-start">Getting Started</button>
+        <button class="vp-tab"           id="tab-api"      type="button" role="tab" aria-selected="false" aria-controls="panel-api">API Builder</button>
+        <button class="vp-tab"           id="tab-call"     type="button" role="tab" aria-selected="false" aria-controls="panel-call">Call API</button>
+        <button class="vp-tab"           id="tab-auth"     type="button" role="tab" aria-selected="false" aria-controls="panel-auth">Authentication</button>
+        <button class="vp-tab"           id="tab-advanced" type="button" role="tab" aria-selected="false" aria-controls="panel-advanced">Advanced / Developer</button>
+      </nav>
+
+      <section class="vp-tab-panels">
+
+        <!-- ================= GETTING STARTED ================= -->
+        <div class="vp-panel is-active" id="panel-start" role="tabpanel" aria-labelledby="tab-start">
+          <p class="doc-lede">ApiForge turns a database design into a live REST API — no server code to write. Design your tables, generate an endpoint on top of them, and call it from any app.</p>
+
+          <div class="doc-section">
+            <h2>How it fits together</h2>
+            <div class="doc-steps">
+              <div class="doc-step">
+                <span class="doc-step__num">1</span>
+                <h3>Design your tables</h3>
+                <p>On your project's page, add tables, columns, and relationships between them.</p>
+              </div>
+              <div class="doc-step">
+                <span class="doc-step__num">2</span>
+                <h3>Generate an API</h3>
+                <p>Turn a table — or a join across a few tables — into a GET, POST, PUT, or DELETE endpoint.</p>
+              </div>
+              <div class="doc-step">
+                <span class="doc-step__num">3</span>
+                <h3>Call it</h3>
+                <p>From your app's code, or straight from Postman, over plain HTTPS.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="doc-section">
+            <h2>Where to go next</h2>
+            <p class="doc-section__sub">Each tab below covers one part of that flow.</p>
+            <div class="doc-quicklinks">
+              <button class="doc-chip" data-jump="tab-api">API Builder</button>
+              <button class="doc-chip" data-jump="tab-call">Call API</button>
+              <button class="doc-chip" data-jump="tab-auth">Authentication</button>
+              <button class="doc-chip" data-jump="tab-advanced">Advanced / Developer</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ================= API BUILDER ================= -->
+        <div class="vp-panel" id="panel-api" role="tabpanel" aria-labelledby="tab-api" hidden>
+          <p class="doc-lede">An API in ApiForge is a saved query — a GET, POST, PUT, or DELETE definition built on your tables — exposed as its own endpoint.</p>
+
+          <div class="doc-section">
+            <h2>The four methods</h2>
+            <div class="doc-grid">
+              <div class="doc-card"><h3><span class="vp-api-method vp-api-method--get">GET</span> Read</h3><p>Select rows from one or more joined tables, with filters, sorting, and paging.</p></div>
+              <div class="doc-card"><h3><span class="vp-api-method vp-api-method--post">POST</span> Create</h3><p>Insert a new row from values sent in the request.</p></div>
+              <div class="doc-card"><h3><span class="vp-api-method vp-api-method--put">PUT</span> Update</h3><p>Update rows that match a condition you define.</p></div>
+              <div class="doc-card"><h3><span class="vp-api-method vp-api-method--delete">DELETE</span> Remove</h3><p>Delete rows that match a condition you define.</p></div>
+            </div>
+          </div>
+
+          <div class="doc-section">
+            <h2>Where values come from</h2>
+            <p class="doc-section__sub">Every value in an API — a filter, a column to insert, a condition — can be static or dynamic. A dynamic value is filled in from the incoming request when it's called:</p>
+            <div class="doc-kv">
+              <div class="doc-kv__row"><code>query_param</code> a value from the URL's query string, e.g. <code>?role=student</code></div>
+              <div class="doc-kv__row"><code>body_field</code> a value from the JSON request body (POST / PUT)</div>
+              <div class="doc-kv__row"><code>route_param</code> a value embedded in the URL path itself, e.g. an id</div>
+              <div class="doc-kv__row"><code>static_value</code> a fixed value you set once, the same on every call</div>
+            </div>
+          </div>
+
+          <div class="doc-section">
+            <h2>Choosing what comes back</h2>
+            <p class="doc-section__sub">GET picks its output columns individually, each with its own alias. POST, PUT, and DELETE work differently: you choose their return columns as a single list. Whatever's on that list is what comes back in the response — leave it empty and the write still goes through, but the response is an empty array.</p>
+          </div>
+        </div>
+
+        <!-- ================= CALL API ================= -->
+        <div class="vp-panel" id="panel-call" role="tabpanel" aria-labelledby="tab-call" hidden>
+          <p class="doc-lede">Once an API is generated, it's a normal HTTPS endpoint. Call it from your own code, or paste it straight into Postman — no SDK needed either way.</p>
+
+          <div class="doc-section">
+            <h2>What a request needs</h2>
+            <div class="doc-kv">
+              <div class="doc-kv__row"><code>Method</code> GET, POST, PUT, or DELETE — whichever the API was built as.</div>
+              <div class="doc-kv__row"><code>URL</code> the full endpoint address, copied from the project's APIs tab.</div>
+              <div class="doc-kv__row"><code>Headers</code> <code>Content-Type: application/json</code> for POST/PUT, plus <code>x-api-key</code> if the project has authentication enabled.</div>
+              <div class="doc-kv__row"><code>Body</code> a JSON object with the fields the API expects — POST and PUT only.</div>
+            </div>
+          </div>
+
+          <div class="doc-section">
+            <h2>Example: reading data</h2>
+            <p class="doc-section__sub">A GET request usually needs nothing but the URL.</p>
+            <div class="terminal">
+              <div class="terminal__bar">
+                <span class="terminal__dot"></span><span class="terminal__dot"></span><span class="terminal__dot"></span>
+                <span class="terminal__title">GET request</span>
+              </div>
+              <div class="terminal__body">
+                <div class="terminal__line"><span class="terminal__prompt">$ </span>fetch('https://your-apiforge-domain/api/username/project/posts')</div>
+                <div class="terminal__line">&nbsp;&nbsp;.then(r =&gt; r.json())</div>
+                <div class="terminal__line">&nbsp;&nbsp;.then(console.log);</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="doc-section">
+            <h2>Example: creating data</h2>
+            <p class="doc-section__sub">POST and PUT send a JSON body, and an API key when authentication is on.</p>
+            <div class="terminal">
+              <div class="terminal__bar">
+                <span class="terminal__dot"></span><span class="terminal__dot"></span><span class="terminal__dot"></span>
+                <span class="terminal__title">POST request</span>
+              </div>
+              <div class="terminal__body">
+                <div class="terminal__line"><span class="terminal__prompt">$ </span>fetch('https://your-apiforge-domain/api/username/project/create_post', {</div>
+                <div class="terminal__line">&nbsp;&nbsp;method: 'POST',</div>
+                <div class="terminal__line">&nbsp;&nbsp;headers: { 'Content-Type': 'application/json', 'x-api-key': 'YOUR_KEY' },</div>
+                <div class="terminal__line">&nbsp;&nbsp;body: JSON.stringify({ title: 'Hello, ApiForge' })</div>
+                <div class="terminal__line">});</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="doc-section">
+            <h2>What comes back</h2>
+            <p class="doc-section__sub">Every method responds with a plain JSON array of row objects, never a wrapped object. GET returns the rows it selected. POST, PUT, and DELETE return only the columns configured to come back for that API, one object per row affected — if that API wasn't set up to return any columns, a successful write still responds with an empty array:</p>
+            <div class="terminal">
+              <div class="terminal__bar">
+                <span class="terminal__dot"></span><span class="terminal__dot"></span><span class="terminal__dot"></span>
+                <span class="terminal__title">response</span>
+              </div>
+              <div class="terminal__body">
+                <div class="terminal__line">[</div>
+                <div class="terminal__line">&nbsp;&nbsp;{ "id": 1, "title": "Hello, ApiForge", "published": true }</div>
+                <div class="terminal__line">]</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="doc-section">
+            <h2>Calling it from Postman</h2>
+            <ol class="doc-ol">
+              <li>
+                <span class="doc-ol__num">1</span>
+                <span class="doc-ol__body">
+                  <strong>Create a new request</strong>
+                  <span>Open Postman and start a new request tab.</span>
+                </span>
+              </li>
+              <li>
+                <span class="doc-ol__num">2</span>
+                <span class="doc-ol__body">
+                  <strong>Set the method and URL</strong>
+                  <span>Pick the method (GET, POST, PUT, or DELETE) and paste the endpoint URL from your project's APIs tab.</span>
+                </span>
+              </li>
+              <li>
+                <span class="doc-ol__num">3</span>
+                <span class="doc-ol__body">
+                  <strong>Add headers, if needed</strong>
+                  <span>Under the <em>Headers</em> tab, add <code>x-api-key</code> when authentication is enabled, and <code>Content-Type: application/json</code> for POST/PUT.</span>
+                </span>
+              </li>
+              <li>
+                <span class="doc-ol__num">4</span>
+                <span class="doc-ol__body">
+                  <strong>Add a body, for POST/PUT</strong>
+                  <span>Under <em>Body</em>, choose <em>raw</em> and <em>JSON</em>, then enter the fields the API expects.</span>
+                </span>
+              </li>
+              <li>
+                <span class="doc-ol__num">5</span>
+                <span class="doc-ol__body">
+                  <strong>Send it</strong>
+                  <span>Postman shows the response — a JSON array — right below the request.</span>
+                </span>
+              </li>
+            </ol>
+
+            <div class="doc-callout doc-callout--tip">
+              <span class="doc-callout__icon">💡</span>
+              <span>Getting a 401? Check that <code style="font-family:var(--font-mono);background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:1px 6px;">x-api-key</code> is present and correct. Getting back <code style="font-family:var(--font-mono);background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:1px 6px;">[]</code>? That's not an error — on a GET it means no rows matched; on a POST/PUT/DELETE it usually means the write succeeded but that API has no return columns configured.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ================= AUTHENTICATION ================= -->
+        <div class="vp-panel" id="panel-auth" role="tabpanel" aria-labelledby="tab-auth" hidden>
+          <p class="doc-lede">Authentication is a per-project switch that controls whether callers need an API key to reach your endpoints.</p>
+
+          <div class="doc-section">
+            <h2>How it works</h2>
+            <div class="doc-grid">
+              <div class="doc-card">
+                <h3>Auth disabled</h3>
+                <p>Every generated API is open — anyone with the URL can call it. Good for public data or quick demos.</p>
+              </div>
+              <div class="doc-card">
+                <h3>Auth enabled</h3>
+                <p>Every request must include your project's API key, or it's rejected before it touches your data.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="doc-section">
+            <h2>Sending the key</h2>
+            <p class="doc-section__sub">When authentication is enabled, include the key on every request as a request header:</p>
+            <div class="doc-route"><code>x-api-key: YOUR_PROJECT_API_KEY</code></div>
+            <div class="doc-callout doc-callout--warn">
+              <span class="doc-callout__icon">⚠️</span>
+              <span><strong>Keep it secret.</strong> Anyone with the key can call your project's APIs. If it ever leaks, regenerate it from the project's Settings tab — the old key stops working immediately.</span>
+            </div>
+          </div>
+
+          <div class="doc-section">
+            <h2>Browser requests &amp; CORS</h2>
+            <p class="doc-section__sub">If your frontend calls the API directly from a browser, add its domain to the project's CORS Origins list, or the browser will block the request regardless of the API key.</p>
+          </div>
+        </div>
+
+        <!-- ================= ADVANCED / DEVELOPER ================= -->
+        <div class="vp-panel" id="panel-advanced" role="tabpanel" aria-labelledby="tab-advanced" hidden>
+          <p class="doc-lede">A few implementation notes for a deeper integration, and for AI agents reasoning about an ApiForge-backed project.</p>
+
+          <div class="doc-section">
+            <h2>Route pattern</h2>
+            <p class="doc-section__sub">Every generated API is served under the same predictable pattern:</p>
+            <div class="doc-route"><code>/api/&lt;username&gt;/&lt;project_name&gt;/&lt;api_name&gt;</code></div>
+            <p class="doc-section__sub" style="margin-bottom:0;">A single API name can back independent GET, POST, PUT, and DELETE definitions — the HTTP method you call decides which one runs.</p>
+          </div>
+
+          <div class="doc-section">
+            <h2>Status codes</h2>
+            <p class="doc-section__sub">Every response uses a plain HTTP status code to say what happened:</p>
+            <div class="doc-kv">
+              <div class="doc-kv__row"><code>200</code> Success</div>
+              <div class="doc-kv__row"><code>400</code> Bad request</div>
+              <div class="doc-kv__row"><code>401</code> Invalid API key</div>
+              <div class="doc-kv__row"><code>404</code> API not found</div>
+              <div class="doc-kv__row"><code>500</code> Server error</div>
+            </div>
+          </div>
+
+          <div class="doc-section">
+            <h2>API keys, recapped</h2>
+            <div class="doc-grid">
+              <div class="doc-card"><h3>Scope</h3><p>One key per project — it authorizes every API under that project, not a single route.</p></div>
+              <div class="doc-card"><h3>Rotation</h3><p>Regenerating a key from Settings immediately invalidates the previous one.</p></div>
+              <div class="doc-card"><h3>Failure mode</h3><p>A missing or invalid key on an auth-enabled project is rejected before any query runs.</p></div>
+            </div>
+          </div>
+
+          <div class="doc-callout doc-callout--info">
+            <span class="doc-callout__icon">🤖</span>
+            <span><strong>For AI agents:</strong> a POST, PUT, or DELETE definition picks its return columns as a plain array of column IDs, resolved to real column names in the response — not a list of column objects like GET's select does. An empty array means no return columns were configured, and a successful write with none still responds with <code style="font-family:var(--font-mono);background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:1px 6px;">[]</code>. The exact return columns and full parameter list for each route are listed in that project's own generated documentation.</span>
+          </div>
+        </div>
+
+      </section>
+    </main>
+
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/auth-guard.js"></script>
+  <script src="js/documentation.js"></script>
+</body>
+</html>

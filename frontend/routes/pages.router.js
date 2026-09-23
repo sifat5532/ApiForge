@@ -19,6 +19,7 @@ router.get('/leaderboard',   (req, res) => res.sendFile(path.join(pages, 'leader
 router.get('/profile',       (req, res) => res.sendFile(path.join(pages, 'profile.html')));
 router.get('/billing',       (req, res) => res.sendFile(path.join(pages, 'billing.html')));
 router.get('/project/:projectId', (req, res) => res.sendFile(path.join(pages, 'view-project.html')));
+router.get('/documentation', (req, res) => res.sendFile(path.join(pages, 'documentation.html')));
 router.get('/logout',        async (req, res) => {
   try {
     const backendUrl = process.env.BACKEND_URL || 'http://localhost:3000';
