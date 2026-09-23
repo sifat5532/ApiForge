@@ -228,7 +228,7 @@ CREATE INDEX IF NOT EXISTS idx_api_logs_created_at ON api_logs (created_at);
 CREATE TABLE IF NOT EXISTS api_table_dependencies (
    api_definition_id INTEGER NOT NULL,
    schema_table_id INTEGER NOT NULL,
-   usage_context VARCHAR(30), -- check constraint should be added later
+   usage_context VARCHAR(30),
    created_at TIMESTAMP(0) NOT NULL DEFAULT now(),
    CONSTRAINT fk_api_table_dependencies_api_definition_id FOREIGN KEY (api_definition_id) REFERENCES api_definitions (id) ON DELETE CASCADE,
    CONSTRAINT fk_api_table_dependencies_api_schema_table_id FOREIGN KEY (schema_table_id) REFERENCES schema_tables (id) ON DELETE RESTRICT
@@ -381,18 +381,12 @@ CREATE TABLE IF NOT EXISTS subscription_log (
 
 CREATE INDEX IF NOT EXISTS idx_subscription_log_history_view ON subscription_log (user_id, created_at DESC);
 
-/*##################################################################################
-
-Need to think about writing generic functions to insert rows into any log table
-
-##################################################################################*/
 ----------------------- NOTIFICATION TRIGGERS STARTS HERE -----------------------
 -- types of notifications
 /*
 collab_invitation, collab_invitation_reject, collab_invitation_accept, own_collab_remove, author_collab_remove
 feedback, rating
-new_session, payment
-limit_crossed
+new_session
 */
 -- Insert notification whenever collaboration request is sent, rejected, accepted or collaborator removed
 CREATE OR REPLACE FUNCTION func_collab_change_action ( -- maybe a procedure suits here better
@@ -584,7 +578,6 @@ CREATE TRIGGER tg_insert_login_notification
 AFTER INSERT ON user_sessions FOR EACH ROW
 EXECUTE FUNCTION tgfunc_notification_on_login ();
 
--- Insert notification for payment and limit (Will be implemented later)
 -- Now we have a problem, If a template or project is deleted, how can we delete the notifications related to that template or project as there is no fk for entity id?
 -- We need a trigger now
 CREATE OR REPLACE FUNCTION tgfunc_delete_notification_by_project () RETURNS TRIGGER LANGUAGE plpgsql AS $$
@@ -819,18 +812,12 @@ BEGIN
         -- Rebuild the primary key when a column's PK status changed, since the
         -- set of PK columns for the table is now different.
         IF NEW.is_primary_key IS DISTINCT FROM OLD.is_primary_key AND NOT rec.is_template THEN
-            PERFORM tgfunc_rebuild_pk_for_table(rec.table_id, v_schema, rec.TABLE_NAME);
+            PERFORM func_rebuild_pk_for_table(rec.table_id, v_schema, rec.TABLE_NAME);
         END IF;
     ELSIF TG_OP = 'DELETE' THEN
-        -- Drop the physical column. Note: dropping a column that is part of the
-        -- primary key automatically removes it from the PK constraint, but if any
-        -- PK columns remain we must rebuild the PK constraint, and if the dropped
-        -- column was the sole/last PK column the PK constraint must be dropped.
-        -- Skip if the whole table is already gone (e.g. its parent schema_tables
-        -- row was deleted and DROP TABLE already removed everything).
         IF NOT rec.is_template AND to_regclass(format('%I.%I', v_schema, rec.TABLE_NAME)) IS NOT NULL THEN
             EXECUTE FORMAT('ALTER TABLE %I.%I DROP COLUMN IF EXISTS %I', v_schema, rec.TABLE_NAME, OLD.col_name);
-            PERFORM tgfunc_rebuild_pk_for_table(rec.table_id, v_schema, rec.TABLE_NAME);
+            PERFORM func_rebuild_pk_for_table(rec.table_id, v_schema, rec.TABLE_NAME);
         END IF;
     END IF;
 
@@ -844,10 +831,8 @@ CREATE TRIGGER tg_insert_schema_column
 AFTER INSERT OR UPDATE OR DELETE ON schema_columns FOR EACH ROW
 EXECUTE FUNCTION tgfunc_add_columns ();
 
--- Rebuild (or drop) the PRIMARY KEY constraint for a single schema table based on
--- the current set of primary-key columns. Used by tgfunc_add_columns on column
--- delete (the dropped column may have been a PK) and on PK-status change in update.
-CREATE OR REPLACE FUNCTION tgfunc_rebuild_pk_for_table (
+-- Func to rebuild pk
+CREATE OR REPLACE FUNCTION func_rebuild_pk_for_table (
    p_table_id INTEGER,
    p_schema TEXT,
    p_table_name VARCHAR
@@ -862,10 +847,7 @@ BEGIN
     WHERE schema_table_id = p_table_id
       AND is_primary_key = TRUE;
 
-    -- Drop whatever primary key currently exists on the table, regardless of its
-    -- name (it may be the expected 'pk_<id>' or a system-generated name). Guessing
-    -- the name with DROP CONSTRAINT IF EXISTS silently no-ops on a mismatch and then
-    -- ADD CONSTRAINT would try to create a second PK -> "multiple primary keys".
+   -- Drop Existing pk
     SELECT c.conname INTO v_existing_pk
     FROM pg_constraint c
     JOIN pg_class t ON t.oid = c.conrelid
@@ -921,8 +903,7 @@ BEGIN
         WHERE schema_table_id = r.table_id
           AND is_primary_key = TRUE;
 
-        -- Drop whatever primary key currently exists (name-agnostic), so we don't
-        -- attempt to add a second PK when the existing one isn't named 'pk_<id>'.
+        -- Drop existing pk
         SELECT c.conname INTO v_existing_pk
         FROM pg_constraint c
         JOIN pg_class t ON t.oid = c.conrelid
@@ -962,11 +943,7 @@ CREATE TRIGGER tg_rebuild_pk_insert
 AFTER INSERT ON schema_columns REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT
 EXECUTE FUNCTION tgfunc_rebuild_pk ();
 
--- we need to insert a row into the project_logs table that a new column has been inserted, it will be implemented later. But it should be ensured that only when an actual alter table is called (adding col to existing tabel), it will insert into logs
--- CREATE OR REPLACE FUNCTION tgfunc_create_cloned_proj () RETURNS TRIGGER plpgsql AS $$ 
--- DECLARE 
--- BEGIN 
---    SELECT  
+-- Trigger function to add FK
 CREATE OR REPLACE FUNCTION tgfunc_add_fks () RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE
   rec RECORD;
@@ -1083,8 +1060,7 @@ DECLARE
    rec RECORD;
    v_schema TEXT;
 BEGIN
-   -- On DELETE only OLD is populated; resolve the child table and schema from the
-   -- deleted FK's child column.
+
    SELECT
       P.is_template, P.id, P.author_id, S.TABLE_NAME AS child_table
    INTO rec
@@ -1099,9 +1075,9 @@ BEGIN
 
    v_schema := 'PROJ_' || rec.id || '_' || rec.author_id;
 
-   -- The child table (or its whole schema) may already be gone via a CASCADE drop
-   -- triggered by a parent schema_tables delete, in which case the constraint is
-   -- already removed; skip to avoid "relation does not exist".
+   -- When the project is deleted, A trigger deletes the project schema. So, individual deletion of fk is not possible now
+   -- as the schema is gone. That's why it's checked if the table or schema already exists or not. If exists then delete it
+   -- Otherwise return
     IF to_regclass(format('%I.%I', v_schema, rec.child_table)) IS NULL THEN
        RETURN OLD;
    END IF;
@@ -1123,19 +1099,20 @@ EXECUTE FUNCTION tgfunc_remove_fks ();
 
 ----FUNCTION to remap table id , column id in api_definition of colne and template project--------------------
 CREATE OR REPLACE FUNCTION remap_query_ids (input JSONB, table_map JSONB, col_map JSONB) RETURNS JSONB LANGUAGE plpgsql AS $$
- DECLARE 
-     result jsonb;
-     k text ;
-     v jsonb;
-     elem jsonb;
-     arr jsonb := '[]'::jsonb;
+DECLARE 
+   result jsonb;
+   k text ;
+   v jsonb;
+   elem jsonb;
+   arr jsonb := '[]'::jsonb;
 BEGIN 
-     IF input IS NULL THEN 
-        RETURN NULL;
-     END IF;
-     IF jsonb_typeof(input) = 'object'  THEN 
-       result := '{}'::jsonb;
-       FOR k , v IN SELECT * FROM jsonb_each(input) LOOP 
+      IF input IS NULL THEN 
+         RETURN NULL;
+      END IF;
+      
+      IF jsonb_typeof(input) = 'object'  THEN 
+         result := '{}'::jsonb;
+         FOR k , v IN SELECT * FROM jsonb_each(input) LOOP 
          IF k = 'table_id' AND jsonb_typeof(v) = 'number'  THEN 
                result := result || jsonb_build_object(k , COALESCE(table_map -> (v #>> '{}'), v));        
          ELSIF k = 'col_id' AND jsonb_typeof(v) = 'number'  THEN 
@@ -1241,23 +1218,22 @@ BEGIN
 END;  
 $$;
 
--- we need to insert a row into the project_logs table that a new table has been inserted, it will be implemented later
 -------------------------------Clone Template------------------------------------
 CREATE OR REPLACE FUNCTION tgfunc_clone_template () RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE
-    rec RECORD;
-    col_def RECORD;
-    fk_def RECORD;
-    api_def RECORD;
-    table_id INTEGER;
-    col_id INTEGER;
-    v_table_map jsonb;
-    v_col_map jsonb;
-    api_table_dep RECORD ;
-    api_col_dep RECORD ;
-    api_def_id INTEGER;
-    v_template_name VARCHAR;
-    v_changed_by INTEGER;
+   rec RECORD;
+   col_def RECORD;
+   fk_def RECORD;
+   api_def RECORD;
+   table_id INTEGER;
+   col_id INTEGER;
+   v_table_map jsonb;
+   v_col_map jsonb;
+   api_table_dep RECORD ;
+   api_col_dep RECORD ;
+   api_def_id INTEGER;
+   v_template_name VARCHAR;
+   v_changed_by INTEGER;
 BEGIN
     IF NEW.is_clone = FALSE OR NEW.cloned_from_id IS NULL THEN
         RETURN NEW;
@@ -1266,11 +1242,8 @@ BEGIN
     INSERT INTO template_clones(user_id, template_id, cloned_project_id)
     VALUES (NEW.author_id, NEW.cloned_from_id, NEW.id);
 
-    -- Suppress the per-row schema/api log triggers (and the clone's own
-    -- "create" log) fired while we copy the template's structure into this
-    -- clone. We write a single "clone" log instead. The flag is transaction
-    -- local and is discarded when this transaction commits, so the clone logs
-    -- normally on every later operation.
+
+    -- it suppress the individual logging and create only a single log
     PERFORM set_config('app.suppress_project_log', 'true', true);
 
     DROP TABLE IF EXISTS tmp_table_map;
@@ -1344,11 +1317,7 @@ BEGIN
           END LOOP;
      END LOOP;
 
-    -- Write a single "clone" log describing where this project came from,
-    -- instead of duplicating the source template's entire change history.
-    -- The suppression flag set above is transaction-local and is automatically
-    -- discarded when this transaction commits, so the clone is logged as a
-    -- normal project on every subsequent operation.
+   -- only the single log is added here
     SELECT name INTO v_template_name FROM projects WHERE id = NEW.cloned_from_id;
     v_changed_by := NULLIF(current_setting('app.current_user_id', true), '')::INTEGER;
     INSERT INTO project_logs (project_id, changed_by, created_at, entity_type, entity_id, change_type, old_data, new_data)
@@ -1435,23 +1404,25 @@ BEGIN
     LOOP
         INSERT INTO api_definitions(name, project_id, method, query_definition, is_active, rate_limit_per_day)
         VALUES (api_def.name, 
-          NEW.id, 
-          api_def.method, 
-          remap_query_ids(api_def.query_definition , v_table_map , v_col_map),
-          false, 
-          api_def.rate_limit_per_day) RETURNING id INTO api_def_id;
-          FOR api_table_dep IN
-          SELECT * FROM api_table_dependencies WHERE api_definition_id = api_def.id
-          LOOP
-          INSERT INTO api_table_dependencies(api_definition_id , schema_table_id , usage_context) 
-          VALUES (api_def_id , (v_table_map ->> api_table_dep.schema_table_id::text)::integer , api_table_dep.usage_context);
-          END LOOP;
-         FOR api_col_dep IN
-          SELECT * FROM api_column_dependencies WHERE api_definition_id = api_def.id
-          LOOP
-          INSERT INTO api_column_dependencies(api_definition_id , schema_col_id , usage_context) 
-          VALUES (api_def_id , (v_col_map ->> api_col_dep.schema_col_id::text)::integer , api_col_dep.usage_context);
-          END LOOP;
+         NEW.id, 
+         api_def.method,
+         remap_query_ids(api_def.query_definition , v_table_map , v_col_map),
+         false, 
+         api_def.rate_limit_per_day) RETURNING id INTO api_def_id;
+
+      FOR api_table_dep IN
+         SELECT * FROM api_table_dependencies WHERE api_definition_id = api_def.id
+      LOOP
+         INSERT INTO api_table_dependencies(api_definition_id , schema_table_id , usage_context) 
+         VALUES (api_def_id , (v_table_map ->> api_table_dep.schema_table_id::text)::integer , api_table_dep.usage_context);
+      END LOOP;
+      
+      FOR api_col_dep IN
+         SELECT * FROM api_column_dependencies WHERE api_definition_id = api_def.id
+      LOOP
+         INSERT INTO api_column_dependencies(api_definition_id , schema_col_id , usage_context) 
+         VALUES (api_def_id , (v_col_map ->> api_col_dep.schema_col_id::text)::integer , api_col_dep.usage_context);
+      END LOOP;
     END LOOP;
     RETURN NEW;
 END;
@@ -1526,7 +1497,6 @@ EXECUTE FUNCTION tgfunc_sync_subscription ();
 
 -------------------------------- PROJECT LOGS TRIGGERS START HERE ----------------------------------
 -- Generic helper to insert a row into project_logs.
--- changed_by is read from the session variable app.current_user_id which the backend sets per request.
 CREATE OR REPLACE FUNCTION func_log_project_change (
    p_project_id INTEGER,
    p_entity_type VARCHAR,
@@ -1539,20 +1509,13 @@ DECLARE
    v_changed_by INTEGER;
    v_is_template BOOLEAN;
 BEGIN
-   -- Templates must never have any project logs. Template creation copies
-   -- schema tables/columns/FKs and API definitions into a new template project,
-   -- which otherwise fires every tg_log_* trigger and duplicates the source
-   -- project's log entries onto the template.
+   -- If its a template, ignore the log insertion
    SELECT is_template INTO v_is_template FROM projects WHERE id = p_project_id;
    IF NOT FOUND OR v_is_template THEN
       RETURN;
    END IF;
 
-   -- While a project is being cloned from a template, the clone trigger copies
-   -- the source's schema/columns/FKs/API definitions, which would otherwise fire
-   -- every tg_log_* trigger and duplicate the source project's history onto the
-   -- clone. tgfunc_clone_template sets this transaction-local flag and writes a
-   -- single "clone" log itself instead.
+   -- A cloned project should have only one log. This checking ensures this
    IF current_setting('app.suppress_project_log', true) = 'true' THEN
       RETURN;
    END IF;
@@ -1564,12 +1527,7 @@ BEGIN
 END;
 $$;
 
--- projects : create (insert) / update (rename, description, status, auth, flags)
--- Note: project DELETE is intentionally NOT logged here. project_logs rows are
--- removed together with the project by ON DELETE CASCADE (fk_project_logs_project),
--- so a delete-log would be cascade-deleted immediately. If project-deletion auditing
--- is ever required, that FK must be changed to ON DELETE SET NULL (and changed_by is
--- already nullable, so the log row can survive referencing a now-absent project).
+-- Project insert or update log
 CREATE OR REPLACE FUNCTION tgfunc_log_project () RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
     IF TG_OP = 'INSERT' THEN
@@ -1627,14 +1585,7 @@ CREATE TRIGGER tg_log_cors_origin
 AFTER INSERT OR DELETE ON project_cors_origin FOR EACH ROW
 EXECUTE FUNCTION tgfunc_log_cors_origin ();
 
--- project_collaborators : collaborator added (accept) / collaborator removed
--- An invitation being sent (INSERT with status pending) is NOT logged. A log is only
--- created once the invite is accepted (pending -> accepted) -> "collaborator added".
--- A later removal deletes the row, but by then its status has already been flipped to
--- 'rejected' (collaborator left on their own) or 'removed' (author removed them). Those
--- two transitions are logged here in the UPDATE path. The DELETE path logs nothing because
--- every deletion is either an already-logged removal or a rejected pending invite (which
--- must not be logged).
+-- collaboration related logs
 CREATE OR REPLACE FUNCTION tgfunc_log_collaborator () RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE
    v_name VARCHAR;

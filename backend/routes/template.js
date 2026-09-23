@@ -15,9 +15,6 @@ const templateExistence = async (req, res, next) => {
     next();
 };
 
-// ######################################################
-// All the routes in this page are complete so far
-// ######################################################
 
 router.post('/like', requireAuth, templateExistence, async (req, res) => {
     const { template_id } = req.body;

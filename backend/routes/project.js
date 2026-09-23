@@ -158,7 +158,13 @@ router.post('/createProject', requireAuth, async (req, res) => {
 
     const client = await pool.connect();
     try {
+        // Here we might think that a Serializable isolation level is needed for this transaction
+        // But the checkPlanLimit Helper function solves it using Locking
+        // It locks the subscription row of the user and concurrent transactions must wait until its unlocked
+        // So, No need of serializable isolation level. This is same for the routes :
+        // clone template, create table, create api etc.
         await client.query('BEGIN');
+        await client.query('SELECT set_config(\'app.current_user_id\', $1, true)', [String(req.loggedInUser.id)]);
         await checkPlanLimit(client, author_id, 'project');
 
         const proj = await client.query(`
@@ -606,10 +612,10 @@ router.post('/createTemplate', requireAuth, async (req, res) => {
     const { template_name, proj_id } = req.body;
     const author_id = req.loggedInUser.id;
     if (!template_name) {
-        return res.status(400).json({ msg: 'Please fill in project name' });
+        return res.status(400).json({ msg: 'Please fill in template name' });
     }
     if (!/^[A-Za-z][a-zA-Z0-9_]{0,29}$/.test(template_name)) {
-        return res.status(400).json({ msg: 'Please give tamplate name within 30 characters using a-z, 0-9 or _ only and first letter within a-z' });
+        return res.status(400).json({ msg: 'Please give template name within 30 characters using a-z, 0-9 or _ only and first letter within a-z' });
     }
 
     const result = await query('SELECT * FROM projects WHERE author_id = $1 AND name = $2', [author_id, template_name]);
@@ -618,12 +624,13 @@ router.post('/createTemplate', requireAuth, async (req, res) => {
     }
     const client = await pool.connect();
     try {
-        await client.query('BEGIN');
+        await client.query('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;');
         const proj = await client.query(`
             SELECT 
             description, auth_enabled 
             FROM projects 
-            WHERE id= $1 AND author_id = $2`, [proj_id, author_id]);
+            WHERE id= $1 AND author_id = $2 AND is_template = false
+            FOR SHARE`, [proj_id, author_id]);
         if (proj.rows.length < 1) {
             await client.query('ROLLBACK ');
             return res.status(404).json({ msg: 'You are not allowed to create template of this project ' });
@@ -682,7 +689,8 @@ router.post('/cloneTemplate', requireAuth, async (req, res) => {
             SELECT 
             description
             FROM projects 
-            WHERE id = $1 AND is_template = $2`, [cloned_from_id, true]);
+            WHERE id = $1 AND is_template = $2
+            FOR SHARE`, [cloned_from_id, true]);
         if (template.rows.length < 1) {
             await client.query('ROLLBACK');
             return res.status(404).json({ msg: 'You are not allowed to clone the template ' });
@@ -728,7 +736,7 @@ router.put('/updateProject/:projectId', requireAuth, requireOwner, isProjectActi
         return res.status(400).json({ msg: 'Please give project description within 500 characters' });
     }
     if (tags != null) {
-        for (let i = 0; i < tags.length; i++) { // Try to complete all types of input validation before executing any query if its not query dependent;
+        for (let i = 0; i < tags.length; i++) {
             const t = tags[i].trim().toLowerCase();
             if (t.length < 2 || t.length > 20) return res.status(400).json({ msg: 'Tag length must be between 2 to 20 characters' });
             if (!(t[0] >= 'a' && t[0] <= 'z')) return res.status(400).json({ msg: 'Tag name must start with an alphabet(a-z or A-Z)' });
@@ -1026,6 +1034,11 @@ router.delete('/deleteColumn', requireAuth, requireProjectAccess, isProjectActiv
     const colCheck = await query('SELECT * FROM schema_columns WHERE id=$1 AND schema_table_id=$2', [col_id, schema_table_id]);
     if (colCheck.rows.length === 0) {
         return res.status(404).json({ msg: "Column not found in this table" });
+    }
+
+    const isParentCol = await query('SELECT c.col_name AS name FROM schema_foreign_keys fk JOIN schema_columns c ON c.id = fk.parent_col_id WHERE fk.parent_col_id = $1', [col_id]);
+    if(isParentCol.rowCount > 0){
+        return res.status(400).json({ msg: `You are trying to delete a column named ${isParentCol.rows[0].name} which is a Parent column of a Foreign key.`});
     }
 
     const client = await pool.connect();
