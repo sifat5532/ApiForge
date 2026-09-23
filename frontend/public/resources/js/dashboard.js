@@ -136,26 +136,35 @@ function describeActivity(a) {
     ? `<strong>${escapeHtml(a.project_name)}</strong>`
     : (data.project_name ? `<strong>${escapeHtml(data.project_name)}</strong>` : 'a project');
 
-  const table = data.table_name ? `<strong>${escapeHtml(data.table_name)}</strong>` : '';
-  const column = data.col_name ? `<strong>${escapeHtml(data.col_name)}</strong>` : '';
+  const table = data.table_name ? `<strong>${escapeHtml(data.table_name)}</strong>` : 'a table';
+  const column = data.col_name ? `<strong>${escapeHtml(data.col_name)}</strong>` : 'a column';
   const api = data.name && a.entity_type === 'api_definition' ? `<strong>${escapeHtml(data.name)}</strong>` : '';
+  const fk = data.fk_name ? `<strong>${escapeHtml(data.fk_name)}</strong>` : 'a foreign key';
+
+  if (a.entity_type === 'schema_table') {
+    if (change === 'create' || change === 'insert') {
+      return `Created a table named ${table} <span class="activity-item__of">in ${project}</span>`;
+    }
+    return `${verb} table ${table} <span class="activity-item__of">in ${project}</span>`;
+  }
+  if (a.entity_type === 'schema_column') {
+    const colVerb = change === 'insert' || change === 'create' ? 'Added' : verb;
+    return `${colVerb} column ${column} to table ${table} <span class="activity-item__of">in ${project}</span>`;
+  }
+  if (a.entity_type === 'foreign_key') {
+    const fkVerb = change === 'insert' ? 'Created' : verb;
+    return `${fkVerb} ${fk} <span class="activity-item__of">in ${project}</span>`;
+  }
 
   const label = {
     project: 'project',
-    schema_table: 'table',
-    schema_column: 'column',
     api_definition: 'API',
     collaborator: 'collaborator',
-    cors_origin: 'CORS origin',
-    foreign_key: 'foreign key'
+    cors_origin: 'CORS origin'
   }[a.entity_type] || 'item';
 
   let detail = '';
-  if (a.entity_type === 'schema_column' && column) {
-    detail = ` <span class="activity-item__of">in ${table}</span>`;
-  } else if (a.entity_type === 'schema_table' && table) {
-    detail = ` <span class="activity-item__of">${table}</span>`;
-  } else if (a.entity_type === 'api_definition' && api) {
+  if (a.entity_type === 'api_definition' && api) {
     detail = ` <span class="activity-item__of">${api}</span>`;
   } else if (a.entity_type === 'collaborator' && data.username) {
     detail = ` <span class="activity-item__of">${escapeHtml(data.username)}</span>`;

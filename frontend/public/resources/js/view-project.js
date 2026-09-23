@@ -2990,16 +2990,44 @@ function logDescription(log) {
     return `${change} ${entity} ${methodHtml}${subjectHtml}`;
   }
 
-  // Schema column special subject (table_name.col_name)
+  if (log.entity_type === 'schema_table') {
+    const table = newData.table_name || oldData.table_name || '';
+    const subjectHtml = table ? `<span class="vp-log__subject">${escHtml(table)}</span>` : 'a table';
+    if (log.change_type === 'create' || log.change_type === 'insert') {
+      return `Created a table named ${subjectHtml}`;
+    }
+    if (log.change_type === 'update' && oldData.table_name && newData.table_name && oldData.table_name !== newData.table_name) {
+      return `Updated table <span class="vp-log__subject">${escHtml(oldData.table_name)}</span> to <span class="vp-log__subject">${escHtml(newData.table_name)}</span>`;
+    }
+    return `${change} table ${subjectHtml}`;
+  }
+
   if (log.entity_type === 'schema_column') {
     const table = newData.table_name || oldData.table_name || '';
     const col = newData.col_name || oldData.col_name || '';
-    const colFullName = table && col ? `${table}.${col}` : (col || table);
-    const subjectHtml = colFullName ? ` <span class="vp-log__subject">${escHtml(colFullName)}</span>` : '';
-    return `${change} ${entity}${subjectHtml}`;
+    const colHtml = col ? `<span class="vp-log__subject">${escHtml(col)}</span>` : 'a column';
+    const tableHtml = table ? `<span class="vp-log__subject">${escHtml(table)}</span>` : 'a table';
+    if (log.change_type === 'insert' || log.change_type === 'create') {
+      return `Added column ${colHtml} to table ${tableHtml}`;
+    }
+    if (log.change_type === 'update') {
+      return `Updated column ${colHtml} to table ${tableHtml}`;
+    }
+    return `Deleted column ${colHtml} to table ${tableHtml}`;
   }
 
-  // Default subject resolution (check col_name before table_name for other types)
+  if (log.entity_type === 'foreign_key') {
+    const fkName = newData.fk_name || oldData.fk_name || '';
+    const nameHtml = fkName ? `<span class="vp-log__subject">${escHtml(fkName)}</span>` : 'a foreign key';
+    if (log.change_type === 'insert' || log.change_type === 'create') {
+      return `Created ${nameHtml}`;
+    }
+    if (log.change_type === 'update') {
+      return `Updated ${nameHtml}`;
+    }
+    return `Deleted ${nameHtml}`;
+  }
+
   const nameFields = ['col_name', 'table_name', 'name', 'origin', 'fk_name', 'api_name', 'proj_name'];
   let subject = '';
   for (const f of nameFields) {
@@ -3008,17 +3036,7 @@ function logDescription(log) {
   }
   if (subject) subject = `<span class="vp-log__subject">${escHtml(subject)}</span>`;
 
-  // Add the resolved relationship for foreign keys so the change is self-describing.
-  let rel = '';
-  if (log.entity_type === 'foreign_key') {
-    const src = newData.child_table || oldData.child_table || newData.child_col || oldData.child_col;
-    const dst = newData.parent_table || oldData.parent_table || newData.parent_col || oldData.parent_col;
-    if (src || dst) {
-      rel = ` <span class="vp-log__rel">${escHtml(src || '?')} → ${escHtml(dst || '?')}</span>`;
-    }
-  }
-
-  return `${change} ${entity}${subject ? ' ' + subject : ''}${rel}`;
+  return `${change} ${entity}${subject ? ' ' + subject : ''}`;
 }
 
 function logColumnsDetail(log) {
@@ -3084,115 +3102,6 @@ function logColumnsDetail(log) {
         `);
       }
     }
-  }
-
-  // Schema column details for single column insert/update/delete
-  if (log.entity_type === 'schema_column') {
-    if (log.change_type === 'update') {
-      const diffs = [];
-      if (oldData.col_name !== newData.col_name && (oldData.col_name != null || newData.col_name != null)) {
-        diffs.push({ label: 'Column name', oldVal: oldData.col_name ?? '—', newVal: newData.col_name ?? '—' });
-      }
-      if (oldData.col_type !== newData.col_type && (oldData.col_type != null || newData.col_type != null)) {
-        diffs.push({ label: 'Data type', oldVal: oldData.col_type ?? '—', newVal: newData.col_type ?? '—' });
-      }
-      if (oldData.default_value !== newData.default_value && (oldData.default_value != null || newData.default_value != null)) {
-        diffs.push({ label: 'Default', oldVal: String(oldData.default_value ?? 'none'), newVal: String(newData.default_value ?? 'none') });
-      }
-      if (oldData.is_primary_key !== newData.is_primary_key && (oldData.is_primary_key != null || newData.is_primary_key != null)) {
-        diffs.push({ label: 'Primary key', oldVal: oldData.is_primary_key ? 'Yes' : 'No', newVal: newData.is_primary_key ? 'Yes' : 'No' });
-      }
-      if (oldData.is_nullable !== newData.is_nullable && (oldData.is_nullable != null || newData.is_nullable != null)) {
-        diffs.push({ label: 'Nullable', oldVal: oldData.is_nullable === false ? 'No' : 'Yes', newVal: newData.is_nullable === false ? 'No' : 'Yes' });
-      }
-      if (oldData.is_unique !== newData.is_unique && (oldData.is_unique != null || newData.is_unique != null)) {
-        diffs.push({ label: 'Unique', oldVal: oldData.is_unique ? 'Yes' : 'No', newVal: newData.is_unique ? 'Yes' : 'No' });
-      }
-      if (oldData.is_auto_increment !== newData.is_auto_increment && (oldData.is_auto_increment != null || newData.is_auto_increment != null)) {
-        diffs.push({ label: 'Auto increment', oldVal: oldData.is_auto_increment ? 'Yes' : 'No', newVal: newData.is_auto_increment ? 'Yes' : 'No' });
-      }
-
-      if (diffs.length > 0) {
-        const diffRows = diffs.map(d => `
-          <div class="vp-log-diff__item">
-            <span class="vp-log-diff__label">${escHtml(d.label)}:</span>
-            <span class="vp-log-diff__old">${escHtml(d.oldVal)}</span>
-            <span class="vp-log-diff__arrow">→</span>
-            <span class="vp-log-diff__new">${escHtml(d.newVal)}</span>
-          </div>
-        `).join('');
-        parts.push(`
-          <div class="vp-log__cols">
-            <span class="vp-log__cols-label">Changes</span>
-            <div class="vp-log-diff">${diffRows}</div>
-          </div>
-        `);
-      }
-    } else {
-      // Insert or Delete single column details
-      const c = log.change_type === 'delete' ? oldData : newData;
-      if (c.col_type || c.is_primary_key || c.is_unique || c.is_auto_increment || c.is_nullable === false || c.default_value != null) {
-        const typeStr = c.col_type ? (c.col_length ? `${c.col_type}(${c.col_length})` : c.col_type) : '';
-        parts.push(`
-          <div class="vp-log__cols">
-            <ul class="vp-log__cols-list">
-              <li class="vp-log__col">
-                <span class="vp-log__col-name">${escHtml(c.col_name || '?')}</span>
-                ${typeStr ? `<span class="vp-log__col-type">${escHtml(typeStr)}</span>` : ''}
-                ${c.is_primary_key ? '<span class="vp-log__badge vp-log__badge--pk">PK</span>' : ''}
-                ${c.is_unique ? '<span class="vp-log__badge vp-log__badge--uq">UQ</span>' : ''}
-                ${c.is_auto_increment ? '<span class="vp-log__badge vp-log__badge--ai">AI</span>' : ''}
-                ${c.is_nullable === false || c.is_nullable === 'false' ? '<span class="vp-log__badge vp-log__badge--nn">NN</span>' : ''}
-                ${c.default_value != null ? `<span class="vp-log__col-default">def: ${escHtml(String(c.default_value))}</span>` : ''}
-              </li>
-            </ul>
-          </div>
-        `);
-      }
-    }
-  }
-
-  // Columns (table create / update / delete structure)
-  const columns = Array.isArray(newData.columns) ? newData.columns : (Array.isArray(oldData.columns) ? oldData.columns : []);
-  if (columns.length > 0) {
-    const rows = columns.map(c => `
-      <li class="vp-log__col">
-        <span class="vp-log__col-name">${escHtml(c.col_name || c.name || '?')}</span>
-        <span class="vp-log__col-type">${escHtml(c.col_type || c.data_type || '')}</span>
-        ${c.is_primary_key ? '<span class="vp-log__badge vp-log__badge--pk">PK</span>' : ''}
-        ${c.is_unique ? '<span class="vp-log__badge vp-log__badge--uq">UQ</span>' : ''}
-        ${c.is_auto_increment ? '<span class="vp-log__badge vp-log__badge--ai">AI</span>' : ''}
-        ${c.is_nullable === false || c.is_nullable === 'false' ? '<span class="vp-log__badge vp-log__badge--nn">NN</span>' : ''}
-        ${c.default_value != null ? `<span class="vp-log__col-default">def: ${escHtml(String(c.default_value))}</span>` : ''}
-      </li>
-    `).join('');
-
-    parts.push(`
-      <div class="vp-log__cols">
-        <span class="vp-log__cols-label">${columns.length} column${columns.length === 1 ? '' : 's'}</span>
-        <ul class="vp-log__cols-list">${rows}</ul>
-      </div>
-    `);
-  }
-
-  // Foreign keys (table create / update / delete structure)
-  const fks = Array.isArray(newData.foreign_keys) ? newData.foreign_keys : (Array.isArray(oldData.foreign_keys) ? oldData.foreign_keys : []);
-  if (fks.length > 0) {
-    const rows = fks.map(fk => `
-      <li class="vp-log__col">
-        <span class="vp-log__col-name">${escHtml(fk.fk_name || '?')}</span>
-        <span class="vp-log__col-type">${escHtml((fk.child_table || '?') + '.' + (fk.child_col || '?'))} → ${escHtml((fk.parent_table || '?') + '.' + (fk.parent_col || '?'))}</span>
-        ${fk.on_delete ? `<span class="vp-log__col-default">ON DELETE ${escHtml(fk.on_delete)}</span>` : ''}
-        ${fk.on_update ? `<span class="vp-log__col-default">ON UPDATE ${escHtml(fk.on_update)}</span>` : ''}
-      </li>
-    `).join('');
-
-    parts.push(`
-      <div class="vp-log__cols">
-        <span class="vp-log__cols-label">${fks.length} foreign key${fks.length === 1 ? '' : 's'}</span>
-        <ul class="vp-log__cols-list">${rows}</ul>
-      </div>
-    `);
   }
 
   // API query definition (legacy api create / update / delete structure)
