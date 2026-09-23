@@ -1,15 +1,15 @@
-require('dotenv').config();
-const express = require('express');
 const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+const express = require('express');
 const app = express();
 const pagesRouter = require('./routes/pages.router');
 
 const PORT = process.env.PORT || 3001;
+const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
 
-// Dynamic client config from environment
 app.get('/js/config.js', (req, res) => {
   res.type('application/javascript');
-  res.send(`window.BACKEND_URL = ${JSON.stringify(process.env.BACKEND_URL || 'http://localhost:3000')};`);
+  res.send(`window.BACKEND_URL = ${JSON.stringify(BACKEND_URL)};`);
 });
 
 app.use(express.static(path.join(__dirname, 'public/resources')));
