@@ -1,17 +1,15 @@
 /* ===================================================================
    ApiForge — templates.js
-   Handles search, Auth On/Off chip filter, multi-tag filter chips,
-    popularity chips, dynamic card rendering, and
-   pagination for templates.html.
+   Handles search, dynamic card rendering, and pagination for templates.html.
    =================================================================== */
 
 // ─── State ──────────────────────────────────────────────────────────────────────
 let _page = 1;
 let _perPage = 10;
 let _searchQuery = '';
-let _popularityFilter = 'popular'; // 'popular' | 'recent'
 let _activeTab = 'all';            // 'all' | 'mine'
-let _allTemplates = null;          // cached backend dataset for "all" tab (null = not loaded)
+let _allTemplates = [];
+let _allTemplatesTotal = 0;
 let _allTemplatesLoading = false;
 let _myTemplates = null;           // cached backend dataset for "mine" tab (null = not loaded)
 let _myTemplatesLoading = false;
@@ -62,17 +60,6 @@ function bindTemplateEvents() {
     });
   }
 
-  // Popularity chips (Popular / Recent) — mutually exclusive, visual filter only
-  document.querySelectorAll('.tmpl-chip[data-filter]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tmpl-chip[data-filter]').forEach(b => b.classList.remove('is-active'));
-      btn.classList.add('is-active');
-      _popularityFilter = btn.dataset.filter;
-      _page = 1;
-      renderTemplates();
-    });
-  });
-
   // Per-page select
   const pageSizeSel = document.getElementById('tmpl-items-per-page');
   if (pageSizeSel) {
@@ -90,35 +77,6 @@ function bindTemplateEvents() {
   if (btnNext) btnNext.addEventListener('click', () => { _page++; renderTemplates(); });
 }
 
-// ─── Filtering & sorting ────────────────────────────────────────────────────────
-function getFilteredTemplates() {
-  let results = [...(_allTemplates || [])];
-
-  // Search (client-side fallback when a search query is present but the
-  // realtime backend search has no results yet — primarily used after the
-  // backend has already returned a normalized set).
-  if (_searchQuery) {
-    results = results.filter(t =>
-      t.name.toLowerCase().includes(_searchQuery) ||
-      t.description.toLowerCase().includes(_searchQuery) ||
-      (t.author && t.author.name.toLowerCase().includes(_searchQuery)) ||
-      (t.author && t.author.username.toLowerCase().includes(_searchQuery)) ||
-      t.tags.some(tag => tag.toLowerCase().includes(_searchQuery))
-    );
-  }
-
-  // Popularity quick filter — mirrors the backend sort intent locally
-  if (_popularityFilter === 'recent') {
-    results.sort((a, b) => b.createdTimestamp - a.createdTimestamp);
-    return results;
-  }
-
-  // Default: keep the backend's popularity ordering (clone count desc)
-  results.sort((a, b) => b.useCount - a.useCount);
-
-  return results;
-}
-
 // ─── Main render ────────────────────────────────────────────────────────────────
 function renderTemplates() {
   const container = document.getElementById('tmpl-container');
@@ -129,55 +87,12 @@ function renderTemplates() {
     return;
   }
 
-  // Realtime backend search mode: when there is a search query we render
-  // results fetched from /view/searchTemplate instead of the cached dataset.
   if (_searchQuery) {
     renderSearchResults();
     return;
   }
 
-  // All Templates tab — fetch from backend (/view/allTemplates) on first load.
-  if (_allTemplates === null && !_allTemplatesLoading) {
-    renderAllTemplates();
-    return;
-  }
-  if (_allTemplatesLoading) return;
-
-  toggleToolbarForTab();
-
-  const filtered = getFilteredTemplates();
-  const total = filtered.length;
-  const totalPages = Math.max(1, Math.ceil(total / _perPage));
-  if (_page > totalPages) _page = totalPages;
-  if (_page < 1) _page = 1;
-
-  const start = (_page - 1) * _perPage;
-  const end = Math.min(start + _perPage, total);
-  const slice = filtered.slice(start, end);
-
-  // Update count badge
-  const countEl = document.getElementById('tmpl-total-count');
-  if (countEl) {
-    countEl.textContent = total > 0 ? total + ' template' + (total !== 1 ? 's' : '') : '';
-  }
-
-  // Render cards or empty state
-  if (slice.length === 0) {
-    container.innerHTML =
-      '<div class="tmpl-empty">' +
-      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" width="40" height="40" aria-hidden="true">' +
-      '<path d="M12 2 3 7l9 5 9-5-9-5"/><path d="M3 12l9 5 9-5"/><path d="M3 17l9 5 9-5"/>' +
-      '</svg>' +
-      '<p>No templates match your filters.</p>' +
-      '<button type="button" class="btn btn--ghost" id="tmpl-clear-filters">Clear filters</button>' +
-      '</div>';
-    const clearBtn = document.getElementById('tmpl-clear-filters');
-    if (clearBtn) clearBtn.addEventListener('click', clearAllFilters);
-  } else {
-    container.innerHTML = slice.map(t => createTemplateCardHtml(t)).join('');
-  }
-
-  updatePaginationUI(total, start, end, totalPages);
+  renderAllTemplates();
 }
 
 // ─── Toggle toolbar visibility per active tab ───────────────────────────────────
@@ -321,54 +236,98 @@ function renderSearchResults() {
 function renderAllTemplates() {
   const container = document.getElementById('tmpl-container');
   if (!container) return;
+  if (_allTemplatesLoading) return;
 
-  _allTemplatesLoading = true;
   toggleToolbarForTab();
+  _allTemplatesLoading = true;
   container.innerHTML = '';
   const infoEl = document.getElementById('tmpl-pagination-info');
   if (infoEl) infoEl.textContent = 'Loading…';
 
-  fetchAllTemplates().then(data => {
+  fetchAllTemplates(_page, _perPage).then(payload => {
     _allTemplatesLoading = false;
-    _allTemplates = data;
-    if (_activeTab === 'all' && !_searchQuery) renderTemplates();
+    _allTemplates = payload.templates;
+    _allTemplatesTotal = payload.total;
+    if (_activeTab === 'all' && !_searchQuery) paintAllTemplates();
   }).catch(err => {
     _allTemplatesLoading = false;
     _allTemplates = [];
+    _allTemplatesTotal = 0;
     console.error('Failed to load templates:', err);
-    if (_activeTab === 'all' && !_searchQuery) renderTemplates();
+    if (_activeTab === 'all' && !_searchQuery) paintAllTemplates();
   });
 }
 
-function fetchAllTemplates() {
+function paintAllTemplates() {
+  const container = document.getElementById('tmpl-container');
+  if (!container) return;
+
+  toggleToolbarForTab();
+
+  const total = _allTemplatesTotal;
+  const totalPages = Math.max(1, Math.ceil(total / _perPage));
+  if (_page > totalPages) {
+    _page = totalPages;
+    renderAllTemplates();
+    return;
+  }
+  if (_page < 1) _page = 1;
+
+  const start = total === 0 ? 0 : (_page - 1) * _perPage;
+  const end = start + _allTemplates.length;
+
+  const countEl = document.getElementById('tmpl-total-count');
+  if (countEl) {
+    countEl.textContent = total > 0 ? total + ' template' + (total !== 1 ? 's' : '') : '';
+  }
+
+  if (_allTemplates.length === 0) {
+    container.innerHTML =
+      '<div class="tmpl-empty">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" width="40" height="40" aria-hidden="true">' +
+      '<path d="M12 2 3 7l9 5 9-5-9-5"/><path d="M3 12l9 5 9-5"/><path d="M3 17l9 5 9-5"/>' +
+      '</svg>' +
+      '<p>No templates found.</p>' +
+      '</div>';
+  } else {
+    container.innerHTML = _allTemplates.map(t => createTemplateCardHtml(t)).join('');
+  }
+
+  updatePaginationUI(total, start, end, totalPages);
+}
+
+function fetchAllTemplates(page, limit) {
   const backendUrl = window.BACKEND_URL || 'http://localhost:3000';
-  return fetch(`${backendUrl}/view/allTemplates?page=1&limit=1000`, {
+  return fetch(`${backendUrl}/view/allTemplates?page=${page}&limit=${limit}`, {
     credentials: 'include'
   })
     .then(res => res.json())
     .then(payload => {
       const templates = (payload && payload.templates) || [];
-      return templates.map(row => ({
-        id: row.id,
-        name: row.template_name,
-        description: row.description,
-        author: {
-          id: row.author_id,
-          name: row.author_name || 'Unknown',
-          username: row.author_username || '',
-          initials: buildInitials(row.author_name || '?')
-        },
-        tags: Array.isArray(row.template_tags)
-          ? row.template_tags.map(t => (typeof t === 'string' ? t : t.name))
-          : [],
-        authEnabled: !!row.auth_enabled,
-        stars: 0,
-        rating: Number(row.avg_ratings) || 0,
-        ratingCount: Number(row.count_ratings) || 0,
-        createdAt: formatOwnDate(row.created_at),
-        createdTimestamp: row.created_at ? new Date(row.created_at).getTime() : 0,
-        useCount: Number(row.total_clone) || 0
-      }));
+      return {
+        total: Number(payload && payload.total) || 0,
+        templates: templates.map(row => ({
+          id: row.id,
+          name: row.template_name,
+          description: row.description,
+          author: {
+            id: row.author_id,
+            name: row.author_name || 'Unknown',
+            username: row.author_username || '',
+            initials: buildInitials(row.author_name || '?')
+          },
+          tags: Array.isArray(row.template_tags)
+            ? row.template_tags.map(t => (typeof t === 'string' ? t : t.name))
+            : [],
+          authEnabled: !!row.auth_enabled,
+          stars: 0,
+          rating: Number(row.avg_ratings) || 0,
+          ratingCount: Number(row.count_ratings) || 0,
+          createdAt: formatOwnDate(row.created_at),
+          createdTimestamp: row.created_at ? new Date(row.created_at).getTime() : 0,
+          useCount: Number(row.total_clone) || 0
+        }))
+      };
     });
 }
 
@@ -597,16 +556,10 @@ function clearAllFilters() {
   _searchLoading = false;
   _searchToken++;
   if (_searchDebounce) { clearTimeout(_searchDebounce); _searchDebounce = null; }
-  _popularityFilter = 'popular';
   _page = 1;
 
   const searchInput = document.getElementById('tmpl-search');
   if (searchInput) searchInput.value = '';
-
-  // Reset popularity chips
-  document.querySelectorAll('.tmpl-chip[data-filter]').forEach(b => {
-    b.classList.toggle('is-active', b.dataset.filter === 'popular');
-  });
 
   renderTemplates();
 }

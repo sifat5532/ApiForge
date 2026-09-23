@@ -861,6 +861,7 @@ router.get('/searchTemplate', requireAuth, async (req, res) => {
                 u.id            AS author_id,
                 u.name          AS author_name,
                 u.username      AS author_username ,
+                get_template_relevancy_point(p.id, $3) as relevancy_point,
                 COALESCE((SELECT AVG(tr.rating) FROM template_ratings tr WHERE tr.template_id = P.id ), 0 ) AS avg_ratings,
                 COALESCE((SELECT count(*) FROM template_ratings tr WHERE tr.template_id = P.id ), 0 ) AS count_ratings,
                 COALESCE((SELECT count(*) FROM template_clones tr WHERE tr.template_id = P.id ), 0 ) AS total_clone,
@@ -890,8 +891,8 @@ router.get('/searchTemplate', requireAuth, async (req, res) => {
                     WHERE pt.project_id = p.id AND t.name ILIKE $1
                 )
             )
-            ORDER BY p.created_at DESC
-        `, [`%${searchTerm}%`, true]);
+            ORDER BY relevancy_point DESC, p.created_at DESC
+        `, [`%${searchTerm}%`, true, req.loggedInUser.id]);
 
     if (result.rows.length === 0) return res.status(404).json({ success: false, msg: "NO template found" });
     return res.status(200).json({
@@ -912,6 +913,7 @@ router.get('/allTemplates', requireAuth, async (req, res) => {
                                     P.description,
                                     P.auth_enabled,
                                     P.created_at,
+                                    get_template_relevancy_point(P.id, $4) as relevancy_point,
                                     U.name AS author_name,
                                     U.username AS author_username,
                                     COALESCE((SELECT AVG(tr.rating) FROM template_ratings tr WHERE tr.template_id = P.id ), 0 ) AS avg_ratings,
@@ -934,11 +936,16 @@ router.get('/allTemplates', requireAuth, async (req, res) => {
                                     JOIN users U ON U.id = P.author_id
                                 WHERE
                                     p.is_template = $3
-                                ORDER BY P.created_at DESC , avg_ratings DESC , total_clone
+                                ORDER BY relevancy_point DESC , avg_ratings DESC , total_clone DESC
                                 LIMIT $1 
-                                OFFSET $2 ` , [ limit , offset , true]);
+                                OFFSET $2 ` , [ limit , offset , true, req.loggedInUser.id]);
 
-    const total = parseInt(result.rows.length, 10) || 0;
+    const countResult = await query(`
+                                SELECT COUNT(*) AS total
+                                FROM projects P
+                                WHERE P.is_template = $1`, [true]);
+
+    const total = parseInt(countResult.rows[0] && countResult.rows[0].total, 10) || 0;
 
     return res.status(200).json({ templates: result.rows, total });
 });

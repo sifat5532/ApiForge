@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Templates — ApiForge</title>
-  <meta name="description" content="Browse popular and recent API project templates on ApiForge. Filter by tag or authentication status to find the right template instantly." />
+  <meta name="description" content="Browse API project templates on ApiForge." />
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
@@ -188,7 +188,7 @@
       <div class="liked-header dash-main__header">
         <div>
           <h1>Templates</h1>
-          <p class="dash-main__subtitle">Browse popular and recent API project templates — clone one to get started instantly.</p>
+          <p class="dash-main__subtitle">Browse API project templates — clone one to get started instantly.</p>
         </div>
         <div class="liked-header__count" id="tmpl-total-count" aria-live="polite"></div>
       </div>
@@ -216,22 +216,6 @@
           />
         </div>
 
-        <!-- Filter chips row -->
-        <div class="tmpl-filter-row" role="group" aria-label="Filter templates">
-
-          <!-- Popularity quick filter -->
-          <div class="tmpl-chip-group">
-            <button class="tmpl-chip is-active" data-filter="popular" id="chip-popular" type="button">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="13" height="13" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-              Popular
-            </button>
-            <button class="tmpl-chip" data-filter="recent" id="chip-recent" type="button">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="13" height="13" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              Recent
-            </button>
-          </div>
-
-        </div>
       </div>
 
       <!-- TEMPLATES GRID (rendered by templates.js) -->

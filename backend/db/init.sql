@@ -1777,3 +1777,83 @@ AFTER INSERT OR UPDATE OR DELETE ON api_definitions FOR EACH ROW
 EXECUTE FUNCTION tgfunc_log_api_definition ();
 
 -------------------------------- PROJECT LOGS TRIGGERS END HERE ----------------------------------
+
+-------------------------------Template Relevancy------------------------------------
+CREATE OR REPLACE FUNCTION get_template_relevancy_point (
+   p_template_id INTEGER,
+   p_user_id INTEGER
+) RETURNS NUMERIC LANGUAGE plpgsql AS $$
+DECLARE
+   template_tags INTEGER[];
+   liked_match INTEGER := 0;
+   review_point NUMERIC := 0;
+   created_match INTEGER := 0;
+   feedback_match INTEGER := 0;
+   relevancy_point NUMERIC := 0;
+BEGIN
+   SELECT ARRAY_AGG(tag_id)
+   INTO template_tags
+   FROM project_tags
+   WHERE project_id = p_template_id;
+
+   IF template_tags IS NULL THEN
+      RETURN 0;
+   END IF;
+
+   SELECT COUNT(*)
+   INTO liked_match
+   FROM (
+      SELECT DISTINCT pt.tag_id
+      FROM template_likes tl
+      JOIN project_tags pt ON pt.project_id = tl.template_id
+      WHERE tl.user_id = p_user_id
+        AND pt.tag_id = ANY (template_tags)
+   ) liked;
+
+   relevancy_point := relevancy_point + (liked_match * 5);
+
+   SELECT COALESCE(SUM(
+      CASE
+         WHEN r.rating >= 3 THEN (r.match_cnt * 0.5 + r.rating * 1.5)
+         ELSE -(r.match_cnt * 0.5 + (5- r.rating) * 1.5)
+      END
+   ), 0)
+   INTO review_point
+   FROM (
+      SELECT tr.rating, COUNT(*) AS match_cnt
+      FROM template_ratings tr
+      JOIN project_tags pt ON pt.project_id = tr.template_id
+      WHERE tr.user_id = p_user_id
+        AND pt.tag_id = ANY (template_tags)
+      GROUP BY tr.template_id, tr.rating
+   ) r;
+
+   relevancy_point := relevancy_point + review_point;
+
+   SELECT COUNT(*)
+   INTO created_match
+   FROM (
+      SELECT DISTINCT pt.tag_id
+      FROM projects p
+      JOIN project_tags pt ON pt.project_id = p.id
+      WHERE p.author_id = p_user_id
+        AND pt.tag_id = ANY (template_tags)
+   ) created;
+
+   relevancy_point := relevancy_point + (created_match * 3);
+
+   SELECT COUNT(*)
+   INTO feedback_match
+   FROM (
+      SELECT DISTINCT pt.tag_id
+      FROM template_feedback tf
+      JOIN project_tags pt ON pt.project_id = tf.template_id
+      WHERE tf.user_id = p_user_id
+        AND pt.tag_id = ANY (template_tags)
+   ) feedback;
+
+   relevancy_point := relevancy_point + feedback_match;
+
+   RETURN relevancy_point;
+END;
+$$;
