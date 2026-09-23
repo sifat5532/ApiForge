@@ -23,11 +23,10 @@ router.patch('/updateProfile', requireAuth, async (req, res) => {
 
     const emailResult = await query('SELECT * FROM users WHERE email = $1', [email]);
     if (emailResult.rows.length > 0 && emailResult.rows[0].id != req.loggedInUser.id) {
-        return res.status(400).json({ msg: 'There was an error, please try again later' }); // not gonna let anyone know if the email is already registered for security reasons
+        return res.status(400).json({ msg: 'There was an error, please try again later' });
     }
 
-    await query(`
-                        UPDATE users SET username = $1 , name = $2 , email = $3 where id = $4`, [username, name, email, req.loggedInUser.id]);
+    await query(`UPDATE users SET username = $1 , name = $2 , email = $3 where id = $4`, [username, name, email, req.loggedInUser.id]);
     return res.status(200).json({ msg: 'profile successfully updated' });
 });
 

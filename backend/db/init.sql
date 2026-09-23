@@ -31,9 +31,9 @@ CREATE TABLE IF NOT EXISTS notifications (
    sender_id INTEGER,
    receiver_id INTEGER NOT NULL,
    type VARCHAR(50) NOT NULL,
-   related_entity_name VARCHAR(30), -- projects, session, payment(log or smth)
+   related_entity_name VARCHAR(30),
    related_entity_id INTEGER,
-   data JSONB, -- Note: Data will store the info about only feedback and ratings primary key and time so that it can take to the right place when its clicked
+   data JSONB,
    read_at TIMESTAMP(0),
    created_at TIMESTAMP(0) DEFAULT now(),
    CONSTRAINT fk_notification_sender_user FOREIGN KEY (sender_id) REFERENCES users (id) ON DELETE CASCADE,

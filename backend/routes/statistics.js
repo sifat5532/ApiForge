@@ -1,23 +1,4 @@
-/* =========================================================================
-   ApiForge — statistics.js
-   Project statistics route.  All queries run inside a single REPEATABLE READ
-   transaction so every figure is consistent with the same DB snapshot.
-
-   Endpoint:
-     GET /statistics/project/:projectId?range=7d|30d
-
-   :projectId may be a numeric id OR a project name slug (same as view.js).
-
-   Response shape:
-     {
-       kpis:            { total_calls, avg_response_ms, error_rate_pct },
-       calls_over_time: [ { day, calls, ma7 }, … ],
-       top_endpoints:   [ { method, path, calls }, … ],
-       method_dist:     [ { method, calls }, … ],
-       error_rates:     [ { method, path, error_pct }, … ],
-       peak_hours:      [ { hour, calls }, … ],   // always 24 entries (0–23)
-     }
-   ========================================================================= */
+//     GET /statistics/project/:projectId?range=7d|30d
 
 const express = require('express');
 const pool = require('../db/connection');
@@ -27,13 +8,10 @@ const { requireProjectAccess } = require('./project');
 
 const router = express.Router();
 
-/* -------------------------------------------------------------------------
-   Resolve project name slug → numeric id (same logic as view.js)
-   ------------------------------------------------------------------------- */
 async function resolveProjectIdParam(req, res, next) {
     const raw = req.params.projectId;
     if (raw == null) return next();
-    if (/^\d+$/.test(raw)) return next();   // already numeric
+    if (/^\d+$/.test(raw)) return next();
 
     const result = await query(
         `SELECT p.id
@@ -54,18 +32,12 @@ async function resolveProjectIdParam(req, res, next) {
     next();
 }
 
-/* -------------------------------------------------------------------------
-   Validate the ?range query param
-   ------------------------------------------------------------------------- */
 function parseDays(rangeParam) {
     if (rangeParam === '7d') return 7;
     if (rangeParam === '30d') return 30;
     return 30;
 }
 
-/* -------------------------------------------------------------------------
-   Main stats endpoint
-   ------------------------------------------------------------------------- */
 router.get(
     '/project/:projectId',
     requireAuth,
@@ -79,33 +51,30 @@ router.get(
         try {
             await client.query('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ');
 
-            /* ----------------------------------------------------------------
-               1. KPIs — total calls, avg response time, error rate
-               ---------------------------------------------------------------- */
+            // 1. KPIs — total calls, avg response time, error rate
             const kpiRes = await client.query(`
                 SELECT
-                    COUNT(*)                                                  AS total_calls,
-                    ROUND(AVG(al.response_time_ms))                           AS avg_response_ms,
+                    COUNT(*) AS total_calls,
+                    ROUND(AVG(al.response_time_ms)) AS avg_response_ms,
                     ROUND(
                         100.0 * COUNT(*) FILTER (WHERE al.status_code >= 400)
                         / NULLIF(COUNT(*), 0),
                         2
-                    )                                                         AS error_rate_pct
+                    ) AS error_rate_pct
                 FROM api_logs al
                 JOIN api_definitions ad ON ad.id = al.api_definition_id
                 WHERE ad.project_id = $1
                   AND al.created_at >= now() - ($2 || ' days')::INTERVAL
             `, [projectId, days]);
 
-            /* ----------------------------------------------------------------
-               2. Calls over time — daily volume + 7-day moving average
-                  Always buffer 30 days so the MA edge is stable when range=7d.
-               ---------------------------------------------------------------- */
+            // 2. Calls over time — daily volume + 7-day moving average
+            // Always buffer 30 days so the MA edge is stable when range=7d.
+
             const callsRes = await client.query(`
                 WITH daily AS (
                     SELECT
                         date_trunc('day', al.created_at)::date AS day,
-                        COUNT(*)                               AS calls
+                        COUNT(*) AS calls
                     FROM api_logs al
                     JOIN api_definitions ad ON ad.id = al.api_definition_id
                     WHERE ad.project_id = $1
@@ -128,13 +97,12 @@ router.get(
                 ORDER BY day
             `, [projectId, days]);
 
-            /* ----------------------------------------------------------------
-               3. Top endpoints by call volume (up to 8)
-               ---------------------------------------------------------------- */
+            // 3. Top endpoints by call volume (up to 8)
+
             const topRes = await client.query(`
                 SELECT
                     ad.method,
-                    ad.name      AS path,
+                    ad.name AS path,
                     COUNT(al.id) AS calls
                 FROM api_logs al
                 JOIN api_definitions ad ON ad.id = al.api_definition_id
@@ -145,9 +113,7 @@ router.get(
                 LIMIT 8
             `, [projectId, days]);
 
-            /* ----------------------------------------------------------------
-               4. Traffic by HTTP method
-               ---------------------------------------------------------------- */
+            // 4. Traffic by HTTP method
             const methodRes = await client.query(`
                 SELECT
                     ad.method,
@@ -160,9 +126,7 @@ router.get(
                 ORDER BY calls DESC
             `, [projectId, days]);
 
-            /* ----------------------------------------------------------------
-               5. Error rate by endpoint
-               ---------------------------------------------------------------- */
+            // 5. Error rate by endpoint
             const errorRes = await client.query(`
                 SELECT
                     ad.method,
@@ -180,13 +144,11 @@ router.get(
                 ORDER BY error_pct DESC NULLS LAST
             `, [projectId, days]);
 
-            /* ----------------------------------------------------------------
-               6. Peak usage hours (UTC), normalised to 0–23
-               ---------------------------------------------------------------- */
+            // 6. Peak usage hours, normalised to 0–23
             const hoursRes = await client.query(`
                 SELECT
                     EXTRACT(HOUR FROM al.created_at)::int AS hour,
-                    COUNT(*)                              AS calls
+                    COUNT(*) AS calls
                 FROM api_logs al
                 JOIN api_definitions ad ON ad.id = al.api_definition_id
                 WHERE ad.project_id = $1
@@ -197,7 +159,7 @@ router.get(
 
             await client.query('COMMIT');
 
-            /* ---- normalise hour buckets → full 0-23 array ---- */
+            // normalise hour buckets → full 0-23 array
             const hourMap = {};
             hoursRes.rows.forEach(r => { hourMap[r.hour] = parseInt(r.calls, 10); });
             const peakHours = Array.from({ length: 24 }, (_, h) => ({

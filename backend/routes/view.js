@@ -252,7 +252,7 @@ router.get('/apis/:projectId', requireAuth, requireProjectAccess, async (req, re
 });
 
 router.get('/templateDetails/:templateId', requireAuth, async (req, res) => {
-    const { templateId } = req.params;// ** I think ids  are not required to send to backend . Confirm me .
+    const { templateId } = req.params;
     const result = await query(`
                      SELECT 
                     P.id , P.name AS template_name , P.created_at , P.description ,P.auth_enabled , P.author_id , U.username , U.name AS author_name,

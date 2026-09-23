@@ -1,7 +1,5 @@
 async function checkPlanLimit(client, actingUserId, type, projId = null) {
-    // For project-level checks, the plan that matters is the acting user's own.
-    // For table/api checks, it's the project *owner's* plan (a collaborator
-    // creating a table still counts against the project author's limits).
+
     let planUserId = actingUserId;
     if (type === 'table' || type === 'api') {
         if (!projId) {

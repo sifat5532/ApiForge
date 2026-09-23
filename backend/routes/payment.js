@@ -29,13 +29,11 @@ router.post('/subscribe', requireAuth, async (req, res) => {
     if (plan.name === 'free') {
         month = null;
 
-        // REPEATABLE READ: see subscriptionEnforcer.js for the full rationale.
+        // REPEATABLE READ: cause subscriptionEnforcer needs so many read/write operation without write-skew
         const client = await pool.connect();
         try {
             await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
 
-            // Read current plan inside the transaction so the snapshot is consistent
-            // with the subsequent INSERT and enforce calls
             const currentSubResult = await client.query(
                 `SELECT plan_id FROM subscriptions
                  WHERE user_id = $1 AND status = 'active'
@@ -122,7 +120,7 @@ router.post('/webhook', express.json(), async (req, res) => {
         return res.status(400).json({ error: 'Invalid Webhook secret' });
     }
 
-    // REPEATABLE READ: see subscriptionEnforcer.js for the full rationale.
+    // REPEATABLE READ: cause subscriptionEnforcer needs so many read/write operation without write-skew
     const client = await pool.connect();
     try {
         await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
@@ -182,9 +180,7 @@ router.get('/verify', requireAuth, async (req, res) => {
     if (!paymentId) {
         return res.status(400).json({ msg: 'Payment ID is needed' });
     }
-    // console.log('Verifying paymentId:', paymentId);
 
-    // Pre-flight ownership check — outside the transaction (read-only guard)
     let queryRes = await query('SELECT * FROM subscription_log WHERE trxn_id = $1 AND user_id = $2',
         [paymentId, req.loggedInUser.id]);
     if (queryRes.rowCount <= 0) {
@@ -193,8 +189,6 @@ router.get('/verify', requireAuth, async (req, res) => {
 
     const url = `https://mockgateway.com/api/pg/${SLUG}/verify/${paymentId}`;
     try {
-        // Call gateway outside the DB transaction; no point holding a connection
-        // open across a network round-trip
         const response = await fetch(url, {
             method: 'GET',
             headers: {
@@ -204,7 +198,6 @@ router.get('/verify', requireAuth, async (req, res) => {
         const result = await response.json();
         const paymentStatus = result.status;
 
-        // Re-read the log row to get the freshest status before deciding to update
         queryRes = await query('SELECT * FROM subscription_log WHERE trxn_id = $1 AND user_id = $2',
             [paymentId, req.loggedInUser.id]);
 
@@ -212,7 +205,7 @@ router.get('/verify', requireAuth, async (req, res) => {
             if (result.status === 'succeeded') {
                 const logRow = queryRes.rows[0];
 
-                // REPEATABLE READ: see subscriptionEnforcer.js for the full rationale.
+                // REPEATABLE READ: cause subscriptionEnforcer needs so many read/write operation without write-skew
                 const client = await pool.connect();
                 try {
                     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ');

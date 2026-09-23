@@ -53,7 +53,7 @@ const requireAuth = async (req, res, next) => {
     }
 };
 
-router.post('/register', requireGuest, async (req, res) => { // need to check whether the format of username, email etc are correct
+router.post('/register', requireGuest, async (req, res) => {
     const { name, email, username, password, confirm_password } = req.body;
     if (!name || !email || !username || !password || !confirm_password) {
         return res.status(400).json({ msg: 'Please fill in all fields' });
@@ -75,7 +75,7 @@ router.post('/register', requireGuest, async (req, res) => { // need to check wh
 
     const emailResult = await query('SELECT * FROM users WHERE email = $1', [email]);
     if (emailResult.rows.length > 0) {
-        return res.status(400).json({ msg: 'There was an error, please try again later' }); // not gonna let anyone know if the email is already registered for security reasons
+        return res.status(400).json({ msg: 'There was an error, please try again later' });
     }
 
     const hashedPassword = await bcrypt.hash(password, saltRounds);
