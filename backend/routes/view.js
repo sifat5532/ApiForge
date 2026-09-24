@@ -33,8 +33,8 @@ router.get('/allProjects', requireAuth, async (req, res) => {
                                     projects p
                                     LEFT JOIN proj_logs plogs ON plogs.project_id = p.id
                                 WHERE
+                                    p.author_id = $1 AND 
                                     p.is_template != TRUE
-                                    AND p.author_id = $1
                                 ORDER BY p.id DESC`,
         [req.loggedInUser.id]);
 
