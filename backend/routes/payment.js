@@ -104,75 +104,74 @@ router.post('/subscribe', requireAuth, async (req, res) => {
 });
 
 router.post('/webhook', express.json(), async (req, res) => {
-    // const payload = req.body;
-    // console.log('Webhook received:', payload);
+    const payload = req.body;
+    console.log('Webhook received:', payload);
 
-    // let eventID = payload.id;
-    // let paymentId = payload.data.object.id; // trxn_id
-    // let paymentStatus = payload.data.object.status;
+    let eventID = payload.id;
+    let paymentId = payload.data.object.id; // trxn_id
+    let paymentStatus = payload.data.object.status;
 
-    // if (!paymentId) {
-    //     console.warn('Webhook missing paymentId, ignoring');
-    //     return res.status(400).json({ error: 'missing paymentId' });
-    // }
+    if (!paymentId) {
+        console.warn('Webhook missing paymentId, ignoring');
+        return res.status(400).json({ error: 'missing paymentId' });
+    }
 
-    // if (!req.get('WEBHOOK_SECRET') || req.get('WEBHOOK_SECRET') != WEBHOOK_SECRET) {
-    //     return res.status(400).json({ error: 'Invalid Webhook secret' });
-    // }
+    if (!req.get('WEBHOOK_SECRET') || req.get('WEBHOOK_SECRET') != WEBHOOK_SECRET) {
+        return res.status(400).json({ error: 'Invalid Webhook secret' });
+    }
 
-    // // REPEATABLE READ: cause subscriptionEnforcer needs so many read/write operation without write-skew
-    // const client = await pool.connect();
-    // try {
-    //     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
+    // REPEATABLE READ: cause subscriptionEnforcer needs so many read/write operation without write-skew
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
 
-    //     // Update log status; if succeeded, DB trigger activates the new subscription
-    //     await client.query(
-    //         'UPDATE subscription_log SET payment_status = $1, updated_at = NOW() WHERE trxn_id = $2',
-    //         [paymentStatus, paymentId]
-    //     );
+        // Update log status; if succeeded, DB trigger activates the new subscription
+        await client.query(
+            'UPDATE subscription_log SET payment_status = $1, updated_at = NOW() WHERE trxn_id = $2',
+            [paymentStatus, paymentId]
+        );
 
-    //     if (paymentStatus === 'succeeded') {
-    //         // Fetch the log row to get user_id and plan_id (inside txn for consistent snapshot)
-    //         const logRes = await client.query(
-    //             `SELECT user_id, plan_id FROM subscription_log WHERE trxn_id = $1`,
-    //             [paymentId]
-    //         );
-    //         if (logRes.rows.length > 0) {
-    //             const { user_id, plan_id: newPlanId } = logRes.rows[0];
+        if (paymentStatus === 'succeeded') {
+            // Fetch the log row to get user_id and plan_id (inside txn for consistent snapshot)
+            const logRes = await client.query(
+                `SELECT user_id, plan_id FROM subscription_log WHERE trxn_id = $1`,
+                [paymentId]
+            );
+            if (logRes.rows.length > 0) {
+                const { user_id, plan_id: newPlanId } = logRes.rows[0];
 
-    //             const planRes = await client.query(
-    //                 `SELECT plan_id, project_count, table_per_project, api_per_project
-    //                  FROM plans WHERE plan_id = $1`,
-    //                 [newPlanId]
-    //             );
-    //             // The old subscription is now inactive (set by DB trigger above)
-    //             const oldSubRes = await client.query(
-    //                 `SELECT plan_id FROM subscriptions
-    //                  WHERE user_id = $1 AND status = 'inactive'
-    //                  ORDER BY subscription_id DESC LIMIT 1`,
-    //                 [user_id]
-    //             );
+                const planRes = await client.query(
+                    `SELECT plan_id, project_count, table_per_project, api_per_project
+                     FROM plans WHERE plan_id = $1`,
+                    [newPlanId]
+                );
+                // The old subscription is now inactive (set by DB trigger above)
+                const oldSubRes = await client.query(
+                    `SELECT plan_id FROM subscriptions
+                     WHERE user_id = $1 AND status = 'inactive'
+                     ORDER BY subscription_id DESC LIMIT 1`,
+                    [user_id]
+                );
 
-    //             if (planRes.rows.length > 0) {
-    //                 const newPlan = planRes.rows[0];
-    //                 const oldPlanId = oldSubRes.rows.length > 0 ? oldSubRes.rows[0].plan_id : null;
-    //                 const direction = (oldPlanId === null || newPlanId > oldPlanId) ? 'upgrade' : 'downgrade';
-    //                 await enforceSubscriptionLimits(client, user_id, newPlan, direction);
-    //             }
-    //         }
-    //     }
+                if (planRes.rows.length > 0) {
+                    const newPlan = planRes.rows[0];
+                    const oldPlanId = oldSubRes.rows.length > 0 ? oldSubRes.rows[0].plan_id : null;
+                    const direction = (oldPlanId === null || newPlanId > oldPlanId) ? 'upgrade' : 'downgrade';
+                    await enforceSubscriptionLimits(client, user_id, newPlan, direction);
+                }
+            }
+        }
 
-    //     await client.query('COMMIT');
-    //     res.status(200).json({ received: true });
-    // } catch (err) {
-    //     await client.query('ROLLBACK');
-    //     console.error('Webhook processing failed:', err);
-    //     // 500 tells MockGateway to retry later if it does that
-    //     res.status(500).json({ error: 'internal error' });
-    // } finally {
-    //     client.release();
-    // }
-    return res.status(200).json({ done: true});
+        await client.query('COMMIT');
+        res.status(200).json({ received: true });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Webhook processing failed:', err);
+        // 500 tells MockGateway to retry later if it does that
+        res.status(500).json({ error: 'internal error' });
+    } finally {
+        client.release();
+    }
 });
 
 
