@@ -34,7 +34,7 @@ function shouldProxy(pathname, req) {
     if (/^\/my-template\/[^/]+$/.test(clean)) return false;
   }
 
-  return /^(?:\/auth|\/project|\/template|\/view|\/new|\/api|\/profile|\/dashboard|\/payment|\/statistics)(?:\/|$)/.test(pathname);
+  return /^(?:\/auth|\/project|\/template|\/view|\/new|\/api|\/profile|\/dashboard|\/payment|\/statistics|\/export)(?:\/|$)/.test(pathname);
 }
 
 app.get('/js/config.js', (req, res) => {

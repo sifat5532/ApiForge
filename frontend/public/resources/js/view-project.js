@@ -4316,8 +4316,59 @@ function bindGlobalActions() {
   const createTemplateBtn = document.getElementById('vp-create-template');
   if (createTemplateBtn) createTemplateBtn.addEventListener('click', openCreateTemplateModal);
 
+  const exportAiBtn = document.getElementById('vp-export-ai');
+  if (exportAiBtn) exportAiBtn.addEventListener('click', exportProjectForAi);
+
   const refreshLogsBtn = document.getElementById('btn-refresh-logs');
   if (refreshLogsBtn) refreshLogsBtn.addEventListener('click', () => loadProjectLogs());
+}
+
+function filenameFromDisposition(header, fallback) {
+  if (!header) return fallback;
+  const utfMatch = header.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utfMatch) {
+    try { return decodeURIComponent(utfMatch[1]); } catch (_) { /* ignore */ }
+  }
+  const quoted = header.match(/filename="([^"]+)"/i);
+  if (quoted) return quoted[1];
+  const plain = header.match(/filename=([^;]+)/i);
+  if (plain) return plain[1].trim();
+  return fallback;
+}
+
+async function exportProjectForAi() {
+  const btn = document.getElementById('vp-export-ai');
+  if (!vpState.projectId) {
+    showToast('Project not loaded yet', 'error');
+    return;
+  }
+
+  setLoading(btn, true);
+  try {
+    const res = await apiFetch(`/export/${vpState.projectId}`);
+    if (res.status === 401) { window.location.href = '/login'; return; }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      showToast(data.msg || 'Failed to export project', 'error');
+      return;
+    }
+
+    const blob = await res.blob();
+    const fallbackName = `${(vpState.project && vpState.project.name) || 'project'}.txt`;
+    const filename = filenameFromDisposition(res.headers.get('Content-Disposition'), fallbackName);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (_) {
+    showToast('Network error', 'error');
+  } finally {
+    setLoading(btn, false);
+  }
 }
 
 function openCreateTemplateModal() {
