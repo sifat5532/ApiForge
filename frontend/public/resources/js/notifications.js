@@ -522,6 +522,7 @@ function updateUnreadBadge() {
   const count = _notifications.filter(n => !n.read).length;
   badge.textContent = count > 0 ? `${count} unread` : '';
   badge.style.display = count > 0 ? '' : 'none';
+  if (typeof setUnreadNotificationCount === 'function') setUnreadNotificationCount(count);
 }
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────

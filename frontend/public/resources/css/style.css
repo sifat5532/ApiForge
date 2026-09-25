@@ -956,10 +956,41 @@ html.sidebar-collapsed .sidebar__group-label { display: none; }
   color: var(--accent-light);
 }
 
+/* unread notifications counter, trailing the sidebar link label */
+.sidebar__count {
+  display: inline-block;
+  flex-shrink: 0;
+  margin-left: auto;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 20px;
+  background: var(--accent);
+  color: var(--bg);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar__count[hidden] { display: none; }
+
 /* collapsed (icon-only) state, toggled on <html> to avoid flash-of-wrong-state */
 html.sidebar-collapsed .sidebar { width: 72px; }
 html.sidebar-collapsed .sidebar__link { justify-content: center; }
 html.sidebar-collapsed .sidebar__link span { display: none; }
+html.sidebar-collapsed .sidebar__link .sidebar__count {
+  display: inline-block;
+  position: absolute;
+  top: 4px;
+  right: 2px;
+  min-width: 16px;
+  padding: 0 4px;
+  font-size: 0.6rem;
+  line-height: 1.45;
+}
+html.sidebar-collapsed .sidebar__link .sidebar__count[hidden] { display: none; }
 
 /* tooltip shown on hover only while collapsed */
 .sidebar__link[data-tooltip]::after {

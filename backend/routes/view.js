@@ -514,6 +514,16 @@ router.post('/notifications/mark-read', requireAuth, async (req, res) => {
     if (result.rowCount === 0) return res.status(404).json({ msg: 'Notification not found' });
     res.status(200).json({ msg: 'Notification marked as read' });
 });
+router.get('/countUnreadNotifications', requireAuth, async (req, res) => {
+
+    const result = await query(
+        `SELECT COUNT(*)::int AS count FROM  notifications
+         WHERE receiver_id = $1  AND read_at IS NULL`,
+        [req.loggedInUser.id]
+    );
+
+    res.status(200).json({ count: Number(result.rows[0].count) });
+});
 
 router.post('/notifications/mark-all-read', requireAuth, async (req, res) => {
     await query(

@@ -14,7 +14,38 @@ document.addEventListener('DOMContentLoaded', () => {
   initSidebarToggle();
   initAccountMenu();
   loadDashboardData();
+  loadUnreadNotificationCount();
 });
+
+/* --------------------- unread notifications badge ---------------------
+   Every dashboard-shell page links to /notifications from the sidebar,
+   so the unread count is fetched once per page load and rendered into the
+   #sidebar-notif-count pill inside that link. */
+async function loadUnreadNotificationCount() {
+  const badge = document.getElementById('sidebar-notif-count');
+  if (!badge) return;
+
+  const backendUrl = window.BACKEND_URL || 'http://localhost:3000';
+  try {
+    const res = await fetch(`${backendUrl}/view/countUnreadNotifications`, { credentials: 'include' });
+    if (!res.ok) throw new Error('Failed to load unread notification count');
+    const data = await res.json();
+    setUnreadNotificationCount(data.count);
+  } catch (err) {
+    console.error('Could not load unread notification count:', err);
+  }
+}
+
+// Shared with the notifications page, which updates the pill in place
+// after mark-read / dismiss / mark-all-read / clear-read.
+function setUnreadNotificationCount(count) {
+  const badge = document.getElementById('sidebar-notif-count');
+  if (!badge) return;
+  const n = Number(count) || 0;
+  badge.textContent = n > 99 ? '99+' : String(n);
+  badge.title = n > 0 ? `${n} unread notification${n === 1 ? '' : 's'}` : '';
+  badge.hidden = n <= 0;
+}
 
 /* ------------------------- dashboard data -------------------------
    Fetches stats, recent projects, and recent activity from the

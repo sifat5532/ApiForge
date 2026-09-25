@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS projects (
       )
    )
 );
-CREATE INDEX IF NOT EXISTS idx_projects_author_template ON projects (author_id, is_template, id);
+CREATE INDEX IF NOT EXISTS idx_projects_author_template ON projects (author_id,  is_template  , id);
 
 CREATE TABLE IF NOT EXISTS project_cors_origin (
    project_id INTEGER NOT NULL,
@@ -211,7 +211,7 @@ CREATE TABLE IF NOT EXISTS api_definitions (
    CONSTRAINT fk_api_definitions_project_id FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
    CONSTRAINT unique_api_definitions_project_id_name UNIQUE (project_id, name)
 );
-CREATE INDEX IF NOT EXISTS idx_api_definitions_project_id ON api_definitions (project_id);
+
 
 CREATE TABLE IF NOT EXISTS api_logs (
    id serial PRIMARY KEY,
@@ -678,7 +678,8 @@ BEGIN
         END IF;
         RAISE EXCEPTION 'schema_table % not found', COALESCE(NEW.schema_table_id, OLD.schema_table_id);
     END IF;
-
+    IF rec.is_template THEN  RETURN COALESCE(NEW, OLD);
+    END IF;
     v_schema := 'PROJ' || '_' || rec.id || '_' || rec.author_id;
 
     IF TG_OP = 'INSERT' THEN
@@ -726,16 +727,16 @@ BEGIN
                 RAISE EXCEPTION 'Invalid data type: %', NEW.col_type;
             END IF;
         END IF;
-        IF NOT rec.is_template THEN
+   
             EXECUTE FORMAT(
                 'ALTER TABLE %I.%I ADD COLUMN %I %s',
                 v_schema, rec.TABLE_NAME, NEW.col_name, v_col_def
             );
-        END IF;
+    
      ELSIF TG_OP = 'UPDATE' THEN
         v_actions := NULL;
 
-        IF NEW.col_name <> OLD.col_name AND NOT rec.is_template THEN
+        IF NEW.col_name <> OLD.col_name  THEN
             EXECUTE FORMAT(
                 'ALTER TABLE %I.%I RENAME COLUMN %I TO %I',
                 v_schema, rec.TABLE_NAME, OLD.col_name, NEW.col_name
@@ -802,17 +803,17 @@ BEGIN
             v_actions := concat_ws(',', v_actions, FORMAT('ALTER COLUMN %I DROP DEFAULT', NEW.col_name));
         END IF;
 
-        IF NOT rec.is_template AND v_actions IS NOT NULL THEN
+        IF  v_actions IS NOT NULL THEN
             EXECUTE FORMAT('ALTER TABLE %I.%I %s', v_schema, rec.TABLE_NAME, v_actions);
         END IF;
 
         -- Rebuild the primary key when a column's PK status changed, since the
         -- set of PK columns for the table is now different.
-        IF NEW.is_primary_key IS DISTINCT FROM OLD.is_primary_key AND NOT rec.is_template THEN
+        IF NEW.is_primary_key IS DISTINCT FROM OLD.is_primary_key  THEN
             CALL func_rebuild_pk_for_table(rec.table_id, v_schema, rec.TABLE_NAME);
         END IF;
     ELSIF TG_OP = 'DELETE' THEN
-        IF NOT rec.is_template AND to_regclass(format('%I.%I', v_schema, rec.TABLE_NAME)) IS NOT NULL THEN
+        IF to_regclass(format('%I.%I', v_schema, rec.TABLE_NAME)) IS NOT NULL THEN
             EXECUTE FORMAT('ALTER TABLE %I.%I DROP COLUMN IF EXISTS %I', v_schema, rec.TABLE_NAME, OLD.col_name);
             CALL func_rebuild_pk_for_table(rec.table_id, v_schema, rec.TABLE_NAME);
         END IF;

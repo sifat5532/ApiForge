@@ -202,6 +202,7 @@
   html.sidebar-collapsed .sidebar { width: 240px; }
   html.sidebar-collapsed .sidebar__link { justify-content: flex-start; }
   html.sidebar-collapsed .sidebar__link span { display: inline; }
+  html.sidebar-collapsed .sidebar__link .sidebar__count { position: static; min-width: 20px; font-size: 0.68rem; }
 
   html.sidebar-mobile-open .sidebar { transform: translateX(0); }
 
