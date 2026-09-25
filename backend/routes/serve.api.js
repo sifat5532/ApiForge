@@ -160,6 +160,7 @@ async function validateApiRoute(req, res, next) {
         );
 
         if (result.rows.length === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ error: 'API not found' });
         }
 
@@ -213,6 +214,8 @@ async function validateApiRoute(req, res, next) {
         await client.query('ROLLBACK');
         console.error('validateApiRoute error:', err);
         res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        client.release();
     }
 }
 
