@@ -97,7 +97,7 @@ router.get(
                 ORDER BY day
             `, [projectId, days]);
 
-            // 3. Top endpoints by call volume (up to 8)
+            // 3. Top endpoints by call volume (up to 6)
 
             const topRes = await client.query(`
                 SELECT
