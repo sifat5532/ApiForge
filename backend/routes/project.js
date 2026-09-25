@@ -54,7 +54,8 @@ const validateName = (req, res, name, instanceType, id) => {
 };
 
 const requireProjectAuthor = async (req, res, next) => {
-    const proj_id = req.body.proj_id ? req.body.proj_id : (req.params.projectId ? req.params.projectId : req.query.projectId);
+    const body = req.body || {};
+    const proj_id = body.proj_id ? body.proj_id : (req.params.projectId ? req.params.projectId : req.query.projectId);
     if (!proj_id) return res.status(400).json({ msg: "You should insert a project id with your request" });
 
     const result = await query('SELECT id FROM projects WHERE  author_id=$2 AND is_template=false AND id=$1 ', [proj_id, req.loggedInUser.id]);
@@ -66,7 +67,8 @@ const requireProjectAuthor = async (req, res, next) => {
 };
 
 const requireOwner = async (req, res, next) => {
-    const proj_id = req.body?.proj_id || req.params?.projectId || req.params?.templateId || req.query?.projectId;
+    const body = req.body || {};
+    const proj_id = body.proj_id ? body.proj_id : (req.params.projectId ? req.params.projectId : req.query.projectId);
     if (!proj_id) return res.status(400).json({ msg: "You should insert a project id with your request" });
 
     const result = await query('SELECT id FROM projects WHERE author_id=$2  AND id=$1 ', [proj_id, req.loggedInUser.id]);
@@ -90,7 +92,8 @@ const requireTemplateAuthor = async (req, res, next) => {
 };
 
 const requireProjectAccess = async (req, res, next) => {
-    const proj_id = req.body?.proj_id || req.params?.projectId || req.query?.projectId;
+    const body = req.body || {};
+    const proj_id = body.proj_id ? body.proj_id : (req.params.projectId ? req.params.projectId : req.query.projectId);
     if (!proj_id) return res.status(400).json({ msg: "You should insert a project id with your request" });
 
     const result = await query('SELECT id FROM projects WHERE author_id=$2  AND is_template=$3 AND id=$1 ', [proj_id, req.loggedInUser.id, false]);
@@ -113,7 +116,8 @@ const requireProjectAccess = async (req, res, next) => {
 };
 
 const isProjectActive = async (req, res, next) => {
-    const proj_id = req.body.proj_id ? req.body.proj_id : (req.params.projectId ? req.params.projectId : req.query.projectId);
+    const body = req.body || {};
+    const proj_id = body.proj_id ? body.proj_id : (req.params.projectId ? req.params.projectId : req.query.projectId);
     if (!proj_id) return res.status(400).json({ msg: "You should insert a project id with your request" });
 
     const result = await query('SELECT id FROM projects WHERE id = $1 AND subscription_status = $2', [proj_id, 'active']);
@@ -299,11 +303,11 @@ router.post('/createTable', requireAuth, requireProjectAccess, isProjectActive, 
     }
     const table_name = name.trim().toLowerCase();
     if (validateName(req, res, table_name, 'table', 'NULL').isResSent) return;
-     
+
     if (cols == null || cols.length < 1) {
         return res.status(400).json({ msg: "You should create at least one column" });
     }
-    if (cols.length > 100 ) {
+    if (cols.length > 100) {
         return res.status(400).json({ msg: "You can create at most 100 columns for a table" });
     }
     const isExist = await query('SELECT * FROM schema_tables WHERE project_id=$1 AND table_name=$2', [proj_id, table_name]);
@@ -316,8 +320,8 @@ router.post('/createTable', requireAuth, requireProjectAccess, isProjectActive, 
         // 6 is_nullable,7 is_unique, 8 element_id_frontend
 
         cols[i][2] = cols[i][2] == null ? null : cols[i][2];
-        if(cols[i][1] === 'NUMERIC' ) cols[i][3] = cols[i][3] === null ? null : (cols[i][3] < 6 ? cols[i][3] + 6 : cols[i][3]);
-        else if (cols[i][1] === 'VARCHAR') cols[i][3] = cols[i][3] === null ? null :  cols[i][3]; 
+        if (cols[i][1] === 'NUMERIC') cols[i][3] = cols[i][3] === null ? null : (cols[i][3] < 6 ? cols[i][3] + 6 : cols[i][3]);
+        else if (cols[i][1] === 'VARCHAR') cols[i][3] = cols[i][3] === null ? null : cols[i][3];
         else cols[i][3] = null;
         cols[i][4] = cols[i][4] === true ? true : false; // is_pk
         cols[i][5] = cols[i][5] === true ? true : false; // is_auto_inc
@@ -449,7 +453,7 @@ router.post('/addForeignKey', requireAuth, requireProjectAccess, isProjectActive
     if (on_update != 'CASCADE' && on_update != 'SET NULL' && on_update != 'RESTRICT' && on_update != 'NO ACTION') {
         return res.status(400).json({ msg: "on_update foreign key action must be either 'CASCADE', 'SET NULL' 'NO ACTION' or 'RESTRICT'" });
     }
-    
+
     const client = await pool.connect();
     try {
         await client.query("BEGIN");
@@ -458,8 +462,8 @@ router.post('/addForeignKey', requireAuth, requireProjectAccess, isProjectActive
                                      SELECT 
                                       1
                                       FROM schema_foreign_keys fk
-                                      WHERE fk.child_col_id = $1`,[child_col_id]);
-        if(isDuplicate.rowCount > 0)   return res.status(400).json({ msg: "This column is already a foreign key"}); 
+                                      WHERE fk.child_col_id = $1`, [child_col_id]);
+        if (isDuplicate.rowCount > 0) return res.status(400).json({ msg: "This column is already a foreign key" });
         const isExist = await client.query(`
                                     SELECT
                                         C.col_type AS child_col_type,
@@ -677,15 +681,15 @@ router.post('/cloneTemplate', requireAuth, async (req, res) => {
     if (result.rows.length > 0) {
         return res.status(400).json({ msg: 'You already have a project in this name' });
     }
-        
+
     const api_key = crypto.randomBytes(32).toString('hex');
     const api_key_prefix = api_key.substring(0, 6);
     const api_key_hashed = crypto.createHash('sha256').update(api_key).digest('hex');
-        const client = await pool.connect();
-        try {
-            await client.query('BEGIN');
-            await client.query('SELECT set_config(\'app.current_user_id\', $1, true)', [String(author_id)]);
-            const template = await client.query(`
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query('SELECT set_config(\'app.current_user_id\', $1, true)', [String(author_id)]);
+        const template = await client.query(`
             SELECT 
             description
             FROM projects 
@@ -701,8 +705,8 @@ router.post('/cloneTemplate', requireAuth, async (req, res) => {
             (author_id, name, description, auth_enabled, is_clone, cloned_from_id ,  api_key_hashed, api_key_prefix)
             VALUES($1, $2, $3, $4, $5, $6 , $7 , $8)
             RETURNING id`,
-            [author_id, clone_name, template.rows[0].description, (auth_enabled === true ? true : false), 
-            true, cloned_from_id , api_key_hashed , api_key_prefix]
+            [author_id, clone_name, template.rows[0].description, (auth_enabled === true ? true : false),
+                true, cloned_from_id, api_key_hashed, api_key_prefix]
         );
         const tags = await client.query(`
                         INSERT INTO project_tags 
@@ -712,7 +716,7 @@ router.post('/cloneTemplate', requireAuth, async (req, res) => {
                          WHERE project_id = $2 `,
             [clone.rows[0].id, cloned_from_id]);
         await client.query('COMMIT');
-        res.status(201).json({ msg: 'Template cloned successfully' , api_key : api_key});
+        res.status(201).json({ msg: 'Template cloned successfully', api_key: api_key });
     } catch (e) {
         await client.query('ROLLBACK');
         console.error(e);
@@ -741,7 +745,7 @@ router.put('/updateProject/:projectId', requireAuth, requireOwner, isProjectActi
             if (t.length < 2 || t.length > 20) return res.status(400).json({ msg: 'Tag length must be between 2 to 20 characters' });
             if (!(t[0] >= 'a' && t[0] <= 'z')) return res.status(400).json({ msg: 'Tag name must start with an alphabet(a-z or A-Z)' });
         }
-        
+
         if (tags.length > 10) {
             return res.status(400).json({ msg: 'Adding more than 10 tags is not allowed!' });
         }
@@ -791,10 +795,27 @@ router.put('/updateProject/:projectId', requireAuth, requireOwner, isProjectActi
     }
 });
 
-router.delete('/deleteProject/:projectId', requireAuth, async (req, res) => {
-    const result = await query('DELETE FROM projects WHERE id = $1 AND author_id = $2', [req.params.projectId, req.loggedInUser.id]);
-    if (result.rowCount === 0) return res.status(400).json({ msg: "You don't have access to delete the project or the project doesn't exist." });
-    return res.status(200).json({ msg: "Project was deleted successfully" });
+router.delete('/deleteProject/:projectId', requireAuth, requireProjectAuthor, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query('DELETE FROM api_table_dependencies WHERE api_definition_id IN (SELECT id FROM api_definitions WHERE project_id = $1);', [req.params.projectId]);
+        await client.query('DELETE FROM api_column_dependencies WHERE api_definition_id IN (SELECT id FROM api_definitions WHERE project_id = $1);', [req.params.projectId]);
+        const result = await client.query('DELETE FROM projects WHERE id = $1 AND author_id = $2', [req.params.projectId, req.loggedInUser.id]);
+        if (result.rowCount === 0){
+            await client.query('ROLLBACK');
+            return res.status(400).json({ msg: "No such project exists to be deleted." });
+        }
+        await client.query('COMMIT');
+        return res.status(200).json({ msg: "Project was deleted successfully" });
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error(e);
+        res.status(e.status || 500).json({ msg: e.status ? e.message : 'There was a server side error, please try again later' });
+    } finally {
+        client.release();
+    }
+    
 });
 
 router.put('/renameTable', requireAuth, requireProjectAccess, isProjectActive, async (req, res) => {
@@ -1037,8 +1058,8 @@ router.delete('/deleteColumn', requireAuth, requireProjectAccess, isProjectActiv
     }
 
     const isParentCol = await query('SELECT c.col_name AS name FROM schema_foreign_keys fk JOIN schema_columns c ON c.id = fk.parent_col_id WHERE fk.parent_col_id = $1', [col_id]);
-    if(isParentCol.rowCount > 0){
-        return res.status(400).json({ msg: `You are trying to delete a column named ${isParentCol.rows[0].name} which is a Parent column of a Foreign key.`});
+    if (isParentCol.rowCount > 0) {
+        return res.status(400).json({ msg: `You are trying to delete a column named ${isParentCol.rows[0].name} which is a Parent column of a Foreign key.` });
     }
 
     const client = await pool.connect();
