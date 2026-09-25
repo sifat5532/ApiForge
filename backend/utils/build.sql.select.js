@@ -33,15 +33,15 @@ function buildConditionSQL(node, catalog, req, values, options) {
         return `${expr} BETWEEN $${values.length - 1} AND $${values.length}`;
     }
 
-    if (op === 'IN' || op === 'NOT IN') {
-        let v = resolveVal(node.val1, req, `where col_id ${node.col_id}`, options);
-        if (!Array.isArray(v)) v = [v];
-        const placeholders = v.map(item => {
-            values.push(item);
-            return `$${values.length}`;
-        });
-        return `${expr} ${op} (${placeholders.join(', ')})`;
-    }
+    // if (op === 'IN' || op === 'NOT IN') {
+    //     let v = resolveVal(node.val1, req, `where col_id ${node.col_id}`, options);
+    //     if (!Array.isArray(v)) v = [v];
+    //     const placeholders = v.map(item => {
+    //         values.push(item);
+    //         return `$${values.length}`;
+    //     });
+    //     return `${expr} ${op} (${placeholders.join(', ')})`;
+    // }
 
     const v = resolveVal(node.val1, req, `where col_id ${node.col_id}`, options);
     values.push(v);

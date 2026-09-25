@@ -1542,7 +1542,9 @@ function cabCoerceLiteral(raw) {
 }
 
 function cabReadDyn(root, prefix) {
-  const wrap = root.querySelector(`[data-dyn="${prefix}"]`);
+  const wrap = root.matches && root.matches(`[data-dyn="${prefix}"]`)
+    ? root
+    : root.querySelector(`[data-dyn="${prefix}"]`);
   if (!wrap) return null;
   const isDyn = wrap.querySelector('[data-action="toggle-dyn"]').classList.contains('is-on');
   if (!isDyn) {

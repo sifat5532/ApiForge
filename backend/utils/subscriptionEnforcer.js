@@ -1,43 +1,20 @@
-/**
- * Enforce plan limits for a user after they switch to a new plan.
- *
- * IMPORTANT: This function does NOT manage its own transaction or client.
- * The caller must:
- *   1. Acquire a client from the pool.
- *   2. BEGIN a transaction with isolation level REPEATABLE READ (see below).
- *   3. Pass that client here.
- *   4. COMMIT or ROLLBACK after this function returns/throws.
- *
- * Why REPEATABLE READ and not READ COMMITTED (the PG default)?
- *   This function reads counts (schema_tables, api_definitions, projects) and
- *   then writes back to projects based on those counts. Under READ COMMITTED a
- *   concurrent transaction could INSERT a new table into a project between our
- *   COUNT read and our UPDATE, causing us to act on a stale count and make the
- *   wrong lock/unlock decision. REPEATABLE READ gives the whole transaction a
- *   consistent snapshot: every read sees the same data as of the moment BEGIN
- *   was issued, so that race is impossible.
- *
- *   SERIALIZABLE would also work but is stronger than needed here — it prevents
- *   write-skew across independent transactions, which is not a concern for a
- *   single-user enforcement run — and it forces the application to handle
- *   serialization-failure retries. REPEATABLE READ is the right balance.
- *
- * For downgrade (or expiry to free):
- *   1. Lock non-template projects that violate table_per_project of the new plan.
- *   2. Lock non-template projects that violate api_per_project of the new plan.
- *   3. Count remaining active non-template projects. If count > project_count,
- *      lock the newest active ones first until within limit.
- *
- * For upgrade:
- *   1. Starting from locked projects (newest first by created_at DESC), unlock
- *      any that do NOT violate table_per_project and api_per_project.
- *   2. Stop once the active project count reaches project_count (if not unlimited).
- *
- * @param {import('pg').PoolClient} client  - An already-connected client inside a transaction
- * @param {number} userId
- * @param {object} newPlan  - { plan_id, project_count, table_per_project, api_per_project }
- * @param {'downgrade'|'upgrade'} direction
- */
+/*
+ The caller must:
+    1. Acquire a client from the pool.
+    2. BEGIN a transaction with isolation level REPEATABLE READ (see below).
+ 
+ For downgrade (or expiry to free):
+    1. Lock non-template projects that violate table_per_project of the new plan.
+    2. Lock non-template projects that violate api_per_project of the new plan.
+    3. Count remaining active non-template projects. If count > project_count,
+       lock the newest active ones first until within limit.
+
+For upgrade:
+   1. Starting from locked projects (newest first by created_at DESC), unlock
+      any that do NOT violate table_per_project and api_per_project.
+   2. Stop once the active project count reaches project_count (if not unlimited).
+
+*/
 async function enforceSubscriptionLimits(client, userId, newPlan, direction) {
     const { project_count, table_per_project, api_per_project } = newPlan;
 

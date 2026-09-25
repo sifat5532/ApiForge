@@ -62,11 +62,7 @@ function attachRouteParams(req, definition) {
     });
 }
 
-/**
- * Looks up the CORS allowlist for a project by username/projectname.
- * Does NOT require the apiname to exist yet — this runs before we know
- * whether the API route itself is valid, so it only needs the project.
- */
+
 async function getAllowedOrigins(username, projectname) {
     const result = await query(`
         SELECT pco.origin
@@ -79,21 +75,6 @@ async function getAllowedOrigins(username, projectname) {
     return result.rows.map(row => row.origin);
 }
 
-/**
- * Real CORS enforcement:
- *  - Answers preflight OPTIONS requests directly (these never had an
- *    Origin-based body, and were previously falling through to a 404
- *    because there was no OPTIONS route at all).
- *  - Sets Access-Control-Allow-Origin on the actual response, which is
- *    what makes the browser allow client-side JS to read the response.
- *    Without this header, a disallowed origin's browser would already
- *    block reading the response even if your server returned 200 — but
- *    a request with NO Origin header (curl, Postman, server-to-server
- *    calls, pasting the URL in the address bar) was always slipping
- *    through the old check, since `requestOrigin &&` short-circuited.
- *  - Explicitly 403s any *browser* cross-origin request (Origin header
- *    present) that isn't on the allowlist.
- */
 async function corsMiddleware(req, res, next) {
     const { username, projectname } = req.params;
     const requestOrigin = req.headers.origin;
@@ -107,15 +88,9 @@ async function corsMiddleware(req, res, next) {
                 res.header('Access-Control-Allow-Origin', requestOrigin);
                 res.header('Vary', 'Origin');
             } else if (requestOrigin) {
-                // Browser sent an Origin we don't allow — block outright,
-                // including preflight, so the browser never even fires
-                // the real request.
                 return res.status(403).json({ error: 'Origin not allowed' });
             }
-            // No Origin header at all: non-browser caller, let it through
-            // to the normal auth/validation logic below.
         } else if (requestOrigin) {
-            // No allowlist configured for this project -> allow any origin.
             res.header('Access-Control-Allow-Origin', requestOrigin);
             res.header('Vary', 'Origin');
         }

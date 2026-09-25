@@ -328,7 +328,6 @@
         '<button class="vt-api-card__head" type="button" aria-expanded="' + expanded + '">' +
           '<span class="vp-api-method vp-api-method--' + method.toLowerCase() + '">' + esc(method) + '</span>' +
           '<span class="vt-api-card__name">' + esc(api.name) + '</span>' +
-          '<span class="vt-rate-tag">' + esc(rate) + '</span>' +
           '<span class="vt-table-card__chevron" aria-hidden="true"></span>' +
         '</button>' +
         '<div class="vt-api-card__body">' +

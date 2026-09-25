@@ -1,7 +1,7 @@
 /**
  * leaderboard.js — Page-specific logic for leaderboard.html
  * Pulls top templates from the backend (/view/highratedTemplates,
- * /view/mostClonedTemplates, /view/mostLikedTemplates, /view/popularTags)
+ * /view/mostClonedTemplates, /view/mostLikedTemplates)
  * and renders them using liked-card style cards.
  * Follows the same guard pattern as other page JS modules.
  */
@@ -18,7 +18,6 @@ const leaderboardState = {
   rated: [],
   cloned: [],
   liked: [],
-  tags: [],
   error: null,
   isLoading: false,
 };
@@ -173,10 +172,6 @@ async function fetchMostLiked() {
   return (await fetchJson('/view/mostLikedTemplates')).templates || [];
 }
 
-async function fetchPopularTags() {
-  return (await fetchJson('/view/popularTags')).tags || [];
-}
-
 /* ─── Render ───────────────────────────────────────────────────────────── */
 
 function renderTopThree(gridId, templates) {
@@ -192,66 +187,6 @@ function renderSectionGrids() {
   renderTopThree('ldb-rated-grid', leaderboardState.rated);
   renderTopThree('ldb-cloned-grid', leaderboardState.cloned);
   renderTopThree('ldb-liked-grid', leaderboardState.liked);
-}
-
-let activeTag = null;
-
-function renderTagPills() {
-  const container = document.getElementById('ldb-tag-pills');
-  if (!container) return;
-
-  container.innerHTML = leaderboardState.tags.map(tag => `
-    <button
-      class="ldb-tag-pill${activeTag === tag.name ? ' ldb-tag-pill--active' : ''}"
-      type="button"
-      data-tag="${escapeHtml(tag.name)}"
-      role="listitem"
-      aria-pressed="${activeTag === tag.name}"
-    >
-      ${escapeHtml(tag.name)}
-      <span class="ldb-tag-count">${formatNum(tag.tag_used)}</span>
-    </button>
-  `).join('');
-
-  container.querySelectorAll('.ldb-tag-pill').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const tag = btn.dataset.tag;
-      activeTag = activeTag === tag ? null : tag;
-      renderTagPills();
-      renderTagTemplates();
-    });
-  });
-}
-
-function findTagData(name) {
-  return leaderboardState.tags.find(t => t.name === name) || null;
-}
-
-function renderTagTemplates() {
-  const container = document.getElementById('ldb-tag-templates');
-  if (!container) return;
-
-  if (!activeTag) {
-    container.innerHTML = '<p class="ldb-tag-hint">Select a tag above to see top templates for that category.</p>';
-    return;
-  }
-
-  const tagData = findTagData(activeTag);
-  const matched = (tagData && Array.isArray(tagData.tag_template))
-    ? tagData.tag_template.map(normalizeTemplate)
-    : [];
-
-  if (matched.length === 0) {
-    container.innerHTML = `<p class="ldb-tag-hint">No templates found for <strong>${escapeHtml(activeTag)}</strong>.</p>`;
-    return;
-  }
-
-  container.innerHTML = `
-    <p class="ldb-tag-subhead">Top templates tagged <span class="ldb-tag-name">${escapeHtml(activeTag)}</span></p>
-    <div class="liked-grid ldb-grid">
-      ${matched.slice(0, 3).map((t, i) => buildCard(t, ['#1', '#2', '#3'][i] || null)).join('')}
-    </div>
-  `;
 }
 
 function renderError() {
@@ -275,11 +210,10 @@ async function loadLeaderboard() {
   leaderboardState.error = null;
 
   try {
-    const [rated, cloned, liked, tags] = await Promise.all([
+    const [rated, cloned, liked] = await Promise.all([
       fetchRated(),
       fetchMostCloned(),
       fetchMostLiked(),
-      fetchPopularTags(),
     ]);
 
     if (rated == null) return; // 401 redirect already handled
@@ -287,12 +221,8 @@ async function loadLeaderboard() {
     leaderboardState.rated = rated.map(normalizeTemplate);
     leaderboardState.cloned = cloned.map(normalizeTemplate);
     leaderboardState.liked = liked.map(normalizeTemplate);
-    leaderboardState.tags = tags;
 
-    activeTag = null;
     renderSectionGrids();
-    renderTagPills();
-    renderTagTemplates();
   } catch (err) {
     leaderboardState.error = err.message || 'Failed to load leaderboard';
     renderError();

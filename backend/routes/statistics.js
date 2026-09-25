@@ -110,7 +110,7 @@ router.get(
                   AND al.created_at >= now() - ($2 || ' days')::INTERVAL
                 GROUP BY ad.id, ad.method, ad.name
                 ORDER BY calls DESC
-                LIMIT 8
+                LIMIT 6
             `, [projectId, days]);
 
             // 4. Traffic by HTTP method
@@ -142,6 +142,7 @@ router.get(
                   AND al.created_at >= now() - ($2 || ' days')::INTERVAL
                 GROUP BY ad.id, ad.method, ad.name
                 ORDER BY error_pct DESC NULLS LAST
+                LIMIT 5
             `, [projectId, days]);
 
             // 6. Peak usage hours, normalised to 0–23

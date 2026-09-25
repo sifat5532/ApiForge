@@ -4,7 +4,7 @@ const pool = require('./../db/connection');
 const { requireAuth } = require('./auth');
 const { requireProjectAccess } = require('./project');
 const { requireTemplateAuthor } = require('./project');
-const { template } = require('lodash');
+const _ = require('lodash');
 const router = express.Router();
 
 router.get('/allProjects', requireAuth, async (req, res) => {
@@ -253,6 +253,7 @@ router.get('/apis/:projectId', requireAuth, requireProjectAccess, async (req, re
 
 router.get('/templateDetails/:templateId', requireAuth, async (req, res) => {
     const { templateId } = req.params;
+
     const result = await query(`
                      SELECT 
                     P.id , P.name AS template_name , P.created_at , P.description ,P.auth_enabled , P.author_id , U.username , U.name AS author_name,
@@ -286,44 +287,6 @@ router.get('/templateDetails/:templateId', requireAuth, async (req, res) => {
                                   LIMIT 10
                                  ) , '[]' :: json
                                  ) AS template_reviews ,
-                
-                    COALESCE (
-                     ( SELECT json_agg( 
-                     json_build_object(
-                     'id' , tb.id , 'table_name' , tb.table_name , 'created_at' , tb.created_at ,
-					 'columns' , COALESCE( tb_cols.columns , '[]'::json)
-                     ) ORDER BY tb.table_name
-					 )
-                      FROM schema_tables tb 
-                      LEFT JOIN LATERAL (
-                       SELECT json_agg(
-                         json_build_object(
-                           'id' , c.id , 
-                           'name' , c.col_name , 
-                           'type' , c.col_type , 
-                           'default_value' ,  c.default_value  , 
-                           'column_length' , c.col_length  , 
-                           'is_primary_key' , c.is_primary_key ,
-                           'is_auto_increment' , c.is_auto_increment ,
-                           'is_nullable' , c.is_nullable ,
-                           'is_unique' , c.is_unique ,
-                           'created_at' , c.created_at ,
-                           'parent_col_id' , fk.parent_col_id ,
-                            'parent_col_name' , ppk.col_name ,
-                            'parent_table_name' , pt.table_name ,
-                           'fk_name' , fk.fk_name ,
-                           'on_delete' , fk.on_delete ,
-                           'on_update' , fk.on_update
-                         ) ORDER BY c.is_primary_key DESC , c.is_unique DESC , c.id ASC 
-                       ) AS columns
-                        FROM schema_columns c
-                        LEFT JOIN schema_foreign_keys fk ON fk.child_col_id = c.id
-                        LEFT JOIN schema_columns ppk ON ppk.id = fk.parent_col_id
-                        LEFT JOIN schema_tables pt ON pt.id = ppk.schema_table_id
-                        WHERE c.schema_table_id = tb.id
-                      ) tb_cols ON TRUE 
-                       WHERE tb.project_id = P.id
-                    ) ,  '[]' :: json ) AS tables , 
                     COALESCE (
                     ( SELECT json_agg (
                          json_build_object (
@@ -335,17 +298,85 @@ router.get('/templateDetails/:templateId', requireAuth, async (req, res) => {
                          ) ORDER BY ad.name) AS definitions 
                           FROM api_definitions ad 
                           WHERE ad.project_id = P.id
-                    
 					) 
                     , '[]' :: json ) AS apis
                     FROM projects P 
                     JOIN users U ON U.id = P.author_id
                     WHERE P.id = $1 AND P.is_template = $2
                       `, [templateId, true]);
-    if (result.rows.length === 0) return res.status(404).json({ msg: "Template not found" });
-    res.status(200).json({ msg: "Successfully show template details ", data: result.rows[0] })
 
+    if (result.rows.length === 0) return res.status(404).json({ msg: "Template not found" });
+
+    const template = result.rows[0];
+
+    const tablesResult = await query(`
+        SELECT id, table_name, created_at
+        FROM schema_tables
+        WHERE project_id = $1
+        ORDER BY table_name
+    `, [templateId]);
+
+    const tableIds = tablesResult.rows.map(t => t.id);
+
+    let columnsResult = { rows: [] };
+    if (tableIds.length > 0) {
+        columnsResult = await query(`
+            SELECT
+                c.schema_table_id,
+                c.id,
+                c.col_name AS name,
+                c.col_type AS type,
+                c.default_value,
+                c.col_length AS column_length,
+                c.is_primary_key,
+                c.is_auto_increment,
+                c.is_nullable,
+                c.is_unique,
+                c.created_at,
+                fk.parent_col_id,
+                ppk.col_name AS parent_col_name,
+                pt.table_name AS parent_table_name,
+                fk.fk_name,
+                fk.on_delete,
+                fk.on_update
+            FROM schema_columns c
+            LEFT JOIN schema_foreign_keys fk ON fk.child_col_id = c.id
+            LEFT JOIN schema_columns ppk ON ppk.id = fk.parent_col_id
+            LEFT JOIN schema_tables pt ON pt.id = ppk.schema_table_id
+            WHERE c.schema_table_id = ANY($1)
+            ORDER BY c.schema_table_id, c.is_primary_key DESC, c.is_unique DESC, c.id ASC
+        `, [tableIds]);
+    }
+
+    const columnsByTable = _.groupBy(columnsResult.rows, 'schema_table_id');
+
+    template.tables = tablesResult.rows.map(t => ({
+        id: t.id,
+        table_name: t.table_name,
+        created_at: t.created_at,
+        columns: (columnsByTable[t.id] || []).map(c => ({
+            id: c.id,
+            name: c.name,
+            type: c.type,
+            default_value: c.default_value,
+            column_length: c.column_length,
+            is_primary_key: c.is_primary_key,
+            is_auto_increment: c.is_auto_increment,
+            is_nullable: c.is_nullable,
+            is_unique: c.is_unique,
+            created_at: c.created_at,
+            parent_col_id: c.parent_col_id,
+            parent_col_name: c.parent_col_name,
+            parent_table_name: c.parent_table_name,
+            fk_name: c.fk_name,
+            on_delete: c.on_delete,
+            on_update: c.on_update
+        }))
+    }));
+
+    res.status(200).json({ msg: "Successfully show template details ", data: template });
 });
+
 router.get('/viewFeedback/:templateId', requireAuth, requireTemplateAuthor, async (req, res) => {
     const { templateId } = req.params;
     const result = await query(`
@@ -728,42 +759,6 @@ router.get('/mostLikedTemplates', requireAuth, async (req, res) => {
 
     return res.status(200).json({ templates: result.rows });
 });
-router.get('/popularTags', requireAuth, async (req, res) => {
-    const LIMIT = 5;
-    const result = await query(`
-                          
-								 SELECT  t.id , t.name ,
-                                (SELECT COUNT(*)  FROM project_tags WHERE tag_id = t.id ) AS tag_used ,
-                                COALESCE( 
-                                        ( SELECT json_agg( row_to_json( sub ))
-                                            FROM (SELECT
-                                                 P.id ,
-                                                 P.name AS name ,
-                                                 P.description ,
-                                                 P.created_at , 
-                                                 COALESCE((SELECT ROUND(AVG(tr.rating),2) FROM template_ratings tr WHERE tr.template_id = P.id ), 0 ) AS avg_ratings , 
-                                                 (SELECT COUNT(*) FROM template_clones tr WHERE tr.template_id = P.id )  AS clone_count,
-                                                 (SELECT COUNT(*) FROM template_likes tr WHERE tr.template_id = P.id ) AS like_count,
-                                                 P.author_id,
-                                                 U.username ,
-                                                 U.name AS author_name
-                                                 FROM project_tags pt
-                                                 JOIN projects P ON p.id = pt.project_id 
-                                                 JOIN users U ON U.id = P.author_id
-                                                WHERE pt.tag_id = t.id
-                                                ORDER BY avg_ratings DESC , clone_count DESC , P.created_at DESC
-                                                LIMIT 3
-                                                  ) sub
-            
-                                        ) , '[]' :: json
-                                    ) AS tag_template
-                                    FROM tags t 
-                                    WHERE  (SELECT COUNT(*)  FROM project_tags WHERE tag_id = t.id ) > 0
-                                    ORDER BY tag_used DESC
-                                    LIMIT $1
-                                ` , [LIMIT]);
-    return res.status(200).json({ tags: result.rows });
-});
 
 router.get('/billingOverview', requireAuth, async (req, res) => {
     try {
@@ -938,7 +933,7 @@ router.get('/allTemplates', requireAuth, async (req, res) => {
                                     p.is_template = $3
                                 ORDER BY relevancy_point DESC , avg_ratings DESC , total_clone DESC
                                 LIMIT $1 
-                                OFFSET $2 ` , [ limit , offset , true, req.loggedInUser.id]);
+                                OFFSET $2 ` , [limit, offset, true, req.loggedInUser.id]);
 
     const countResult = await query(`
                                 SELECT COUNT(*) AS total

@@ -69,32 +69,15 @@ async function checkExpiredSubscriptions() {
     }
 }
 
-/**
- * Schedules checkExpiredSubscriptions to run at the top of every hour
- * (i.e., at xx:00:00) and returns a cleanup function.
- */
 function startSubscriptionCron() {
     // Run immediately on startup
     checkExpiredSubscriptions();
 
-    // Calculate ms until the next top-of-hour
-    const now = new Date();
-    const msUntilNextHour =
-        (60 - now.getMinutes()) * 60 * 1000
-        - now.getSeconds() * 1000
-        - now.getMilliseconds();
+    // Then repeat every 30 minutes
+    const intervalId = setInterval(checkExpiredSubscriptions, 30 * 60 * 1000);
 
-    let intervalId;
-
-    const timeoutId = setTimeout(() => {
-        checkExpiredSubscriptions();
-        intervalId = setInterval(checkExpiredSubscriptions, 60 * 60 * 1000);
-    }, msUntilNextHour);
-
-    // Return a cleanup function (useful for graceful shutdown / tests)
     return function stop() {
-        clearTimeout(timeoutId);
-        if (intervalId) clearInterval(intervalId);
+        clearInterval(intervalId);
     };
 }
 
