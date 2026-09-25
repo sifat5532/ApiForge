@@ -58,7 +58,7 @@ const requireProjectAuthor = async (req, res, next) => {
     const proj_id = body.proj_id ? body.proj_id : (req.params.projectId ? req.params.projectId : req.query.projectId);
     if (!proj_id) return res.status(400).json({ msg: "You should insert a project id with your request" });
 
-    const result = await query('SELECT id FROM projects WHERE  author_id=$2 AND is_template=false AND id=$1 ', [proj_id, req.loggedInUser.id]);
+    const result = await query('SELECT id FROM projects WHERE  author_id=$2 AND id=$1 ', [proj_id, req.loggedInUser.id]);
     if (result.rows.length === 0) {
         return res.status(403).json({ msg: "You don't have access to make any change to this project" });
     }
@@ -83,7 +83,7 @@ const requireTemplateAuthor = async (req, res, next) => {
     const templateId = req.params.templateId || req.body.template_id || req.query.templateId;
     if (!templateId) return res.status(400).json({ msg: "You should insert a project id with your request" });
 
-    const result = await query('SELECT id FROM projects WHERE  author_id=$2 AND is_template=$3  AND id=$1 ', [templateId, req.loggedInUser.id, true]);
+    const result = await query('SELECT id FROM projects WHERE  author_id=$2  AND id=$1 ', [templateId, req.loggedInUser.id]);
     if (result.rows.length === 0) {
         return res.status(403).json({ msg: "You don't have access to make any change to this project" });
     }
