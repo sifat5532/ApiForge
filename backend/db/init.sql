@@ -837,6 +837,8 @@ CREATE OR REPLACE PROCEDURE func_rebuild_pk_for_table (
 DECLARE
     v_pk_cols TEXT;
     v_existing_pk TEXT;
+    v_existing_pk_cols TEXT;
+    r RECORD;
 BEGIN
     SELECT string_agg(format('%I', col_name), ',' ORDER BY id)
     INTO v_pk_cols
@@ -844,14 +846,49 @@ BEGIN
     WHERE schema_table_id = p_table_id
       AND is_primary_key = TRUE;
 
-   -- Drop Existing pk
-    SELECT c.conname INTO v_existing_pk
+    SELECT c.conname,
+           (
+              SELECT string_agg(format('%I', a.attname), ',' ORDER BY x.n)
+              FROM unnest(c.conkey) WITH ORDINALITY AS x(attnum, n)
+              JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = x.attnum
+           )
+    INTO v_existing_pk, v_existing_pk_cols
     FROM pg_constraint c
     JOIN pg_class t ON t.oid = c.conrelid
     JOIN pg_namespace n ON n.oid = t.relnamespace
     WHERE c.contype = 'p'
       AND n.nspname = p_schema
       AND t.relname = p_table_name;
+
+-- IF we blindly drop and rebuild PK for every col change, it will fail
+-- Because any of the pk col might be a parent of the fk, so we can't remove the pk
+-- That's why first its checked if the existing pk is changed or not. if not changed then returned.
+-- IF changed then first fk' are dropped. then the pk is rebuilt and then the fks are added again
+    IF v_existing_pk IS NOT NULL AND v_pk_cols IS NOT DISTINCT FROM v_existing_pk_cols THEN
+        RETURN;
+    END IF;
+
+    FOR r IN
+        SELECT
+            fk.fk_name,
+            fk.on_delete,
+            fk.on_update,
+            ch.col_name AS child_col,
+            pa.col_name AS parent_col,
+            cst.table_name AS child_table
+        FROM schema_foreign_keys fk
+        JOIN schema_columns pa ON pa.id = fk.parent_col_id
+        JOIN schema_columns ch ON ch.id = fk.child_col_id
+        JOIN schema_tables cst ON cst.id = ch.schema_table_id
+        WHERE pa.schema_table_id = p_table_id
+    LOOP
+        IF to_regclass(format('%I.%I', p_schema, r.child_table)) IS NOT NULL THEN
+            EXECUTE format(
+                'ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I',
+                p_schema, r.child_table, r.fk_name
+            );
+        END IF;
+    END LOOP;
 
     IF v_existing_pk IS NOT NULL THEN
         EXECUTE format(
@@ -866,6 +903,29 @@ BEGIN
             p_schema, p_table_name, 'pk_' || p_table_id, v_pk_cols
         );
     END IF;
+
+    FOR r IN
+        SELECT
+            fk.fk_name,
+            fk.on_delete,
+            fk.on_update,
+            ch.col_name AS child_col,
+            pa.col_name AS parent_col,
+            cst.table_name AS child_table
+        FROM schema_foreign_keys fk
+        JOIN schema_columns pa ON pa.id = fk.parent_col_id
+        JOIN schema_columns ch ON ch.id = fk.child_col_id
+        JOIN schema_tables cst ON cst.id = ch.schema_table_id
+        WHERE pa.schema_table_id = p_table_id
+    LOOP
+        IF to_regclass(format('%I.%I', p_schema, r.child_table)) IS NOT NULL THEN
+            EXECUTE format(
+                'ALTER TABLE %I.%I ADD CONSTRAINT %I FOREIGN KEY (%I) REFERENCES %I.%I(%I) ON DELETE %s ON UPDATE %s',
+                p_schema, r.child_table, r.fk_name, r.child_col,
+                p_schema, p_table_name, r.parent_col, r.on_delete, r.on_update
+            );
+        END IF;
+    END LOOP;
 END;
 $$;
 
@@ -873,9 +933,6 @@ CREATE OR REPLACE FUNCTION tgfunc_rebuild_pk () RETURNS TRIGGER LANGUAGE plpgsql
 DECLARE 
    r RECORD;
    v_schema TEXT;
-   v_pk_cols TEXT;
-   v_existing_pk TEXT;
-
 BEGIN
    FOR r IN
      SELECT DISTINCT 
@@ -894,40 +951,7 @@ BEGIN
       END IF;
       
       v_schema := 'PROJ_' || r.project_id || '_'||r.author_id;
-         SELECT string_agg(format('%I', col_name), ',' ORDER BY id)
-        INTO v_pk_cols
-        FROM schema_columns
-        WHERE schema_table_id = r.table_id
-          AND is_primary_key = TRUE;
-
-        -- Drop existing pk
-        SELECT c.conname INTO v_existing_pk
-        FROM pg_constraint c
-        JOIN pg_class t ON t.oid = c.conrelid
-        JOIN pg_namespace n ON n.oid = t.relnamespace
-        WHERE c.contype = 'p'
-          AND n.nspname = v_schema
-          AND t.relname = r.table_name;
-
-        IF v_existing_pk IS NOT NULL THEN
-            EXECUTE format(
-                'ALTER TABLE %I.%I DROP CONSTRAINT %I',
-                v_schema,
-                r.table_name,
-                v_existing_pk
-            );
-        END IF;
-
-        IF v_pk_cols IS NOT NULL THEN
-            EXECUTE format(
-                'ALTER TABLE %I.%I ADD CONSTRAINT %I PRIMARY KEY (%s)',
-                v_schema,
-                r.table_name,
-                'pk_' || r.table_id,
-                v_pk_cols
-            );
-        END IF;
-
+      CALL func_rebuild_pk_for_table(r.table_id, v_schema, r.table_name);
     END LOOP;
 
     RETURN NULL;
