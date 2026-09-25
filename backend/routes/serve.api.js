@@ -135,10 +135,13 @@ async function corsMiddleware(req, res, next) {
 }
 
 async function validateApiRoute(req, res, next) {
+    const startedAt = process.hrtime.bigint();
     const { username, projectname, apiname } = req.params;
 
+    const client = await pool.connect();
     try {
-        const result = await query(`
+        await client.query('BEGIN');
+        const result = await client.query(`
         SELECT
             a.id AS api_id,
             a.method,
@@ -164,14 +167,20 @@ async function validateApiRoute(req, res, next) {
         attachRouteParams(req, apiDefinition.query_definition);
 
         if (apiDefinition.method.toUpperCase() !== req.method) {
+            await logApiCall(client, apiDefinition, req, 405, Number(process.hrtime.bigint() - startedAt) / 1e6);
+            await client.query('COMMIT');
             return res.status(405).json({ error: 'Method not allowed' });
         }
 
         if (!apiDefinition.api_is_active) {
+            await logApiCall(client, apiDefinition, req, 404, Number(process.hrtime.bigint() - startedAt) / 1e6);
+            await client.query('COMMIT');
             return res.status(404).json({ error: 'API is not active' });
         }
 
         if (apiDefinition.subscription_status !== 'active') {
+            await logApiCall(client, apiDefinition, req, 402, Number(process.hrtime.bigint() - startedAt) / 1e6);
+            await client.query('COMMIT');
             return res.status(402).json({ error: 'Project subscription is not active' });
         }
 
@@ -179,6 +188,8 @@ async function validateApiRoute(req, res, next) {
             const providedKey = req.header('x-api-key');
 
             if (!providedKey) {
+                await logApiCall(client, apiDefinition, req, 401, Number(process.hrtime.bigint() - startedAt) / 1e6);
+                await client.query('COMMIT');
                 return res.status(401).json({ error: 'API key required' });
             }
 
@@ -189,13 +200,17 @@ async function validateApiRoute(req, res, next) {
             );
 
             if (!isValidKey) {
+                await logApiCall(client, apiDefinition, req, 401, Number(process.hrtime.bigint() - startedAt) / 1e6);
+                await client.query('COMMIT');
                 return res.status(401).json({ error: 'Invalid API key' });
             }
         }
 
         req.apiDefinition = apiDefinition;
+        await client.query('COMMIT');
         next();
     } catch (err) {
+        await client.query('ROLLBACK');
         console.error('validateApiRoute error:', err);
         res.status(500).json({ error: 'Internal server error' });
     }

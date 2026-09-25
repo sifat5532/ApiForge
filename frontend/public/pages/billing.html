@@ -1160,9 +1160,16 @@
         document.getElementById('bill-month-cancel').addEventListener('click', closeModal);
 
         document.getElementById('bill-month-pay').addEventListener('click', function () {
+          var payBtn = document.getElementById('bill-month-pay');
+          if (!payBtn || payBtn.disabled) return;
+
           var month = Number(select.value);
           var errEl = document.getElementById('bill-month-error');
           errEl.style.display = 'none';
+
+          payBtn.disabled = true;
+          payBtn.classList.add('btn--loading');
+          payBtn.textContent = 'Opening gateway…';
 
           apiPost('/payment/subscribe', { plan_id: plan.plan_id, month: month })
             .then(function (data) {
@@ -1174,11 +1181,17 @@
               } else {
                 errEl.textContent = 'Something went wrong. Please try again.';
                 errEl.style.display = 'block';
+                payBtn.disabled = false;
+                payBtn.classList.remove('btn--loading');
+                payBtn.textContent = 'Pay now';
               }
             })
             .catch(function () {
               errEl.textContent = 'Network error. Please try again.';
               errEl.style.display = 'block';
+              payBtn.disabled = false;
+              payBtn.classList.remove('btn--loading');
+              payBtn.textContent = 'Pay now';
             });
         });
       }

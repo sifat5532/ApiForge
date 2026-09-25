@@ -1033,7 +1033,6 @@ function apiCardHtml(api) {
         </button>
       </div>
       <div class="vp-api-meta">
-        <span class="vp-api-meta__item"><span class="vp-api-meta__label">Rate limit</span> ${escHtml(api.rate_limit_per_day != null ? api.rate_limit_per_day + '/day' : '—')}</span>
         <span class="vp-api-meta__sep" aria-hidden="true">·</span>
         <span class="vp-api-meta__item"><span class="vp-api-meta__label">Created</span> ${escHtml(formatDate(api.created_at))}</span>
       </div>
